@@ -89,7 +89,7 @@ body.nr #rtabs { display: none; }
 /* ---------- the three panes ---------- */
 /* No boxes. The surface fills the space; the only dividers on it are the two
    hairlines either side of the list. Everything else is separated by air. */
-#work { display: grid; gap: 0; padding: 0;
+#work { display: grid; gap: 0; padding: 0; position: relative; overflow: hidden;
         grid-template-columns: var(--lw) minmax(0, 1fr) var(--rw); min-height: 0; }
 aside, section.mid { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* Pinned to their tracks on purpose: when a side pane is display:none the
@@ -222,18 +222,23 @@ p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 
 /* The data panel is the sync panel at a larger size: the same hairline edge,
    the same title strip with its one action at the top right, the same section
    labels. Two panels, one shape. */
-#ovl { position: fixed; inset: 0; background: rgba(7,12,19,.72); display: none;
-       align-items: flex-start; justify-content: center; z-index: 20; padding: 48px 20px; }
-#ovl.on { display: flex; }
-#ovlbox { background: var(--ground); border: 1px solid var(--faint); border-radius: 10px;
-          width: min(680px, 96vw); max-height: 84vh; display: flex; flex-direction: column;
-          overflow: hidden; }
-#ovlh { padding: 8px 10px 8px 16px; display: flex; align-items: center; gap: 12px;
-        min-height: 40px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
-        text-transform: uppercase; color: var(--dim); font-weight: 500;
-        border-bottom: 1px solid var(--faint); background: var(--panel); }
-#ovlt { flex: 1 1 auto; }
-#ovlbody { padding: 14px 16px 18px; overflow: auto; }
+/* A sheet belongs to a pane, so it appears AS that pane: same column, same
+   width, sliding over only it. The rest of the page stays lit and usable --
+   nothing is centred and nothing is dimmed. New collection comes from the
+   left, where collections live; Data comes from the right. */
+.sheet { position: absolute; top: 0; bottom: 0; z-index: 8; background: var(--ground);
+         display: flex; flex-direction: column; min-width: 0;
+         transition: transform .18s ease; will-change: transform; }
+#lsheet { left: 0; width: var(--lw); border-right: 1px solid var(--faint);
+          box-shadow: 14px 0 28px rgba(0,0,0,.35); transform: translateX(-105%); }
+#rsheet { right: 0; width: max(var(--rw), 460px); border-left: 1px solid var(--faint);
+          box-shadow: -14px 0 28px rgba(0,0,0,.35); transform: translateX(105%); }
+/* id + class, because the off-canvas transform above is on an id and would
+   otherwise outrank a class alone */
+#lsheet.on, #rsheet.on { transform: none; }
+.sheet .pbody { padding: 6px 14px 24px; }
+#rsheet .pbody { padding: 14px 16px 24px; }
+@media (prefers-reduced-motion: reduce) { .sheet { transition: none; } }
 .box { padding: 0; margin: 0 0 20px; }
 .box:last-child { margin-bottom: 0; }
 .brow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
@@ -349,6 +354,18 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
     <div class="plabel"><span class="pstat" id="rstat"></span></div>
     <div class="pbody" id="rbody"></div>
   </aside>
+
+  <div class="sheet" id="lsheet">
+    <div class="plabel"><span class="name">New collection</span><span class="sp"></span><span class="act" id="lsheetesc">esc</span></div>
+    <div class="pbody">
+      <div class="ninl"><input type="text" id="newin" placeholder="name it, or pick below"></div>
+      <div class="month">from Apple Music</div><div id="seedrows"></div>
+    </div>
+  </div>
+  <div class="sheet" id="rsheet">
+    <div class="plabel"><span class="name">Data</span><span class="sp"></span><span class="act" id="rsheetesc">esc</span></div>
+    <div class="pbody" id="rsheetbody"></div>
+  </div>
 </div>
 
 <footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
@@ -365,7 +382,6 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
   </div>
 </div></div>
 
-<div id="ovl"><div id="ovlbox"></div></div>
 
 <script>
 const MONTH = s => s.replace(/^(\d{4})-/,'$1 ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -419,7 +435,7 @@ function fold(side){ setFold(side,!document.body.classList.contains(side==='L'?'
 })();
 $('#foldL').onclick=()=>fold('L'); $('#foldR').onclick=()=>fold('R');
 document.querySelectorAll('#ltabs .pill').forEach(p=>p.onclick=async()=>{
-  side=p.dataset.s; sel=0;
+  leaveNew(); side=p.dataset.s; sel=0;
   try{ localStorage['saltpod.side']=side; }catch(e){}
   if(side==='am'&&amPick==='__all__')await ensureLib();
   draw();
@@ -685,7 +701,6 @@ function drawCols(){
   $('#lhead').textContent = side==='am' ? 'Apple Music' : 'Collections';
   const nc=$('#newcol'); nc.style.display = side==='am' ? 'none' : ''; nc.textContent='+ new';
   if(side==='am')return drawAM();
-  if(newMode)return drawNew();
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=`<div class="col ${colPick===null?'on':''}" data-all="1">All tracks<span class="cnt">${ALL.length}</span></div>`;
@@ -726,21 +741,24 @@ function drawCols(){
    the list, and the Apple Music playlists underneath as rows in the same
    shape. Nothing floats, nothing dims, nothing is covered. The field is also
    the filter -- type to narrow the playlists, or press enter to name one. */
-function enterNew(){ side='ipod'; newMode=true; newQ=''; drawCols(); }
-function drawNew(){
-  $('#lhead').textContent='New collection';
-  const nc=$('#newcol'); nc.textContent='esc'; nc.onclick=()=>{newMode=false;newQ='';drawCols();};
-  $('#colbody').innerHTML=`<div class="ninl"><input type="text" id="newin" placeholder="name it, or pick below" value="${esc(newQ)}"></div>
-    <div class="month">from Apple Music</div><div id="seedrows"></div>`;
+function enterNew(){
+  if(document.body.classList.contains('nl'))setFold('L',false);   // a sheet over a folded pane is no sheet
+  side='ipod'; newMode=true; newQ='';
+  const inp=$('#newin'); inp.value='';
+  paintSeeds(); $('#lsheet').classList.add('on'); inp.focus();
+}
+function leaveNew(){ newMode=false; newQ=''; $('#lsheet').classList.remove('on'); }
+(function(){
   const inp=$('#newin');
   inp.oninput=e=>{newQ=e.target.value;paintSeeds();};
   inp.onkeydown=e=>{e.stopPropagation();
-    if(e.key==='Escape'){newMode=false;newQ='';drawCols();return;}
+    if(e.key==='Escape'){leaveNew();return;}
     if(e.key==='Enter'){const v=newQ.trim(); if(!v)return;
       if(!COLS.includes(v))PENDING.add(v);
-      newMode=false; newQ=''; colPick=v; sel=0; draw();}};
-  paintSeeds(); inp.focus();
-}
+      leaveNew(); colPick=v; sel=0; draw();}};
+  $('#lsheetesc').onclick=leaveNew;
+  $('#rsheetesc').onclick=()=>closeSettings();
+})();
 function paintSeeds(){
   const el=$('#seedrows'); if(!el)return;
   const q=newQ.trim().toLowerCase();
@@ -927,10 +945,10 @@ function play(){
 /* ---------------- settings, where Data lives now ---------------- */
 let MUSIC=null;
 function openSettings(){
-  $('#ovl').classList.add('on');
-  $('#ovlbox').innerHTML=`
-    <div id="ovlh"><span id="ovlt">Data</span><span><button id="ovlclose">Close</button></span></div>
-    <div id="ovlbody">
+  if(document.body.classList.contains('nr'))setFold('R',false);
+  $('#rsheet').classList.add('on');
+  $('#rsheetbody').innerHTML=`
+    <div>
       <p class="note" style="margin:0 0 4px">Everything that used to be a command. Long jobs run in
         the background and keep running if you close this.</p>
       <div class="box" id="jobbox" style="display:none">
@@ -967,7 +985,6 @@ function openSettings(){
         <div class="brow"><button id="loadMusic">List my playlists</button></div>
         <div id="musiclist" style="margin-top:10px"></div></div>
     </div>`;
-  $('#ovlclose').onclick=closeSettings;
   $('#doDevice').onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
   $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
   $('#doAM').onclick=()=>startJob({action:'am_index'});
@@ -991,7 +1008,7 @@ function openSettings(){
   };
   paintJob(lastJob);
 }
-function closeSettings(){$('#ovl').classList.remove('on');}
+function closeSettings(){$('#rsheet').classList.remove('on');}
 $('#gear').onclick=openSettings;
 // Sync is never one click. It asks the device what it actually holds, shows
 // the diff, and only then writes -- the same plan / sync pair the terminal has.
@@ -1001,7 +1018,6 @@ $('#dosync').onclick=async()=>{
   if(!p||!p.ok){openDlg('__sync__',(p&&p.reason)||'could not reach the iPod');return;}
   openDlg('__sync__',null,p);
 };
-$('#ovl').onclick=e=>{if(e.target===$('#ovl'))closeSettings();};
 
 // A job keeps being polled whether or not the overlay is open; the overlay, when
 // it is open, just shows the latest. Closing the panel used to stop the poll,
@@ -1110,7 +1126,7 @@ async function seedFrom(name){
                                       collection:name, mode:'add'});
   if(!res.ok){toast('NOT SAVED — check the terminal');return;}
   await post('/api/decide',{reorder:{collection:name, keys}});
-  closeDlg(); newMode=false; newQ=''; side='ipod'; colPick=name; sel=0;
+  closeDlg(); leaveNew(); side='ipod'; colPick=name; sel=0;
   try{ localStorage['saltpod.side']='ipod'; }catch(e){}
   await load();
   const waiting=keys.filter(k=>!(BYKEY.get(k)||{}).local).length;
@@ -1146,14 +1162,14 @@ qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawMid();drawFoot();
 qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.blur();draw();} if(e.key==='Enter')qi.blur();};
 document.addEventListener('keydown',e=>{
   if(dlg.classList.contains('on'))return;
-  if($('#ovl').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
+  if($('#rsheet').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
   const k=e.key;
   if(k==='/'){e.preventDefault();qi.focus();return;}
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}
-  if(k==='Escape'){ if(newMode){newMode=false;newQ='';drawCols();} else if(q){q='';qi.value='';draw();} else if(colPick){colPick=null;sel=0;draw();} return; }
+  if(k==='Escape'){ if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick){colPick=null;sel=0;draw();} return; }
   if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
   if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}

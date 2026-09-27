@@ -221,5 +221,6 @@ See HANDOFF for the current state and the open items. The standing ones:
 the three hardware proofs still to run (track removal, playlist deletion, a
 drag by hand), and progress by phase while a sync runs. The status strip and
 the size estimate landed the same night they were designed, on the owner's
-picks: status in the footer, opposite the keys; a new collection made inline
-in its own pane rather than in a panel over it.
+picks: status in the footer, opposite the keys; a new collection made on a sheet
+that slides over its own pane — the owner's pick once he saw it drawn, and
+the same idiom Data now uses from the right.
