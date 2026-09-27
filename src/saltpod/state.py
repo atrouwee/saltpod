@@ -168,8 +168,14 @@ def rebuild(verbose=True):
 
     for path in sorted(glob.glob(os.path.join(ROOT, 'data/exports/*.json'))):
         slug = os.path.splitext(os.path.basename(path))[0]
+        if slug.startswith('_'):
+            continue                      # a cache or a note, not a playlist
         d = json.load(open(path))
-        items = d['tracks'] if isinstance(d, dict) else d
+        items = d.get('tracks') if isinstance(d, dict) else d
+        if not isinstance(items, list):
+            if verbose:
+                print('skipping %s: not a playlist export' % os.path.basename(path))
+            continue
 
         itunes = {}
         for f in sorted(glob.glob(os.path.join(ROOT, 'data/itunes', slug, '0*.json'))):

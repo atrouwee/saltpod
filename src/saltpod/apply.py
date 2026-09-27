@@ -203,12 +203,16 @@ def sync(mount=None, eject=True):
     if not (p['adds'] or p['removes'] or p['new_playlists'] or p['update_playlists'] or p['delete_playlists']):
         print('\nnothing to do'); return
     root, st = p['root'], p['state']
-    bdir = backup(mount)
+    # '## <phase> [i/n]' lines are for the page's progress panel; the prose
+    # after each is for a person reading the log.
+    print('## backup'); bdir = backup(mount)
     print('\nbackup: %s' % os.path.relpath(bdir, ROOT))
     changed_tracks = False
 
     # 1. files + database entries for additions
-    for k, r, src in p['adds']:
+    n_add = len(p['adds'])
+    for i_add, (k, r, src) in enumerate(p['adds'], 1):
+        print('## copy %d/%d' % (i_add, n_add))
         ext = os.path.splitext(src)[1].lower()
         if ext in CONVERT:
             rel, loc = new_location(mount, '.m4a')
@@ -232,6 +236,8 @@ def sync(mount=None, eject=True):
         print('  added   %s - %s -> %s (id %d)' % (r['artist'], r['title'], rel, tid))
 
     # 2. removals
+    if p['removes']:
+        print('## remove %d' % len(p['removes']))
     for k, r, tid in p['removes']:
         loc = E.track_remove(root, tid)
         f = os.path.join(mount, loc.lstrip(':').replace(':', os.sep))
@@ -245,6 +251,7 @@ def sync(mount=None, eject=True):
     for c in p['delete_playlists']:
         E.playlist_delete(root, c)
         print('  playlist %-30s deleted' % c[:30])
+    print('## playlists')
     for c, members in p['collections'].items():
         ids = [p['dev_by_key'][k] for k, r in members if k in p['dev_by_key']]
         if c in p['new_playlists']:
@@ -253,6 +260,7 @@ def sync(mount=None, eject=True):
         print('  playlist %-30s %d tracks' % (c[:30], len(ids)))
 
     # 4. write, verify, bookkeeping
+    print('## write')
     out = W.serialise(root, GUID)
     dbp = os.path.join(mount, DB_REL)
     tmp = dbp + '.saltgate.tmp'
@@ -267,8 +275,10 @@ def sync(mount=None, eject=True):
     st['synced_playlists'] = sorted((set(st.get('synced_playlists', [])) | set(p['collections']))
                                     - set(p['delete_playlists']))
     S.save(st)
+    print('## verify')
     print('\ndatabase written and verified on device: %d bytes, hash58 OK' % len(out))
     if eject:
+        print('## eject')
         subprocess.run(['sync']); subprocess.run(['diskutil', 'eject', mount])
         print('ejected')
 

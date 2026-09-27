@@ -57,7 +57,7 @@ input:focus, select:focus { outline: none; border-color: var(--ink); }
    out on the same three columns as the panes below it, so every control sits
    directly above the pane it governs: the left fold over the collections, the
    counts over the list, buy / vinyl and the right fold over the right pane. */
-header { background: var(--ground); padding: 22px 24px 0; display: flex; flex-direction: column; gap: 14px; }
+header { background: var(--ground); padding: 12px 24px 0; display: flex; flex-direction: column; gap: 8px; }
 header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 0 -24px; }
 .brandline { display: grid; grid-template-columns: 1fr minmax(220px, 440px) 1fr; align-items: center; gap: 16px; }
 /* One number drives both, because aspect-ratio loses to a button's intrinsic
@@ -66,7 +66,7 @@ header:after { content: ""; display: block; height: 2px; background: var(--seam)
 .hright button { height: var(--hbtn); }
 h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; }
 #q { width: 100%; padding: 7px 12px; }
-.deck { display: grid; align-items: end; margin: 0 -24px; padding: 0 0 12px;
+.deck { display: grid; align-items: end; margin: 0 -24px; padding: 0 0 8px;
         grid-template-columns: max(var(--lw), 50px) minmax(0, 1fr) max(var(--rw), 50px); }
 .deck .dl { padding-left: 24px; display: flex; align-items: center; gap: 14px; }
 #ltabs { display: flex; gap: 14px; }
@@ -231,8 +231,10 @@ p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 
          transition: transform .18s ease; will-change: transform; }
 #lsheet { left: 0; width: var(--lw); border-right: 1px solid var(--faint);
           box-shadow: 14px 0 28px rgba(0,0,0,.35); transform: translateX(-105%); }
-#rsheet { right: 0; width: max(var(--rw), 460px); border-left: 1px solid var(--faint);
-          box-shadow: -14px 0 28px rgba(0,0,0,.35); transform: translateX(105%); }
+/* Data sits on top of everything, so it covers everything: the whole page,
+   still arriving from the right. */
+#rsheet { left: 0; right: 0; border-left: 0; transform: translateX(102%); }
+#rsheet .pbody { max-width: 760px; }
 /* id + class, because the off-canvas transform above is on an id and would
    otherwise outrank a class alone */
 #lsheet.on, #rsheet.on { transform: none; }
@@ -305,6 +307,11 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 .drow .dn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drow .dc { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--dim); }
 .drow.tick .dn:after { content: " ✓"; color: var(--dim); }
+.drow.done .dn, .drow.done .dc { color: var(--dim); }
+.drow.now .dn { color: var(--ink); } .drow.now .dc { color: var(--orange); }
+.drow.todo .dn, .drow.skip .dn { color: var(--faint); }
+.drow.err .dn, .drow.err .dc { color: var(--orange); }
+.drow.done:hover, .drow.now:hover, .drow.todo:hover, .drow.skip:hover, .drow.err:hover { background: transparent; cursor: default; }
 #dlglist { max-height: 34vh; overflow: auto; margin-top: 2px; }
 #toast { position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--ground);
          padding: 8px 14px; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase;
@@ -1046,6 +1053,51 @@ async function pollJob(){
   await load(); toast(r.state==='done'?'finished':'job failed — see the log');
 }
 
+/* ---------------- sync, watched from the panel ----------------
+   The panel does not close on confirm; it becomes the progress surface, one
+   line per phase, the current one lit and the finished ones ticked. Phases
+   come from '## ' lines the sync prints, so the page reads them rather than
+   guessing from prose. When the last completes the iPod has been ejected, and
+   the panel says so -- that is the moment the strip flips to "ejected". */
+const SYNC_PHASES=[['backup','backing up the database'],['copy','copying and converting'],
+  ['remove','taking tracks off'],['playlists','writing playlists'],['write','writing the database'],
+  ['verify','verifying on the device'],['eject','ejecting']];
+function paintSyncProgress(r){
+  const log=r.log||[]; let cur=null; const counts={}, seen=new Set();
+  for(const ln of log){ const m=ln.match(/^## (\w+)(?: (\S+))?/); if(m){cur=m[1]; seen.add(m[1]); if(m[2])counts[m[1]]=m[2];} }
+  const done=r.state==='done', err=r.state==='error';
+  $('#dlgt').textContent = done ? 'Synced' : err ? 'Sync stopped' : 'Syncing';
+  $('#dlgp').innerHTML = done
+    ? `Done at ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false})}. The iPod has been ejected — safe to unplug.`
+    : err ? '<span style="color:var(--orange)">Stopped before finishing. The log is below; the pre-write backup is intact.</span>'
+    : 'Working — leave the iPod plugged in.';
+  const idx=SYNC_PHASES.findIndex(p=>p[0]===cur);
+  $('#dlglist').innerHTML = SYNC_PHASES.map((p,i)=>{
+    const skipped = p[0]==='remove' && !seen.has('remove') && (done||idx>i);
+    const st = skipped ? 'skip' : (done||i<idx) ? 'done' : (i===idx ? (err?'err':'now') : 'todo');
+    const mark = st==='done'?'&#10003;':st==='now'?'&hellip;':st==='err'?'!':st==='skip'?'&ndash;':'';
+    return `<div class="drow ${st}"><span class="dn">${p[1]}${counts[p[0]]?' · '+esc(counts[p[0]]):''}</span><span class="dc">${mark}</span></div>`;
+  }).join('') + `<pre style="max-height:120px;margin-top:10px">${esc(log.filter(l=>!l.startsWith('## ')).slice(-6).join('\n'))}</pre>`;
+  $('#dlgbtn').innerHTML = (done||err) ? '<button class="go" id="dlgok">Close</button>' : '';
+  const ok=$('#dlgok'); if(ok)ok.onclick=()=>{closeDlg();};
+}
+async function runSyncInPanel(){
+  $('#dlgt').textContent='Syncing'; $('#dlgbtn').innerHTML='';
+  $('#dlgp').textContent='Starting…'; $('#dlglist').innerHTML='';
+  const r=await post('/api/action',{action:'sync'});
+  if(!r.ok||!r.job){$('#dlgp').textContent=r.error||'could not start the sync';return;}
+  job=r.job; $('#gear').classList.add('busy');
+  const id=r.job;
+  const tick=async()=>{
+    const j=await fetch('/api/job?id='+id).then(x=>x.json()).catch(()=>null);
+    if(!j){setTimeout(tick,1500);return;}
+    lastJob=j; paintSyncProgress(j);
+    if(j.state==='running'){setTimeout(tick,900);return;}
+    job=null; $('#gear').classList.remove('busy'); await load(); pollHealth();
+  };
+  tick();
+}
+
 /* ---------------- the collection dialog ---------------- */
 const dlg=$('#dlg'), dlgin=$('#dlgin');
 let dlgMode=null;
@@ -1075,7 +1127,7 @@ function openDlg(mode,why,plan){
         + line('tracks to take off',plan.removes)
         + line('in a collection but not owned yet — left until there is a file',plan.no_source);
       $('#dlgbtn').innerHTML = (n&&fits)?'<button class="go" id="dlgok">Sync</button>':'';
-      const ok=$('#dlgok'); if(ok)ok.onclick=()=>{closeDlg();startJob({action:'sync'});};
+      const ok=$('#dlgok'); if(ok)ok.onclick=runSyncInPanel;
     }
     dlg.classList.add('on'); return;
   }

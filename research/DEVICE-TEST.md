@@ -116,3 +116,40 @@ hash72.
 
 Still not exercised on the device: **track removal**, **playlist deletion**
 (both pass on copies).
+
+---
+
+# Fourth write — a playlist created, from the page — 2026-09-27 ~18:10
+
+**Result: accepted.** The first sync started from the page's **Sync** button
+rather than the terminal: plan → the diff shown → confirm → job. `test r`, two
+tracks both already on the device, so a pure playlist create; `Saltgate Test`
+rewritten alongside it.
+
+Read back off stock firmware after the eject (`device-test4-playlists.jpg`,
+`device-test4-testr.jpg`): Playlists shows `test r · 2 Songs` beside `Saltgate
+Test · 3 Songs`, and inside it
+
+1. St Germain — *Sittin' Here (Atjazz Remix)*
+2. The Mauskovic Dance Band — *Continue the Fun (Space Version)*
+
+in the order arranged. The device ejected itself at the end, as sync does.
+
+**What the owner saw, and what changed because of it:** the panel closed on
+confirm and the work ran invisibly — *"I only saw the sync happening on the
+iPod."* The sync now prints `## <phase>` lines and the panel stays open as the
+progress surface, one line per phase, ending on *safe to unplug*. The child is
+run with `-u`; block-buffered stdout would have delivered every phase at once
+at the end.
+
+## Proven on hardware now
+
+rename playlist · create playlist (both sections) · **create from the page** ·
+update an existing device playlist (re-sequence) · playlist membership with
+position mhods · new `mhit` by template cloning · new file placement · master
+playlist append · dropped positional indexes · `Play Counts` deletion · ALAC
+conversion · hash58 · zeroed hash72.
+
+Still not exercised on the device: **track removal**, **playlist deletion**
+(both pass on copies).
+

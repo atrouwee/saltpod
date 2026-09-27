@@ -173,10 +173,14 @@ def run_job(name, steps):
 
 def playlist_slugs():
     return sorted(os.path.splitext(os.path.basename(p))[0]
-                  for p in glob.glob(os.path.join(ROOT, 'data/exports/*.json')))
+                  for p in glob.glob(os.path.join(ROOT, 'data/exports/*.json'))
+                  if not os.path.basename(p).startswith('_'))
 
 
-AM_INDEX = os.path.join(ROOT, 'data/exports/_apple_music.json')
+# Not under data/exports: rebuild() reads every file there as a playlist
+# export, and this one is not. It sat there for an evening and made every job
+# report "failed" after doing its work correctly.
+AM_INDEX = os.path.join(ROOT, 'data/local/apple_music.json')
 
 
 def am_index():
@@ -608,7 +612,7 @@ class Handler(BaseHTTPRequestHandler):
             return {'ok': True}
         if a == 'sync':
             return {'ok': True, 'job': run_job('sync to the iPod', [
-                ('sync', [py, '-c',
+                ('sync', [py, '-u', '-c',
                  'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
                  'sys.exit(main(["sync"]))']),
                 ('ejected', _mark_ejected)]).id}
