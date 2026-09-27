@@ -31,7 +31,7 @@
      drop is also a "here", never a "hear". */
   --sel-hi: #6aa9f4;
   --sel-lo: #1450b8;
-  --hbtn:  36px; /* the header's buttons: Sync's height, and the gear's side */
+  --hbtn:  32px; /* the header's controls: search's height, Sync's height, the gear's side */
   --lw: 240px;   /* the side panes; a folded one is simply gone */
   --aw: 220px;   /* Apple Music, beside the iPod: the library to take from */
   --rw: 320px;
@@ -57,15 +57,17 @@ input:focus, select:focus { outline: none; border-color: var(--ink); }
 /* header: one line. The brand, search in the centre, and on the right the
    counts -- quiet, at lower opacity -- then Sync and the gear. The pane
    controls live on the panes now, so nothing below this line but the seam. */
-header { background: var(--ground); padding: 12px 24px 12px; display: flex; flex-direction: column; gap: 8px; }
-header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 0 -24px; }
+header { background: var(--ground); padding: 12px 24px 0; display: flex; flex-direction: column; gap: 8px; }
+/* the seam is the header's last line, with nothing under it: the pane lines
+   below start exactly where it ends */
+header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 4px -24px 0; }
 .brandline { display: grid; grid-template-columns: 1fr minmax(220px, 400px) 1fr; align-items: center; gap: 16px; }
 /* One number drives both, because aspect-ratio loses to a button's intrinsic
    width and the gear came out 13px wide against Sync's 31. */
 .hright { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-width: 0; }
 .hright button { height: var(--hbtn); }
 h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; }
-#q { width: 100%; padding: 7px 12px; }
+#q { width: 100%; height: var(--hbtn); padding: 0 12px; box-sizing: border-box; }
 /* The counts give way before the buttons do, and clip at their END: the first
    number (tracks) matters most, the last (undecided) least. */
 .counts { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; color: var(--dim); opacity: .6;
@@ -111,7 +113,7 @@ aside.right { grid-column: 4; border-left: 1px solid var(--faint); }
 body.nl { --lw: 24px; }  body.na { --aw: 24px; }  body.nr { --rw: 24px; }
 body.nl aside.left .pbody, body.nl aside.left .act, body.nl aside.left .pstat,
 body.na aside.am .pbody,  body.na aside.am .act,  body.na aside.am .pstat,
-body.nr aside.right .pbody, body.nr aside.right .pstat, body.nr #rtabs .pill:not(.on) { display: none; }
+body.nr aside.right .pbody, body.nr aside.right .pstat { display: none; }
 body.nl aside.left .plabel, body.na aside.am .plabel, body.nr aside.right .plabel {
   writing-mode: vertical-rl; flex: 1 1 auto; flex-wrap: nowrap; justify-content: flex-start; align-items: center;
   gap: 12px; padding: 14px 0; cursor: pointer; }
@@ -119,7 +121,7 @@ body.nl aside.left .plabel .name, body.na aside.am .plabel .name { flex: 0 0 aut
 body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
 .plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
-          padding: 16px 18px 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+          padding: 12px 18px 10px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
           text-transform: uppercase; color: var(--dim); }
 .plabel .name { color: var(--ink); flex: 1 1 auto; min-width: 10ch; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; }
@@ -144,7 +146,7 @@ section.mid.fx .filters { display: flex; }
 /* The right pane's title mirrors the left ones: text, then the chevron at the
    outer edge, everything pushed to the right. The stat takes its own line. */
 aside.right .plabel { justify-content: flex-end; }
-aside.right .plabel .pstat { flex: 0 0 100%; text-align: right; }
+aside.right .plabel .pstat { flex: 0 0 100%; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-first, like the others */
 
 /* ---------- rows ---------- */
@@ -311,7 +313,9 @@ footer { position: relative; background: var(--ground);
          padding: 10px 24px calc(10px + env(safe-area-inset-bottom, 0px));
          font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--dim);
          display: flex; gap: 18px; align-items: center; }
-#keys { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; flex: 1 1 auto; min-width: 0; }
+/* Essentials only, one line, never wraps: everything else a key does, the
+   menu also does, and the footer is not a manual. */
+#keys { display: flex; gap: 18px; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; align-items: center; flex: 1 1 auto; min-width: 0; }
 /* What the machine can reach: one slot per dependency, always present, always
    in this order, changing state rather than appearing. Lit is reachable,
    hollow is not here, orange is here and misbehaving. "Ejected" is hollow on
@@ -638,12 +642,9 @@ function draw(){ closeMenu(); counts(); drawCols(); drawMid(); drawRight(); draw
 function drawFoot(){
   const inCol=active==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
   $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
-    <span><kbd>b</kbd> buy</span><span><kbd>m</kbd> maybe</span>
-    <span><kbd>x</kbd> ${inCol?'take out of collection':'skip'}</span>${inCol?'<span><kbd>X</kbd> delete from iPod</span>':''}
-    <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
-    ${canSeq?'<span><kbd>J</kbd><kbd>K</kbd> re-sequence</span>':''}
-    <span><kbd>.</kbd> menu</span><span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span><span><kbd>[</kbd><kbd>]</kbd> panes</span>
-    ${inCol?'<span><kbd>esc</kbd> back to library</span>':''}
+    <span><kbd>b</kbd> buy</span><span><kbd>v</kbd> vinyl</span>
+    <span><kbd>x</kbd> ${inCol?'take out':'skip'}</span>
+    <span><kbd>c</kbd> collection</span><span><kbd>.</kbd> menu</span><span><kbd>/</kbd> search</span>
     <span id="saved" style="margin-left:auto"></span>`;
 }
 
@@ -947,7 +948,7 @@ function drawRight(){
     const todo=short.filter(t=>!t.bought&&!t.local), ready=short.filter(t=>t.local&&!t.device), done=short.filter(t=>t.device);
     const eur=todo.reduce((a,t)=>a+(t.price||0),0);
     const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
-    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · ${ready.length} ready to sync · ${done.length} on the iPod`;
+    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> on iPod`;
     let h='';
     if(ready.length) h+=`<div class="month vg">bought · ready for the next sync · ${ready.length}</div>`
       + ready.map(t=>`<div class="card"><b>${esc(t.artist)} — ${esc(t.title)}</b>
