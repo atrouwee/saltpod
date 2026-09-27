@@ -466,6 +466,133 @@ def plan_summary(mount=None):
 
 
 LOSSLESS_EXT = {'.flac', '.wav', '.aif', '.aiff', '.alac'}
+
+# ------------------------------------------------- lookup, when it is needed
+#
+# Identity, price and a lossless source are only interesting for a track you
+# have decided to BUY. Looking them up for a whole playlist up front spends
+# hundreds of requests on tracks that will never be shortlisted -- and the
+# answers go stale before they are read. So the lookup now happens the moment
+# a track joins the buy list, for that track alone, in the background.
+#
+# Bandcamp is deliberately NOT here. Its search returns an empty page to a
+# cookieless request, so availability needs a real bandcamp.com tab; that stays
+# a batch job you run against the buy list, which is now short by construction.
+LOOKUP_Q = queue.Queue()
+LOOKING = set()                 # keys in flight, so the page can say so
+LOOKUP_LOCK = threading.Lock()
+
+
+def wanted_seconds(key, rec):
+    """How long the recording we want actually runs.
+
+    WITHOUT THIS THE LOOKUP IS WORTH LESS THAN IT LOOKS. Duration is what
+    separates the 3:30 radio edit from the 7:15 extended mix; with no duration
+    every match scores `variant` and a human has to check each one by hand --
+    which is exactly the work this was meant to remove. Three places know it,
+    in order of trust: the file on the device, the file on the drive, and
+    Apple Music's own library.
+    """
+    d = (rec.get('device') or {}).get('seconds')
+    if d:
+        return d
+    return _secs_map().get(key)
+
+
+_SECS = {'built': None, 'map': {}}
+
+
+def _secs_map():
+    """key -> seconds, from the drive index and the Apple Music library.
+
+    Built once and reused: a linear scan of 9,000 entries per shortlisted
+    track would make a queue of fifty feel broken.
+    """
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    stamp = (os.path.getmtime(idx) if os.path.exists(idx) else 0,
+             os.path.getmtime(AM_INDEX) if os.path.exists(AM_INDEX) else 0)
+    if _SECS['built'] == stamp:
+        return _SECS['map']
+    m = {}
+    for e in am_index().get('library') or []:
+        if e.get('key') and e.get('secs'):
+            m[e['key']] = e['secs']
+    for e in (local_index_raw() or {}).get('tracks') or []:      # the file wins
+        if e.get('duration_sec'):
+            m[S.key_for(e.get('artist'), e.get('title'))] = e['duration_sec']
+    _SECS['built'], _SECS['map'] = stamp, m
+    return m
+
+
+def local_index_raw():
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    if not os.path.exists(idx):
+        return None
+    try:
+        return json.load(open(idx))
+    except Exception:
+        return None
+
+
+def _lookup_one(key):
+    """Ask the iTunes Search API who this recording is. Keyless, cacheable."""
+    from . import itunes_match as IM
+    with LOCK:
+        rec = (S.load()['tracks'] or {}).get(key)
+    if not rec or rec.get('itunes'):
+        return
+    t = {'title': rec.get('title') or '', 'artist': rec.get('artist') or '',
+         'album_artist': None, 'duration_sec': wanted_seconds(key, rec)}
+    term = ('%s %s' % (t['artist'], IM.full_title(t['title']))).strip()
+    try:
+        payload = IM.search(term, 'NL')
+    except Exception as e:                                   # network shape varies
+        payload = {'results': [], '_error': str(e)}
+    m, cand = IM.best_match(t, payload.get('results') or [])
+    with LOCK:
+        st = S.load()
+        rec = st['tracks'].get(key)
+        if not rec:
+            return
+        if cand:
+            rec['itunes'] = {
+                'track_id': cand.get('trackId'), 'album_id': cand.get('collectionId'),
+                'album': cand.get('collectionName'), 'genre': cand.get('primaryGenreName'),
+                'released': (cand.get('releaseDate') or '')[:10],
+                'price': cand.get('trackPrice'), 'url': cand.get('trackViewUrl'),
+                'preview': cand.get('previewUrl'), 'art': cand.get('artworkUrl100'),
+                'seconds': round((cand.get('trackTimeMillis') or 0) / 1000.0, 1) or None,
+                'verdict': (m or {}).get('verdict'), 'looked_up': time.strftime('%Y-%m-%d %H:%M'),
+            }
+        else:
+            # a real answer, and worth keeping: do not ask again every redraw
+            rec['itunes'] = {'verdict': 'not_found', 'looked_up': time.strftime('%Y-%m-%d %H:%M')}
+        S.save(st)
+
+
+def _lookup_worker():
+    while True:
+        key = LOOKUP_Q.get()
+        try:
+            _lookup_one(key)
+        except Exception:
+            pass
+        finally:
+            with LOOKUP_LOCK:
+                LOOKING.discard(key)
+            LOOKUP_Q.task_done()
+            if LOOKUP_Q.empty():
+                push({'type': 'data', 'why': 'looked up'})
+            time.sleep(0.4)                    # the API is free; do not hammer it
+
+
+def want_lookup(keys):
+    """Queue a lookup for tracks that have no iTunes identity yet."""
+    with LOOKUP_LOCK:
+        for k in keys:
+            if k not in LOOKING:
+                LOOKING.add(k)
+                LOOKUP_Q.put(k)
 LOCAL_KEYS = set()          # refreshed on every decision; see apply_decision
 
 
@@ -575,6 +702,7 @@ def tracks_payload(scope=''):
             'bought': r['bought'], 'on_ipod': r['on_ipod'],
             'collections': r['collections'], 'note': r.get('note', ''),
             'orphan': bool(r.get('orphan')),
+            'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
             'album': it.get('album'), 'genre': it.get('genre'),
             'released': it.get('released'), 'price': it.get('price'),
             'seconds': it.get('seconds'), 'url': it.get('url'),
@@ -613,6 +741,7 @@ def apply_decision(body):
         adopt(st, body)
         keys = body.get('keys') or ([body['key']] if body.get('key') else [])
         touched = []
+        shortlisted = []
         for k in keys:
             rec = st['tracks'].get(k)
             if not rec:
@@ -620,6 +749,8 @@ def apply_decision(body):
             if 'tier' in body and body['tier'] in S.TIERS:
                 rec['tier'] = body['tier']
                 rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
+                if body['tier'] == 'shortlisted':
+                    shortlisted.append(k)
             for f in ('vinyl', 'bought', 'on_ipod'):
                 if f in body:
                     rec[f] = bool(body[f])
@@ -643,6 +774,7 @@ def apply_decision(body):
                             and rec.get('tier') in (None, '', 'seen', 'maybe', 'skipped')):
                         rec['tier'] = 'shortlisted'
                         rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
+                        shortlisted.append(k)
                     if mode == 'add' or (mode != 'remove' and not has):
                         if not has:
                             rec['collections'].append(c)
@@ -673,7 +805,9 @@ def apply_decision(body):
                 co[new] = seq
             st['collections'] = sorted(cols)
         S.save(st)
-        return {'ok': True, 'touched': touched}
+    # outside the lock: the worker takes it for itself
+    want_lookup([k for k in shortlisted if not (st['tracks'].get(k) or {}).get('itunes')])
+    return {'ok': True, 'touched': touched, 'looking': len(shortlisted)}
 
 
 # ---------------------------------------------------------------- audio
@@ -764,6 +898,9 @@ class Handler(BaseHTTPRequestHandler):
                     if q in CLIENTS:
                         CLIENTS.remove(q)
             return
+        if u.path == '/api/looking':
+            with LOOKUP_LOCK:
+                return self._send(200, json.dumps({'keys': sorted(LOOKING)}))
         if u.path == '/api/history':
             hp = os.path.join(LOGS, 'history.jsonl')
             rows = []
@@ -910,6 +1047,15 @@ class Handler(BaseHTTPRequestHandler):
     def _action(self, body):
         a = body.get('action')
         py = sys.executable
+        if a == 'lookup':
+            keys = body.get('keys') or []
+            if body.get('all_shortlisted'):
+                with LOCK:
+                    st = S.load()
+                keys = [k for k, r in st['tracks'].items()
+                        if r.get('tier') == 'shortlisted' and not r.get('itunes')]
+            want_lookup(keys)
+            return {'ok': True, 'queued': len(keys)}
         if a == 'rebuild':
             S.rebuild(verbose=False)
             return {'ok': True}
@@ -974,6 +1120,7 @@ def main(argv=None):
         print('first run - building state'); S.rebuild()
 
     srv = ThreadingHTTPServer(('127.0.0.1', a.port), Handler)
+    threading.Thread(target=_lookup_worker, daemon=True).start()
     watch_page(os.path.join(HERE, 'curate.html'))
     url = 'http://127.0.0.1:%d/' % a.port
     print('saltpod  ->  %s' % url)

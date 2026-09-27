@@ -181,3 +181,33 @@ A shortlisted track leaves the buy list the same way it arrived: its `...`,
 where **Undecided** is named *Take off the buy list* while it is shortlisted.
 Buy cards carry the three dots too, so the menu is reachable from the list
 the track is actually in.
+
+## Lookup happens when a track joins the buy list, not before
+
+Identity, price and a lossless source are only interesting for a track you
+have decided to buy. Matching a whole playlist up front spends hundreds of
+requests on tracks that will never be shortlisted, and the answers go stale
+before they are read. So `apply_decision` queues a single iTunes lookup the
+moment a track becomes shortlisted -- by hand, by menu, or by the collection
+rule above -- and a background worker resolves it in about a second and
+pushes `data` over SSE.
+
+**Duration is fetched with it, and this is not optional.** Without a duration
+every match scores `variant` and a human has to check each one, which is the
+work the lookup was meant to remove. `wanted_seconds()` takes it from the
+device, else the drive index, else the Apple Music library, through a
+memoised key -> seconds map (9,000 entries, rebuilt only when either index
+changes). With it, Sault - Power and Barker - Fluid Mechanics both score
+`exact` instead of `variant`.
+
+Every buy card carries a **fixed state slot**: *looking up iTunes…* while in
+flight, then *iTunes exact · 8:00 · bandcamp confirmed*, or *not on iTunes ·
+try Bandcamp*, or *look it up* as a link for anything shortlisted before this
+existed. One slot, four states, nothing moves. A link above the note looks up
+everything still unknown in one go.
+
+**Bandcamp is deliberately not in this path.** Its search returns an empty
+page to a cookieless request, so availability needs a real bandcamp.com tab
+and stays a batch job -- run against a buy list that is now short by
+construction. `bin/bandcamp_search.js`, and mind the throttling note in its
+header.
