@@ -28,7 +28,6 @@ import time
 import urllib.parse
 import urllib.request
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from itunes_match import (ROOT, EXPORTS, REPORTS, full_title, norm_artist,  # noqa: E402
                           ratio, split_title, best_match, load_local_index,
                           match_local, DURATION_TOLERANCE_SEC)

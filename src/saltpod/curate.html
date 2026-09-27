@@ -1,99 +1,135 @@
 <!doctype html><html><head><meta charset="utf-8">
-<title>ipod-playlists</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>saltpod</title><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{--bg:#0e0f12;--fg:#e8e6e3;--dim:#8b8f98;--line:#23252b;--card:#16181d;
-      --buy:#4ade80;--maybe:#fbbf24;--skip:#5b5f68;--vinyl:#c084fc;--info:#7dd3fc}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);
-     font:14px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif}
-a{color:var(--info)}
-header{position:sticky;top:0;z-index:5;background:rgba(14,15,18,.94);
-       backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:9px 16px;
-       display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-h1{font-size:13px;margin:0;font-weight:600;letter-spacing:.03em;color:var(--dim)}
-nav{display:flex;gap:4px}
-nav b{font-weight:500;font-size:12.5px;padding:4px 11px;border-radius:7px;cursor:pointer;color:var(--dim)}
-nav b:hover{color:var(--fg)}
-nav b.on{background:var(--card);color:var(--fg)}
-.counts{color:var(--dim);font-size:12px;display:flex;gap:10px;flex-wrap:wrap}
-.counts s{text-decoration:none;color:var(--fg);font-weight:600}
-.pill{padding:2px 8px;border:1px solid var(--line);border-radius:99px;font-size:11px;
-      color:var(--dim);cursor:pointer;user-select:none}
-.pill.on{color:var(--bg);background:var(--fg);border-color:var(--fg)}
-input,select,button,textarea{font:inherit}
-input[type=text],input[type=search],select{background:var(--card);border:1px solid var(--line);
-  color:var(--fg);border-radius:6px;padding:5px 9px;font-size:12px}
-button{background:var(--card);border:1px solid var(--line);color:var(--fg);
-       border-radius:7px;padding:6px 12px;font-size:12px;cursor:pointer}
-button:hover{border-color:#4a505c}button:disabled{opacity:.45;cursor:default}
-button.go{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
-main{max-width:1040px;margin:0 auto;padding:10px 16px 120px}
-.view{display:none}.view.on{display:block}
-.month{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.09em;
-       margin:22px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
-.row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;
-     padding:7px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent}
-.row:hover{background:var(--card)}
-.row.sel{background:var(--card);border-color:#3a3f4a}
-.row.playing .art{outline:2px solid var(--buy);outline-offset:1px}
-.art{width:44px;height:44px;border-radius:5px;background:#1c1f26;object-fit:cover;flex:none}
-.t{min-width:0}
-.t .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.t .s{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;
-      text-overflow:ellipsis;margin-top:1px}
-.tags{display:flex;gap:5px;align-items:center;flex:none}
-.tag{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);
-     color:var(--dim);letter-spacing:.03em;white-space:nowrap}
-.tag.buy{color:var(--buy);border-color:#1e5136}.tag.maybe{color:var(--maybe);border-color:#5c4415}
-.tag.skip{color:var(--skip)}.tag.vinyl{color:var(--vinyl);border-color:#4c3168}
-.tag.col{color:var(--info);border-color:#1e4457}.tag.ok{color:var(--buy)}
-.row.skip .t{opacity:.42}
-h2{font-size:13px;margin:26px 0 10px;font-weight:600}
-h2:first-child{margin-top:10px}
-p.note{color:var(--dim);font-size:12.5px;margin:0 0 14px;max-width:70ch}
-.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 14px}
-.grid{display:grid;gap:8px}
-.cols{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-.colchip{padding:5px 12px;border:1px solid var(--line);border-radius:99px;cursor:pointer;font-size:12px;color:var(--dim)}
-.colchip.on{border-color:var(--info);color:var(--info)}
-table{border-collapse:collapse;width:100%;font-size:12.5px}
-td,th{text-align:left;padding:6px 10px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.07em}
-pre{background:#0a0b0d;border:1px solid var(--line);border-radius:8px;padding:11px;
-    font:11.5px/1.5 ui-monospace,SFMono-Regular,monospace;overflow:auto;max-height:320px;margin:10px 0 0}
-footer{position:fixed;bottom:0;left:0;right:0;background:rgba(14,15,18,.96);
-        backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:8px 16px;
-        color:var(--dim);font-size:11.5px;display:flex;gap:15px;flex-wrap:wrap}
-kbd{background:var(--card);border:1px solid var(--line);border-bottom-width:2px;
-    border-radius:4px;padding:1px 5px;color:var(--fg);font:11px ui-monospace,monospace}
-#dlg{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:20}
-#dlg.on{display:flex}
-#dlgbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(420px,92vw)}
-#dlgbox h3{margin:0 0 4px;font-size:13px}#dlgbox p{margin:0 0 12px;color:var(--dim);font-size:12px}
-#dlgbox input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:9px}
-.exist{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
-.exist span{font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:99px;cursor:pointer;color:var(--dim)}
-.exist span:hover{color:var(--fg);border-color:var(--fg)}
-#toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:var(--card);
-       border:1px solid var(--line);border-radius:8px;padding:7px 14px;font-size:12px;
-       opacity:0;transition:opacity .18s;pointer-events:none;z-index:30}
-#toast.on{opacity:1}
-.warn{color:var(--maybe)}
-.row.csel{background:var(--card);border-color:#3a3f4a}
-.row.dragging{opacity:.35}
-.row.over{border-top:2px solid var(--info)}
-.pos{color:var(--dim);font:11px ui-monospace,monospace;width:28px;text-align:right}
-.grab{cursor:grab;color:var(--dim);padding:0 6px}
+/* One file, no build step, nothing fetched from anywhere. The tokens are
+   PlayPi's (the house style for anything that plays music here): a dark
+   ground, soft-white ink, a seam the lists slide under, and one orange that
+   appears exactly once -- on the row that is playing. Words are set in the
+   face; the machine's own labels (positions, tags, keys) in the mono. */
+:root {
+  --ground: #141d29;
+  --ink:    #fffffc;
+  --seam:   #070c13;
+  --orange: #f75c03;
+  --dim:    rgba(255,255,252,.55);
+  --faint:  rgba(255,255,252,.22);
+  --panel:  rgba(255,255,252,.05);
+  --mono:   "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --face:   "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 400 15px/1.4 var(--face); }
+a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--faint); }
+a:hover { text-decoration-color: var(--ink); }
+button, input, select { font: inherit; color: var(--ink); }
+button { background: transparent; border: 1px solid var(--faint); border-radius: 0; padding: 7px 12px;
+         font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+button:hover { border-color: var(--ink); }
+button:disabled { opacity: .4; cursor: default; }
+button.go { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+input[type=text], input[type=search], select { background: transparent; border: 1px solid var(--faint);
+         padding: 6px 9px; font-family: var(--mono); font-size: 12px; }
+input::placeholder { color: var(--dim); }
+
+/* header: brand, the views, the counts. A seam under it, full-bleed. */
+header { position: sticky; top: 0; z-index: 5; background: var(--ground);
+         padding: 22px 24px 0; display: flex; flex-direction: column; gap: 14px; }
+header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 0 -24px; }
+.brandline { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; }
+nav { display: flex; gap: 18px; }
+nav b { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+        font-weight: 500; cursor: pointer; color: var(--dim); padding: 4px 0; border-bottom: 1px solid transparent; }
+nav b:hover { color: var(--ink); }
+nav b.on { color: var(--ink); border-bottom-color: var(--ink); }
+.counts { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--dim);
+          display: flex; gap: 14px; flex-wrap: wrap; }
+.counts s { text-decoration: none; color: var(--ink); }
+.ctlrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-bottom: 12px; }
+.pill { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+        color: var(--dim); cursor: pointer; user-select: none; padding: 3px 0; border-bottom: 1px solid transparent; }
+.pill.on { color: var(--ink); border-bottom-color: var(--ink); }
+
+main { max-width: 1040px; margin: 0 auto; padding: 8px 24px 120px; }
+.view { display: none; } .view.on { display: block; }
+
+/* the month heading: a rule, then the machine's label */
+.month { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+         color: var(--dim); margin: 28px 0 6px; padding-top: 8px; border-top: 1px solid var(--faint); }
+
+/* rows slide under the seam; the selected one lifts on the panel tone */
+.row { display: grid; grid-template-columns: 44px 1fr auto; gap: 14px; align-items: center;
+       padding: 9px 8px; cursor: pointer; border-bottom: 1px solid var(--faint); }
+.row:hover { background: var(--panel); }
+.row.sel, .row.csel { background: var(--panel); box-shadow: inset 2px 0 0 var(--ink); }
+.row.playing { box-shadow: inset 2px 0 0 var(--orange); }        /* the orange, once */
+.row.playing .n { color: var(--orange); }
+.art { width: 44px; height: 44px; background: var(--seam); object-fit: cover; flex: none; }
+.t { min-width: 0; }
+.t .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;
+        letter-spacing: -.01em; text-transform: uppercase; font-size: 14px; }
+.t .s { color: var(--dim); font-family: var(--mono); font-size: 11px; letter-spacing: .02em;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+.tags { display: flex; gap: 6px; align-items: center; flex: none; }
+.tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
+       padding: 2px 6px; border: 1px solid var(--faint); color: var(--dim); white-space: nowrap; }
+.tag.buy, .tag.ok { color: var(--ink); border-color: var(--ink); }
+.tag.maybe { color: var(--ink); border-style: dashed; }
+.tag.skip { opacity: .5; }
+.tag.vinyl { color: var(--ink); background: var(--panel); }
+.tag.col { color: var(--ink); }
+.row.skip .t { opacity: .38; }
+.row.dragging { opacity: .35; }
+.row.over { border-top: 2px solid var(--ink); }
+.pos { color: var(--dim); font-family: var(--mono); font-size: 11px; width: 28px; text-align: right; }
+.grab { cursor: grab; color: var(--dim); padding: 0 6px; }
+
+h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; text-transform: uppercase; margin: 22px 0 8px; }
+h2:first-child { margin-top: 12px; }
+p.note { color: var(--dim); font-size: 14px; margin: 0 0 16px; max-width: 66ch; }
+.box { border-top: 1px solid var(--ink); padding: 14px 0; margin: 0 0 18px; }
+.cols { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.colchip { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+           padding: 6px 12px; border: 1px solid var(--faint); cursor: pointer; color: var(--dim); }
+.colchip.on { border-color: var(--ink); color: var(--ink); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+td, th { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--faint); vertical-align: top; }
+th { color: var(--dim); font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
+pre { background: var(--seam); border: 0; padding: 12px; font: 11.5px/1.5 var(--mono); overflow: auto; max-height: 320px; margin: 10px 0 0; color: var(--ink); }
+
+/* the status line at the foot, like the room page's */
+footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--ground);
+         padding: 10px 24px calc(10px + env(safe-area-inset-bottom, 0px));
+         font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--dim);
+         display: flex; gap: 18px; flex-wrap: wrap; }
+footer:before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--faint); }
+kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint); padding: 0 5px; margin-right: 2px; }
+#dlg { position: fixed; inset: 0; background: rgba(7,12,19,.8); display: none; align-items: center; justify-content: center; z-index: 20; }
+#dlg.on { display: flex; }
+#dlgbox { background: var(--ground); border: 1px solid var(--ink); padding: 22px; width: min(440px, 92vw); }
+#dlgbox h3 { margin: 0 0 4px; font-size: 16px; text-transform: uppercase; letter-spacing: -.01em; }
+#dlgbox p { margin: 0 0 14px; color: var(--dim); font-size: 13px; }
+#dlgbox input { width: 100%; background: transparent; border: 1px solid var(--faint); color: var(--ink); padding: 10px; font: inherit; }
+.exist { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.exist span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+              padding: 4px 10px; border: 1px solid var(--faint); cursor: pointer; color: var(--dim); }
+.exist span:hover { color: var(--ink); border-color: var(--ink); }
+#toast { position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--ground);
+         padding: 8px 14px; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase;
+         opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 30; }
+#toast.on { opacity: 1; }
+.warn { color: var(--dim); }
 </style></head><body>
 <header>
-  <h1>ipod-playlists</h1>
+  <div class="brandline"><h1>saltpod</h1>
   <nav>
     <b data-v="curate" class="on">Curate</b><b data-v="collections">Collections</b>
     <b data-v="buy">Buy</b><b data-v="vinyl">Vinyl</b><b data-v="data">Data</b>
-  </nav>
+  </nav></div>
   <div class="counts" id="counts"></div>
-  <div style="flex:1"></div>
-  <span id="ctl"></span>
+  <div class="ctlrow" id="ctl"></div>
 </header>
 <main>
   <div class="view on" id="v-curate"><div id="list"></div></div>
@@ -124,10 +160,10 @@ function counts(){
   const c={seen:0,shortlisted:0,maybe:0,skipped:0,vinyl:0,bought:0};
   ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
   $('#counts').innerHTML=`<span><s>${ALL.length}</s> tracks</span>
-    <span style="color:var(--buy)"><s>${c.shortlisted}</s> buy</span>
-    <span style="color:var(--maybe)"><s>${c.maybe}</s> maybe</span>
+    <span style="color:var(--ink)"><s>${c.shortlisted}</s> buy</span>
+    <span style="color:var(--dim)"><s>${c.maybe}</s> maybe</span>
     <span><s>${c.seen}</s> undecided</span>
-    <span style="color:var(--vinyl)"><s>${c.vinyl}</s> vinyl</span>`;
+    <span style="color:var(--ink)"><s>${c.vinyl}</s> vinyl</span>`;
   return c;
 }
 function pass(t){
@@ -147,7 +183,7 @@ function tagsFor(t){
   if(t.bought)g.push('<span class="tag ok">owned</span>');
   if(t.vinyl)g.push('<span class="tag vinyl">vinyl</span>');
   t.collections.forEach(c=>g.push(`<span class="tag col">${esc(c)}</span>`));
-  if(t.device)g.push('<span class="tag" style="color:var(--info);border-color:#1e4457">on iPod</span>');
+  if(t.device)g.push('<span class="tag">on iPod</span>');
   if(t.lossless)g.push('<span class="tag ok">lossless src</span>');
   if(t.bc_verdict==='confirmed')g.push('<span class="tag">FLAC</span>');
   return g.join('');
@@ -157,7 +193,7 @@ function rowHTML(t,i){
   return `<div class="row ${t.tier==='skipped'?'skip':''}" data-i="${i}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
-      <div class="s">${esc(t.album||t.dev_album||'')}${dur?' · '+dur:''}${t.price?' · €'+t.price.toFixed(2):''}${t.audio?' · <span style="color:var(--buy)">full track</span>':(t.preview?'':' · <span class="warn">nothing to play</span>')}</div></div>
+      <div class="s">${esc(t.album||t.dev_album||'')}${dur?' · '+dur:''}${t.price?' · €'+t.price.toFixed(2):''}${t.audio?' · <span style="color:var(--ink)">full track</span>':(t.preview?'':' · <span class="warn">nothing to play</span>')}</div></div>
     <div class="tags">${tagsFor(t)}</div></div>`;
 }
 function draw(){
@@ -272,7 +308,7 @@ function drawCols(){
         <span class="pos">${i+1}</span>
         ${t.art?`<img class="art" src="${t.art}" loading="lazy">`:'<div class="art"></div>'}
         <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
-        <div class="s">${esc(t.album||t.dev_album||'')} · ${mmss(t.seconds||t.dev_seconds)}${t.audio?' · <span style="color:var(--buy)">full track</span>':''}</div></div>
+        <div class="s">${esc(t.album||t.dev_album||'')} · ${mmss(t.seconds||t.dev_seconds)}${t.audio?' · <span style="color:var(--ink)">full track</span>':''}</div></div>
         <div class="tags">${tagsFor(t)}<span class="tag" data-rm="${t.key}" style="cursor:pointer">remove</span><span class="grab">⋮⋮</span></div></div>`).join('');
   } else if(!names.length){
     h+=`<p class="note">None yet. Shortlist some tracks, then come back — or press <kbd>c</kbd> while curating.</p>`;

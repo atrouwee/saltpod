@@ -21,8 +21,7 @@ import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import hash58  # noqa: E402
+from . import hash58  # noqa: E402
 
 OFF_UNK70, OFF_HASH72 = 0x70, 0x72       # hash72 scheme word + 46-byte block
 

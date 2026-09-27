@@ -25,19 +25,19 @@ PATCHED=/tmp/patched.db
 case "${1:-}" in
   rehearse)
     cp -p "$BAK" "$DEV" && cmp "$BAK" "$DEV" && echo "rehearsal: backup written to device, byte-identical"
-    python3 src/hash58.py verify "$DEV" $GUID | tail -1
+    env PYTHONPATH=src python3 -m saltpod.hash58 verify "$DEV" $GUID | tail -1
     ;;
   write)
-    [ -f "$PATCHED" ] || python3 src/itunesdb_patch.py rename-playlist "$BAK" $GUID "2018 Apr1" "Test Rename (saltgate)" --out "$PATCHED"
-    python3 src/hash58.py verify "$PATCHED" $GUID | grep -q MATCH || { echo "patched file does not verify - refusing"; exit 1; }
+    [ -f "$PATCHED" ] || env PYTHONPATH=src python3 -m saltpod.itunesdb_patch rename-playlist "$BAK" $GUID "2018 Apr1" "Test Rename (saltgate)" --out "$PATCHED"
+    env PYTHONPATH=src python3 -m saltpod.hash58 verify "$PATCHED" $GUID | grep -q MATCH || { echo "patched file does not verify - refusing"; exit 1; }
     cp -p "$PATCHED" "$DEV" && sync && cmp "$PATCHED" "$DEV" && echo "patched DB written to device, byte-identical to $PATCHED"
-    python3 src/hash58.py verify "$DEV" $GUID | tail -1
-    python3 src/itunesdb.py "$DEV" | grep -E "tracks,|Test Rename"
+    env PYTHONPATH=src python3 -m saltpod.hash58 verify "$DEV" $GUID | tail -1
+    env PYTHONPATH=src python3 -m saltpod.itunesdb "$DEV" | grep -E "tracks,|Test Rename"
     diskutil eject "$MOUNT" && echo "ejected - unplug, let it reboot, check Music > Playlists"
     ;;
   restore)
     cp -p "$BAK" "$DEV" && sync && cmp "$BAK" "$DEV" && echo "backup restored to device, byte-identical"
-    python3 src/hash58.py verify "$DEV" $GUID | tail -1
+    env PYTHONPATH=src python3 -m saltpod.hash58 verify "$DEV" $GUID | tail -1
     diskutil eject "$MOUNT" && echo "ejected"
     ;;
   *) sed -n '2,12p' "$0"; exit 1;;

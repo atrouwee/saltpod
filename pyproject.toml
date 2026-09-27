@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saltpod"
+version = "0.1.0"
+description = "Playlists on an iPod Classic without iTunes: curate in a page, sequence by ear, sync to the device."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/atrouwee/saltpod"
+
+[project.scripts]
+saltpod = "saltpod.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+saltpod = ["curate.html"]

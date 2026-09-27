@@ -29,7 +29,7 @@ import os
 import struct
 import time
 
-import itunesdb_write as W
+from . import itunesdb_write as W
 
 MAC_EPOCH = 2082844800            # seconds between 1904-01-01 and 1970-01-01
 FILETYPE_STR = {'.mp3': 'MPEG audio file', '.m4a': 'AAC audio file',

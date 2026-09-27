@@ -163,8 +163,9 @@ def ipod_path(location, mount):
     return os.path.join(mount, location.lstrip(':').replace(':', os.sep))
 
 
-def main():
-    arg = sys.argv[1] if len(sys.argv) > 1 else '/Volumes/IPOD'
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    arg = argv[0] if argv else '/Volumes/IPOD'
     # a mount point, or any file that is a database (patched copies have other names)
     path = arg if os.path.isfile(arg) else os.path.join(arg, 'iPod_Control/iTunes/iTunesDB')
     db = read(path)

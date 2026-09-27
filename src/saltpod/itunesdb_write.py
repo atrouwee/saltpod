@@ -23,8 +23,7 @@ import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import hash58  # noqa: E402
+from . import hash58  # noqa: E402
 
 LISTS = {b'mhlt': b'mhit', b'mhlp': b'mhyp', b'mhla': b'mhia'}
 ITEMS_WITH_MHODS = {b'mhit', b'mhia', b'mhip'}

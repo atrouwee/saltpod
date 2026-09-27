@@ -26,9 +26,8 @@ import unicodedata
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-sys.path.insert(0, HERE)
-import itunesdb as I  # noqa: E402
+ROOT = os.path.dirname(os.path.dirname(HERE))
+from . import itunesdb as I  # noqa: E402
 
 INDEX = os.path.join(ROOT, 'data', 'local', 'index.json')
 OUT = os.path.join(ROOT, 'data', 'local', 'reconcile.json')
@@ -45,13 +44,13 @@ def norm(s):
     return re.sub(r'\s+', ' ', s).strip()
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--mount', default=None)
     ap.add_argument('--tolerance', type=float, default=3.0, help='seconds')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.mount is None:
-        import config
+        from . import config
         a.mount = config.load()['mount']
 
     if not os.path.exists(INDEX):

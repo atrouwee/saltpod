@@ -32,9 +32,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-sys.path.insert(0, HERE)
-import state as S  # noqa: E402
+ROOT = os.path.dirname(os.path.dirname(HERE))
+from . import state as S  # noqa: E402
 
 LOCK = threading.Lock()
 JOBS = {}
@@ -215,7 +214,7 @@ DIRECT = {'.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
 def audio_source(key, mount=None):
     """Prefer the T7 original; fall back to the copy on the device."""
     if mount is None:
-        import config
+        from . import config
         try:
             mount = config.load()['mount']
         except SystemExit:
@@ -227,7 +226,7 @@ def audio_source(key, mount=None):
         return o
     loc = dev.get('location')
     if loc:
-        import itunesdb as I
+        from . import itunesdb as I
         p = I.ipod_path(loc, mount)
         if os.path.exists(p):
             return p
@@ -395,11 +394,11 @@ class Handler(BaseHTTPRequestHandler):
         return {'ok': False, 'error': 'unknown action %r' % a}
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=7654)
     ap.add_argument('--no-open', action='store_true')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if not S.load()['tracks']:
         print('first run - building state'); S.rebuild()

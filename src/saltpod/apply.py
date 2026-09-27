@@ -32,14 +32,13 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-sys.path.insert(0, HERE)
-import state as S            # noqa: E402
-import itunesdb_write as W   # noqa: E402
-import ipod_edit as E        # noqa: E402
-import hash58                # noqa: E402
+ROOT = os.path.dirname(os.path.dirname(HERE))
+from . import state as S            # noqa: E402
+from . import itunesdb_write as W   # noqa: E402
+from . import ipod_edit as E        # noqa: E402
+from . import hash58                # noqa: E402
 
-import config
+from . import config
 CFG = config.load()
 MOUNT = CFG['mount']
 GUID = CFG['firewire_guid']

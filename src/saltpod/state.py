@@ -36,7 +36,7 @@ import sys
 import unicodedata
 from datetime import datetime, timezone
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STATE = os.path.join(ROOT, 'data', 'state.json')
 
 DECISION_FIELDS = ('tier', 'vinyl', 'collections', 'bought', 'on_ipod', 'note', 'decided_at')
@@ -79,9 +79,9 @@ def import_device(mount=None, verbose=True):
     Sets bought=True: it is on the device, so it is owned, whatever route it
     took to get there.
     """
-    import itunesdb as I
+    from . import itunesdb as I
     if mount is None:
-        import config
+        from . import config
         mount = config.load()['mount']
     dbp = os.path.join(mount, 'iPod_Control/iTunes/iTunesDB')
     if not os.path.exists(dbp):

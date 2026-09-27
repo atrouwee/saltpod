@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 from difflib import SequenceMatcher
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXPORTS = os.path.join(ROOT, "data", "exports")
 RAW = os.path.join(ROOT, "data", "itunes")
 REPORTS = os.path.join(ROOT, "reports")
