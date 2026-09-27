@@ -6,7 +6,7 @@ it is subscription rental. The files actually owned (Beatport, vinyl download
 codes) sit in folders outside the library entirely. This walks those folders
 and reads tags with ffprobe.
 
-    python3 src/local_index.py ~/Documents/vinyl [more roots...]
+    saltpod index /Volumes/YourDrive/Music [more roots...]
     python3 src/local_index.py --stats
 """
 import json

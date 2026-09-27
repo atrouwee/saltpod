@@ -28,7 +28,7 @@ REPORTS = os.path.join(ROOT, "reports")
 # 403s. 3.5s keeps us under that with room to spare; a 65-track playlist costs
 # about four minutes, which is cheaper than getting rate-limited halfway.
 THROTTLE_SEC = 3.5
-USER_AGENT = "ipod-playlists/0.1 (personal playlist matcher)"
+USER_AGENT = "saltpod/0.1 (+https://github.com/atrouwee/saltpod)"
 
 # Duration tolerance. Beyond this a match is a *different recording*, not a
 # worse match -- the radio edit where the extended mix was wanted. This is the

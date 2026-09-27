@@ -5,7 +5,7 @@ Runs after itunes_match.py. For every track it could not find, this asks two
 keyless catalogues what the recording actually is, then builds targeted links
 to the stores that sell files outright.
 
-    python3 src/find_elsewhere.py set-2025-dani [vinyl ...]
+    saltpod elsewhere 2025-november [2025-august ...]
 
 Why these two:
 
@@ -28,11 +28,16 @@ import time
 import urllib.parse
 import urllib.request
 
-from itunes_match import (ROOT, EXPORTS, REPORTS, full_title, norm_artist,  # noqa: E402
-                          ratio, split_title, best_match, load_local_index,
-                          match_local, DURATION_TOLERANCE_SEC)
+try:                                     # as part of the package
+    from .itunes_match import (ROOT, EXPORTS, REPORTS, full_title, norm_artist,
+                               ratio, split_title, best_match, load_local_index,
+                               match_local, DURATION_TOLERANCE_SEC)
+except ImportError:                      # or run straight from this directory
+    from itunes_match import (ROOT, EXPORTS, REPORTS, full_title, norm_artist,
+                              ratio, split_title, best_match, load_local_index,
+                              match_local, DURATION_TOLERANCE_SEC)
 
-MB_UA = "ipod-playlists/0.1 (https://github.com/; personal playlist matcher)"
+MB_UA = "saltpod/0.1 (+https://github.com/atrouwee/saltpod)"
 MB_DELAY = 1.1   # MusicBrainz enforces 1 req/sec and will 503 otherwise.
 DZ_DELAY = 0.4
 

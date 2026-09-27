@@ -207,4 +207,4 @@ the signature path and answers the hash72 question before any structural writes.
 - /tmp/iopenpod/src/iopenpod/sync/sync_executor.py:2335-2398,4097-4149; _playlist_builder.py:192-216,511,615; _track_conversion.py:121; _formats.py:27-29; transcoder.py:546; __init__.py:57; photos.py:19
 - /tmp/iopenpod/scripts/check_architecture.py:1-60
 - Test scripts and outputs: scratchpad `hash58_check.py`, `roundtrip.py`, `roundtrip_iTunesDB` (session scratch dir)
-- Our data: ~/Documents/GitHub/ipod-playlists/backups/ipod-2026-09-27/iTunesDB (== /Volumes/IPOD/iPod_Control/iTunes/iTunesDB); /Volumes/IPOD/iPod_Control/Device/SysInfo is 0 bytes
+- Our data: backups/ipod-2026-09-27/iTunesDB (== /Volumes/IPOD/iPod_Control/iTunes/iTunesDB); /Volumes/IPOD/iPod_Control/Device/SysInfo is 0 bytes

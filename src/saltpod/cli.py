@@ -57,6 +57,9 @@ def main(argv=None):
     p.add_argument("what", choices=["read", "playlists", "peek"], nargs="?", default="read")
     p.add_argument("name", nargs="?", help="for peek: the playlist to look inside, without importing it")
 
+    p = sub.add_parser("elsewhere", help="for tracks iTunes does not carry, ask MusicBrainz and Deezer who made them and where they are sold")
+    p.add_argument("slugs", nargs="+", help="playlist slugs, as listed by `saltpod state stats`")
+
     p = sub.add_parser("discogs", help="what the Discogs exports hold, and what is flagged but not yet on either list")
     p.add_argument("what", choices=["status", "wantlist", "collection"], nargs="?", default="status")
 
@@ -140,6 +143,9 @@ def main(argv=None):
             print("%-30s %-34s %s" % (t["artist"][:30], t["title"][:34], t["cloud"]))
         note("%d tracks; nothing was imported" % len(d.get("tracks", [])))
         return 0
+    if a.cmd == "elsewhere":
+        from . import find_elsewhere
+        return find_elsewhere.main(a.slugs)
     if a.cmd == "discogs":
         from . import discogs, state as _state
         d = discogs.payload()

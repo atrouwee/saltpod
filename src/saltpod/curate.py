@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The whole tool, as one local page.
 
-    python3 src/curate.py            # or double-click ipod-playlists.command
+    saltpod                          # or double-click saltpod.command
 
 Everything happens in the browser after that: exporting playlists out of
 Music.app, matching them against iTunes, checking Bandcamp, curating, building
@@ -716,7 +716,7 @@ def main(argv=None):
 
     srv = ThreadingHTTPServer(('127.0.0.1', a.port), Handler)
     url = 'http://127.0.0.1:%d/' % a.port
-    print('ipod-playlists  ->  %s' % url)
+    print('saltpod  ->  %s' % url)
     print('everything happens in the page. ctrl-c here when done.')
     if not a.no_open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()

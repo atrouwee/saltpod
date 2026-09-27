@@ -253,4 +253,4 @@ on Python 3.12/Tahoe without a rewrite; the stdlib port above is the pragmatic p
 - `src/itdb_hash58.c:45-118, 148-233, 235-285`; `src/itdb_hash72.c:39, 46-66, 110-181, 218-300`; `src/itdb_hashAB.c:43-66, 106-145`
 - `src/itdb_itunesdb.c:168-226, 3819-3965, 3967-4118, 4470-4530, 4820-4920, 4991-5065, 5068-5285, 5288-5330, 5473-5600, 5604-5750, 5873-5972, 5976-6175, 6209-6270, 6943, 7031-7110, 7145-7161, 7263-7390, 7470-7530, 7608-7646`
 - `src/itdb_track.c:170-197, 277-308`; `src/itdb_playlist.c:1481-1491`; `src/itdb_sqlite.c:358-391, 1760, 2149`
-- Device measurements: `~/Documents/GitHub/ipod-playlists/backups/ipod-2026-09-27/iTunesDB` (903244 B, v0x75, 481 tracks, mhsd 4/1/3/2/5/9); hash58 recomputation script `research/hash58_check.py` (needs a libgpod checkout at `libgpod/` relative to cwd; usage: `python3 hash58_check.py <iTunesDB> <device GUID>`).
+- Device measurements: `backups/ipod-2026-09-27/iTunesDB` (903244 B, v0x75, 481 tracks, mhsd 4/1/3/2/5/9); hash58 recomputation script `research/hash58_check.py` (needs a libgpod checkout at `libgpod/` relative to cwd; usage: `python3 hash58_check.py <iTunesDB> <device GUID>`).
