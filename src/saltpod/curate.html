@@ -105,7 +105,7 @@ body.nl aside.left .plabel, body.na aside.am .plabel, body.nr aside.right .plabe
   writing-mode: vertical-rl; flex: 1 1 auto; flex-wrap: nowrap; justify-content: flex-start; align-items: center;
   gap: 12px; padding: 14px 0; cursor: pointer; }
 body.nl aside.left .plabel .name, body.na aside.am .plabel .name { flex: 0 0 auto; min-width: 0; }
-body.nr #rtabs { flex: 0 0 auto; }  body.nr #rtabs .pill { border-bottom-color: transparent; }
+body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
 .plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
           padding: 16px 18px 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
@@ -129,7 +129,12 @@ section.mid.fx .filters { display: flex; }
 .fold { font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--dim); flex: none;
         cursor: pointer; user-select: none; writing-mode: horizontal-tb; padding: 0 2px; }
 .fold:hover { color: var(--ink); }
-#rtabs { display: flex; gap: 14px; flex: 1 1 auto; min-width: 0; }
+#rtabs { display: flex; gap: 14px; flex: 0 0 auto; min-width: 0; }
+/* The right pane's title mirrors the left ones: text, then the chevron at the
+   outer edge, everything pushed to the right. The stat takes its own line. */
+aside.right .plabel { justify-content: flex-end; }
+aside.right .plabel .pstat { flex: 0 0 100%; text-align: right; }
+body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-first, like the others */
 
 /* ---------- rows ---------- */
 /* Rows float on the ground -- separated by space, not rules -- and the selected
@@ -398,7 +403,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
   </section>
 
   <aside class="right" id="right">
-    <div class="plabel"><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="pstat" id="rstat"></span></div>
+    <div class="plabel"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span><span class="pstat" id="rstat"></span></div>
     <div class="pbody" id="rbody"></div>
   </aside>
 
