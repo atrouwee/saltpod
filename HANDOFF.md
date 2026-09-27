@@ -101,8 +101,9 @@ iPod right now**; `had_device` carries the old meaning where it is wanted.
 
 ## The page, as of the night of 27 September
 
-**Four panes.** iPod (collections) at the far left, Apple Music beside it, the
-list in the centre, Buy / Vinyl on the right. Both left panes are always there.
+**Five panes.** iPod (collections) at the far left, Apple Music beside it,
+then the drive, the list in the centre, Buy / Vinyl on the right. The left
+panes are always there.
 The switcher that used to put the two libraries behind one pane is gone -- it
 hid the collections at exactly the moment you wanted to drop something on one.
 
@@ -142,3 +143,41 @@ Buy / Vinyl moved into the right pane's title strip.
 **Still never done by a human hand:** a drag. There are now two -- a track
 onto a collection and a playlist onto one -- and both have only been driven
 through the click path. CDP cannot fire HTML5 drag events.
+
+## The drive pane
+
+The third left pane is the music already owned, read from
+`data/local/index.json` and **grouped by the folders on the drive itself**.
+No taxonomy is invented: the folders are how the music was filed when it was
+bought, and any scheme the tool imposed instead would be a second, worse one
+to keep in your head. 72 folders, 4,048 files. Files loose in the root form
+one group named after the root.
+
+581 of those files carry no tags at all, so a blank row would be useless to
+browse: **the filename stands in** as the title, and the key is derived from
+it. `Bought Tracks` alone is 1,180 files and mostly untagged.
+
+A folder drags onto a collection, or onto `+ new`, exactly as a playlist does
+-- `pourFolder()`, the same shape as `pourPlaylist()`. Its `...` does the same
+by clicking. `/api/local` serves the folder list; tracks come one folder at a
+time, the way a peek reads one playlist.
+
+Folding is outside-in by window width: the drive folds below 1500px, Apple
+Music below 1250, the outer two below 860. Five panes need about 1500px
+before the list stops being the thing that suffers.
+
+## Adding to a collection is the decision to buy
+
+Putting a track in a collection says it belongs on the iPod. If there is no
+file for it and it was never bought, that is the same sentence as *I have to
+go and buy this* -- so `apply_decision` promotes it to **shortlisted**, and it
+appears in Buy. It fires only from an undecided, maybe or skipped tier, never
+over a decision already made, and never for a track the index holds a file
+for. Pouring a folder off the drive therefore adds nothing to the buy list;
+pouring an Apple Music playlist adds most of it, which is the gap the tool
+exists to close.
+
+A shortlisted track leaves the buy list the same way it arrived: its `...`,
+where **Undecided** is named *Take off the buy list* while it is shortlisted.
+Buy cards carry the three dots too, so the menu is reachable from the list
+the track is actually in.

@@ -33,7 +33,8 @@
   --sel-lo: #1450b8;
   --hbtn:  32px; /* the header's controls: search's height, Sync's height, the gear's side */
   --lw: 240px;   /* the side panes; a folded one is simply gone */
-  --aw: 220px;   /* Apple Music, beside the iPod: the library to take from */
+  --aw: 200px;   /* Apple Music, beside the iPod: the library to take from */
+  --tw: 200px;   /* the drive: the music already owned, as the drive files it */
   --rw: 320px;
 }
 * { box-sizing: border-box; }
@@ -102,22 +103,25 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-t
 /* No boxes. The surface fills the space; the only dividers on it are the two
    hairlines either side of the list. Everything else is separated by air. */
 #work { display: grid; gap: 0; padding: 0; position: relative; overflow: hidden;
-        grid-template-columns: var(--lw) var(--aw) minmax(0, 1fr) var(--rw); min-height: 0; }
+        grid-template-columns: var(--lw) var(--aw) var(--tw) minmax(0, 1fr) var(--rw); min-height: 0; }
 aside, section.mid { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* Pinned to their tracks on purpose: when a side pane is display:none the
    middle would otherwise auto-place into the 0px track it left behind. */
 aside.left  { grid-column: 1; border-right: 1px solid var(--faint); }
 aside.am    { grid-column: 2; border-right: 1px solid var(--faint); }
-section.mid { grid-column: 3; }
-aside.right { grid-column: 4; border-left: 1px solid var(--faint); }
-body.nl { --lw: 24px; }  body.na { --aw: 24px; }  body.nr { --rw: 24px; }
+aside.t7    { grid-column: 3; border-right: 1px solid var(--faint); }
+section.mid { grid-column: 4; }
+aside.right { grid-column: 5; border-left: 1px solid var(--faint); }
+body.nl { --lw: 24px; }  body.na { --aw: 24px; }  body.nt { --tw: 24px; }  body.nr { --rw: 24px; }
 body.nl aside.left .pbody, body.nl aside.left .act, body.nl aside.left .pstat,
 body.na aside.am .pbody,  body.na aside.am .act,  body.na aside.am .pstat,
+body.nt aside.t7 .pbody,  body.nt aside.t7 .act,  body.nt aside.t7 .pstat,
 body.nr aside.right .pbody, body.nr aside.right .pstat { display: none; }
-body.nl aside.left .plabel, body.na aside.am .plabel, body.nr aside.right .plabel {
+body.nl aside.left .plabel, body.na aside.am .plabel, body.nt aside.t7 .plabel, body.nr aside.right .plabel {
   writing-mode: vertical-rl; flex: 1 1 auto; flex-wrap: nowrap; justify-content: flex-start; align-items: center;
   gap: 12px; padding: 14px 0; cursor: pointer; }
-body.nl aside.left .plabel .name, body.na aside.am .plabel .name { flex: 0 0 auto; min-width: 0; }
+body.nl aside.left .plabel .name, body.na aside.am .plabel .name,
+body.nt aside.t7 .plabel .name { flex: 0 0 auto; min-width: 0; }
 body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
 .plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
@@ -273,7 +277,10 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
 
 /* ---------- right pane: buy / vinyl ---------- */
 .card { background: var(--panel); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+.card { position: relative; }
 .card b { font-size: 13px; }
+.card .more { position: absolute; top: 8px; right: 8px; }
+.card:hover .more { opacity: 1; }
 .card .sub { color: var(--dim); font-size: 10.5px; margin-top: 3px; font-family: var(--mono); }
 .card .acts { margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
 .card .acts button { padding: 4px 9px; font-size: 9.5px; margin-left: auto; }
@@ -288,9 +295,12 @@ p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 
    nothing is centred and nothing is dimmed. New collection comes from the
    left, where collections live; Data comes from the right. */
 .sheet { position: absolute; top: 0; bottom: 0; z-index: 8; background: var(--ground);
-         display: flex; flex-direction: column; min-width: 0;
+         display: flex; flex-direction: column; min-width: 0; overflow: hidden;
          transition: transform .18s ease; will-change: transform; }
-#lsheet { left: 0; width: var(--lw); border-right: 1px solid var(--faint);
+/* Never narrower than a pane's worth: --lw goes to 24px when the pane folds,
+   and a 24px sheet parks only 25px off-canvas, so its text spilled out the
+   side and read as clutter down the rail. */
+#lsheet { left: 0; width: max(var(--lw), 240px); border-right: 1px solid var(--faint);
           box-shadow: 14px 0 28px rgba(0,0,0,.35); transform: translateX(-105%); }
 /* Data is a fixed sheet, not a pane: it covers the right half of the screen,
    header and footer included, and leaves the left half lit. Never narrower
@@ -411,6 +421,14 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
     <div class="pbody" id="ambody"></div>
   </aside>
 
+  <!-- The music already owned, grouped the way the drive itself groups it.
+       No taxonomy invented: the folders ARE the filing, and a second scheme
+       would just be another thing to hold in your head. -->
+  <aside class="t7" id="t7">
+    <div class="plabel"><span class="fold" id="foldT" title="fold the drive away">&lt;</span><span class="name" id="t7head">T7</span><span class="sp"></span><span class="pstat" id="t7stat"></span></div>
+    <div class="pbody" id="t7body"></div>
+  </aside>
+
   <section class="mid" id="mid">
     <div class="plabel"><span class="name" id="midh">Library</span>
       <span id="midacts" style="display:flex;gap:12px"></span>
@@ -491,12 +509,13 @@ try{ active=localStorage['saltpod.active']||'ipod'; }catch(e){}
 function activate(which){ active=which; try{ localStorage['saltpod.active']=which; }catch(e){} }
 let SYNCED=[], BYKEY=new Map();
 let LIB=[], libLoaded=false, amPick=null, PEEK=null, peeking=false;
+let T7={folders:[],root:null,built:null,total:0}, t7Pick=null, T7TRACKS=null, t7Loading=false;
 const CAP=400;                       // rows drawn at once; search narrows the rest
 
 /* ---------------- folding the side panes ---------------- */
 // L is the iPod, A is Apple Music, R is buy/vinyl. Each is pinned to its own
 // grid track, so folding one never moves another.
-const FOLD={L:['nl','<','>'],A:['na','<','>'],R:['nr','>','<']};
+const FOLD={L:['nl','<','>'],A:['na','<','>'],T:['nt','<','>'],R:['nr','>','<']};
 function setFold(which,off){
   const [cls,open,shut]=FOLD[which];
   document.body.classList.toggle(cls,off);
@@ -505,16 +524,20 @@ function setFold(which,off){
 }
 function fold(which){ setFold(which,!document.body.classList.contains(FOLD[which][0])); }
 (function(){
-  let l=null,a=null,r=null;
-  try{ l=localStorage['saltpod.foldL']; a=localStorage['saltpod.foldA']; r=localStorage['saltpod.foldR']; }catch(e){}
-  // no stored preference on a narrow window: start with the sides away. Apple
-  // Music folds first, because the iPod pane is the one that must stay.
-  const narrow=window.innerWidth<860, tight=window.innerWidth<1100;
+  let l=null,a=null,t=null,r=null;
+  try{ l=localStorage['saltpod.foldL']; a=localStorage['saltpod.foldA'];
+       t=localStorage['saltpod.foldT']; r=localStorage['saltpod.foldR']; }catch(e){}
+  // No stored preference: fold from the outside in, by how much room there is.
+  // Five panes need about 1500px before the list itself stops being the thing
+  // that suffers, so the drive starts folded on any normal laptop -- its rail
+  // is one click away, and the iPod pane is the one that must always stay.
+  const narrow=window.innerWidth<860, tight=window.innerWidth<1250, roomy=window.innerWidth<1500;
   setFold('L', l==null ? narrow : l==='1');
   setFold('A', a==null ? tight : a==='1');
+  setFold('T', t==null ? roomy : t==='1');
   setFold('R', r==null ? narrow : r==='1');
 })();
-[['L','#left'],['A','#am'],['R','#right']].forEach(([w,id])=>{
+[['L','#left'],['A','#am'],['T','#t7'],['R','#right']].forEach(([w,id])=>{
   $('#fold'+w).onclick=e=>{e.stopPropagation();fold(w);};
   // the rail is 24px wide: the whole title strip brings the pane back
   $(id).querySelector('.plabel').onclick=()=>{ if(document.body.classList.contains(FOLD[w][0]))fold(w); };
@@ -535,12 +558,14 @@ $('#fltoggle').onclick=()=>{
 
 /* ---------------- loading, counting, filtering ---------------- */
 async function load(){
-  const [r,d,a,dv]=await Promise.all([
+  const [r,d,a,dv,lo]=await Promise.all([
     fetch('/api/tracks').then(r=>r.json()),
     fetch('/api/discogs').then(r=>r.json()).catch(()=>null),
     fetch('/api/playlists').then(r=>r.json()).catch(()=>null),
-    fetch('/api/device').then(r=>r.json()).catch(()=>null)]);
+    fetch('/api/device').then(r=>r.json()).catch(()=>null),
+    fetch('/api/local').then(r=>r.json()).catch(()=>null)]);
   if(dv){DEV=dv; if(devPick&&!DEV.playlists.some(p=>p.name===devPick))devPick=null;}
+  if(lo){T7=lo; if(t7Pick&&!T7.folders.some(f=>f.name===t7Pick))t7Pick=null;}
   if(d){DISCOGS=d; OWN=new Map((d.collection||[]).map(x=>[x.key,x])); WANT=new Map((d.wantlist||[]).map(x=>[x.key,x]));}
   if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
@@ -652,6 +677,7 @@ function drawFoot(){
 
 function drawMid(){
   if(active==='am')return drawMidAM();
+  if(active==='t7')return drawMidT7();
   $('#ctl').innerHTML=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove']
     .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
   $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{filter=p.dataset.f;sel=0;draw();});
@@ -801,7 +827,7 @@ function nudge(dir){
 function drawCols(){
   $('#left').querySelector('.plabel').classList.toggle('off',active!=='ipod');
   $('#newcol').textContent='+ new';
-  drawAM();
+  drawAM(); drawT7();
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All tracks<span class="cnt">${ALL.length}</span></div>`;
@@ -843,6 +869,7 @@ function drawCols(){
       e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
       const key=e.dataTransfer.getData('text/plain'); if(!key)return;
       if(key.startsWith('pl:')){ await pourPlaylist(key.slice(3),name); return; }   // a whole playlist
+      if(key.startsWith('t7:')){ await pourFolder(key.slice(3),name); return; }     // a whole folder
       const t=ALL.find(x=>x.key===key);
       if(t&&t.collections.includes(name)){toast('already in '+name);return;}
       await decide({collection:name,mode:'add'},[key]);
@@ -855,8 +882,9 @@ function drawCols(){
   nc.ondragover=e=>{ e.preventDefault(); e.dataTransfer.dropEffect='copy'; nc.classList.add('drop'); };
   nc.ondragleave=()=>nc.classList.remove('drop');
   nc.ondrop=async e=>{ e.preventDefault(); e.stopPropagation(); nc.classList.remove('drop');
-    const key=e.dataTransfer.getData('text/plain'); if(!key||!key.startsWith('pl:'))return;
-    await pourPlaylist(key.slice(3),null); };
+    const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+    if(key.startsWith('pl:')){ await pourPlaylist(key.slice(3),null); return; }
+    if(key.startsWith('t7:')){ await pourFolder(key.slice(3),null); return; } };
 }
 
 /* A new collection is made in the pane it will live in: a field at the top of
@@ -923,6 +951,71 @@ function drawAM(){
     }
   });
 }
+/* the drive: what is already owned, filed the way the drive files it */
+function drawT7(){
+  $('#t7').querySelector('.plabel').classList.toggle('off',active!=='t7');
+  $('#t7head').textContent = T7.root || 'T7';
+  $('#t7stat').innerHTML = T7.total ? `<s>${T7.total}</s>` : '';
+  const st=n=>n===t7Pick?(active==='t7'?'on':'was'):'';
+  let h = T7.folders.length ? T7.folders.map(f=>`<div class="col ${st(f.name)} ${f.lossless?'':'dim'}" data-t7="${esc(f.name)}" draggable="true"
+        title="${esc(f.name)} — ${f.n} files${f.lossless?`, ${f.lossless} lossless`:', none lossless'} — drag onto a collection, or onto + new">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
+      <span class="cnt">${f.n}</span><span class="more" title="more">&#8943;</span></div>`).join('')
+    : `<p class="note">Nothing indexed yet. Open the gear and press <b style="color:var(--ink)">Index the drive</b>.</p>`;
+  $('#t7body').innerHTML=h;
+  $('#t7body').querySelectorAll('[data-t7]').forEach(el=>{
+    const name=el.dataset.t7;
+    el.onclick=async()=>{ activate('t7'); t7Pick=name; sel=0; T7TRACKS=null; await t7Peek(name); draw(); };
+    const mo=el.querySelector('.more');
+    if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'t7f',T7.folders.find(f=>f.name===name));};
+    el.ondragstart=e=>{ e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
+    el.ondragend=()=>{ el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
+  });
+}
+async function t7Peek(name){
+  t7Loading=true; drawMid();
+  const r=await fetch('/api/local?folder='+encodeURIComponent(name)).then(r=>r.json()).catch(()=>null);
+  t7Loading=false;
+  T7TRACKS = (r&&r.tracks) ? {name, tracks:r.tracks} : null;
+  if(!T7TRACKS)toast('could not read that folder');
+}
+function drawMidT7(){
+  $('#ctl').innerHTML='';
+  const acts=$('#midacts');
+  const f=T7.folders.find(x=>x.name===t7Pick);
+  const src=(T7TRACKS&&T7TRACKS.name===t7Pick)?T7TRACKS.tracks:[];
+  const rows=src.map(t7Row).filter(t=>{ if(!q)return true;
+    return (t.artist+' '+t.title+' '+(t.album||'')).toLowerCase().includes(q); });
+  view=rows.slice(0,CAP);
+  $('#midh').innerHTML = (t7Pick?esc(t7Pick):'The drive') + ' <span style="color:var(--dim)">· '+esc(T7.root||'T7')+'</span>';
+  acts.innerHTML='';
+  const known=rows.filter(t=>!t.lean).length;
+  $('#midstat').innerHTML = !t7Pick ? ''
+    : t7Loading ? 'reading the folder…'
+    : `<s>${rows.length}</s>${rows.length>CAP?' · '+CAP+' shown':''} · ${known} already in curation`
+      + (f&&f.lossless?` · <s>${f.lossless}</s> lossless`:'');
+  let h='';
+  if(!t7Pick) h=`<p class="note">Pick a folder on the left. This is the music you already own —
+      indexed ${esc(T7.built||'never')} — grouped the way the drive groups it.
+      Drag a track, or the whole folder, onto a collection.</p>`;
+  else if(t7Loading) h=`<p class="note">Reading the folder…</p>`;
+  else if(!view.length) h=`<p class="note">Nothing here${q?' matches':''}.</p>`;
+  else h=view.map((t,i)=>rowHTML(t,i)).join('')
+       + (rows.length>CAP?`<p class="note">${rows.length-CAP} more — search to narrow.</p>`:'');
+  $('#list').innerHTML=h;
+  wireRows();
+  if(sel>=view.length)sel=Math.max(0,view.length-1);
+  mark();
+}
+// A file on the drive is owned by definition: T7 lit, and never "to buy".
+function t7Row(r){
+  const hit=BYKEY.get(r.key); if(hit)return hit;
+  return {key:r.key, artist:r.artist, title:r.title, album:r.album, seconds:r.secs,
+          tier:'', vinyl:false, bought:false, collections:[], playlists:[],
+          device:false, t7:true, local:true, am:false, am_owned:false, am_status:null,
+          lossless:r.lossless, origin_ext:r.ext,
+          play_from:'t7', audio:false, preview:null, art:null, lean:true};
+}
 async function ensureLib(){
   if(libLoaded)return;
   const r=await fetch('/api/library').then(r=>r.json()).catch(()=>null);
@@ -952,11 +1045,12 @@ function drawRight(){
     const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
     $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> on iPod`;
     let h='';
+    const dots=t=>`<span class="more" data-card="${esc(t.key)}" title="more">&#8943;</span>`;
     if(ready.length) h+=`<div class="month vg">bought · ready for the next sync · ${ready.length}</div>`
-      + ready.map(t=>`<div class="card"><b>${esc(t.artist)} — ${esc(t.title)}</b>
+      + ready.map(t=>`<div class="card">${dots(t)}<b>${esc(t.artist)} — ${esc(t.title)}</b>
         <div class="sub">a file is on your drive${t.lossless?', lossless':''} · goes on with the next sync${t.collections.length?' · in '+esc(t.collections.join(', ')):' · <span style="color:var(--orange)">not in any playlist yet</span>'}</div></div>`).join('')
       + `<div class="month vg">still to buy · ${todo.length} · ${flac} confirmed FLAC</div>`;
-    h+= todo.length ? todo.map(t=>`<div class="card">
+    h+= todo.length ? todo.map(t=>`<div class="card">${dots(t)}
         <b>${esc(t.artist)} — ${esc(t.title)}</b>
         <div class="sub">${esc(t.album||'')} · ${mmss(t.seconds)} · ${t.playlists.map(MONTH).join(', ')}</div>
         <div class="acts">
@@ -968,6 +1062,8 @@ function drawRight(){
       <b style="color:var(--ink)">Index the drive</b> in the gear. The index finding it is what bought means; the next sync copies it across.</p>`;
     el.innerHTML=h;
     el.querySelectorAll('[data-bought]').forEach(b=>b.onclick=()=>decide({bought:true},[b.dataset.bought]));
+    el.querySelectorAll('[data-card]').forEach(m=>m.onclick=e=>{e.stopPropagation();
+      const t=BYKEY.get(m.dataset.card); if(t)openMenu(m,'track',t);});
   } else {
     // Vinyl runs in one direction: flagged here -> wanted on Discogs -> owned.
     // The pane shows the three stages, and the first one is the to-do.
@@ -1278,6 +1374,26 @@ function paintMenu(){
       await decide({collection:c,mode:'add'},ks); toast(`added ${ks.length} to ${c}`);};
     return;
   }
+  // a folder on the drive
+  if(MENU.kind==='t7f'){
+    const f=MENU.payload; if(!f){closeMenu();return;}
+    h.innerHTML=esc(f.name)+' · '+f.n;
+    b.innerHTML=menuRow('Make a collection','same order',false,'m-make')
+      +menuRow('Add all to playlist &rsaquo;','',false,'m-pour');
+    b.querySelector('.m-make').onclick=()=>{closeMenu();pourFolder(f.name,null);};
+    b.querySelector('.m-pour').onclick=()=>{MENU.kind='t7pick';paintMenu();};
+    return;
+  }
+  if(MENU.kind==='t7pick'){
+    const f=MENU.payload; if(!f){closeMenu();return;}
+    h.innerHTML=`<span class="back" title="back">&lsaquo;</span>Add all to playlist`;
+    h.querySelector('.back').onclick=()=>{MENU.kind='t7f';paintMenu();};
+    const cols=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
+    b.innerHTML=cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}"><span class="dn">${esc(c)}</span></div>`).join('')
+      :'<p class="note">No collections yet.</p>';
+    b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=()=>{const c=x.dataset.pc;closeMenu();pourFolder(f.name,c);});
+    return;
+  }
   // an Apple Music playlist: everything the drag does, by clicking
   if(MENU.kind==='ampl'){
     const p=MENU.payload; if(!p){closeMenu();return;}
@@ -1331,11 +1447,16 @@ function paintMenu(){
   // sync. That is what "delete from library" means when the library is the
   // iPod. For a track not on the device, the same choice is just Skip.
   const delLabel = t.device ? 'Delete from iPod' : 'Skip';
+  // Shortlisted is what puts a track in the buy list, so undeciding is how it
+  // leaves. One row, named for where you are standing: "Undecided" is true but
+  // nobody reads it as "get this out of my buy list", which is the thing they
+  // came to the menu to do.
+  const undoLabel = t.tier==='shortlisted' ? 'Take off the buy list' : 'Undecided';
   b.innerHTML=menuRow('Add to playlist &rsaquo;','c',false,'m-add')
     +(inCol?menuRow('Take out of '+esc(colPick),'x',false,'m-out'):'')
     +'<div class="sep"></div>'
     +menuRow('Buy','b',t.tier==='shortlisted','m-buy')+menuRow('Maybe','m',t.tier==='maybe','m-maybe')
-    +menuRow('Undecided','u',t.tier==='seen','m-undo')
+    +menuRow(undoLabel,'u',t.tier==='seen','m-undo')
     +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play')
     +'<div class="sep"></div>'+menuRow(delLabel,inCol?'X':'x',t.tier==='skipped','m-del');
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
@@ -1460,6 +1581,28 @@ async function pourPlaylist(name, into){
 }
 // the new-collection sheet's seed list is the same pour, by name
 async function seedFrom(name){ await pourPlaylist(name, null); }
+
+// A folder off the drive, poured the same way a playlist is -- except every
+// track in it is already owned, so none of it reaches the buy list.
+async function pourFolder(name, into){
+  const target=into||name;
+  toast('reading '+name+'…');
+  const r = (T7TRACKS&&T7TRACKS.name===name) ? {tracks:T7TRACKS.tracks}
+    : await fetch('/api/local?folder='+encodeURIComponent(name)).then(r=>r.json()).catch(()=>null);
+  if(!r||!r.tracks||!r.tracks.length){toast('could not read '+name);return;}
+  const have=new Set(ORDER[target]||[]), seen=new Set(), rows=[];
+  for(const t of r.tracks){ if(t.key&&!seen.has(t.key)&&!have.has(t.key)){seen.add(t.key);rows.push(t);} }
+  if(!rows.length){toast(`everything in ${name} is already in ${target}`);return;}
+  const keys=rows.map(t=>t.key);
+  if(!COLS.includes(target))PENDING.add(target);
+  const res=await post('/api/decide',{keys, adopt:rows.map(t=>({key:t.key,artist:t.artist,title:t.title})),
+                                      collection:target, mode:'add'});
+  if(!res.ok){toast('NOT SAVED — check the terminal');return;}
+  await post('/api/decide',{reorder:{collection:target, keys:[...(ORDER[target]||[]), ...keys]}});
+  closeDlg(); leaveNew(); activate('ipod'); colPick=target; devPick=null; sel=0;
+  await load(); saved();
+  toast(`${keys.length} into ${target}${into?'':' — new'} · all owned`);
+}
 async function submitDlg(){
   const val=dlgin.value.trim();
   if(dlgMode==='__delete__'){

@@ -237,6 +237,37 @@ left of the sync button with a lower opacity."* The deck under the header
 emptied out and was removed; the header is one line again. A folded pane is a
 24px rail, its title turned on its side.
 
+## Phase 8 — The drive, and what a collection means (27 September, late)
+
+**A third library.** The owner: *"There actually needs to be a third panel on
+the left next to Apple Music, which is the collection of music that I've
+already purchased, so I can browse through that. I'm not sure entirely how to
+group things. I think we should use the folders that are on the source."*
+
+That last sentence settled the only real design question. The drive's folders
+are how the music was filed when it was bought; a grouping invented here --
+by artist, by year, by format -- would be a second scheme to keep in your
+head, and it would disagree with Finder. So the pane lists the 72 top-level
+folders and nothing else. 581 files carry no tags at all, so their filename
+stands in as the title; without that, `Bought Tracks` -- 1,180 files -- browsed
+as a column of blanks.
+
+**Adding to a collection became the decision to buy.** The owner noticed the
+gap: *"if we drag a file from Apple Music that I don't have into a playlist on
+the iPod, it should actually show up as to buy automatically."* It should, and
+it is the tool's own logic said out loud: a collection declares what belongs
+on the iPod, so naming a track you do not own is the same sentence as saying
+you have to buy it. It fires only over an undecided tier, never over a
+decision already made, and never for a file the index already holds -- so
+pouring a folder off the drive adds nothing to the buy list, and pouring an
+Apple Music playlist adds most of it.
+
+**And a way back out.** *"I also just added a track to the buy list and it
+seems like there's no way to remove it."* There was -- **Undecided** -- but
+nobody reads that as *get this out of my buy list*, which is the thing they
+came to the menu to do. One row, renamed by context, and the buy cards grew
+the same three dots every row has.
+
 ---
 
 ## The rules that hold

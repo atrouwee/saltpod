@@ -465,6 +465,62 @@ def plan_summary(mount=None):
         return {'ok': False, 'reason': str(e)[:300]}
 
 
+LOSSLESS_EXT = {'.flac', '.wav', '.aif', '.aiff', '.alac'}
+LOCAL_KEYS = set()          # refreshed on every decision; see apply_decision
+
+
+def local_index():
+    """The music you already own, as the drive itself organises it.
+
+    No taxonomy is invented here. The folders on the drive ARE the grouping --
+    they are how the music was filed when it was bought, and any scheme this
+    tool imposed instead would be a second, worse one to keep in your head.
+    Files loose in the root become one group named after the root.
+    """
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    if not os.path.exists(idx):
+        return {'roots': [], 'folders': [], 'built': None}
+    try:
+        d = json.load(open(idx))
+    except Exception:
+        return {'roots': [], 'folders': [], 'built': None}
+    roots = d.get('roots') or []
+    groups = {}
+    for e in d.get('tracks') or []:
+        path = e.get('path') or ''
+        root = next((r for r in roots if path.startswith(r)), None)
+        if root is None:
+            continue
+        rel = os.path.relpath(path, root)
+        parts = rel.split(os.sep)
+        name = parts[0] if len(parts) > 1 else os.path.basename(root)
+        g = groups.setdefault(name, {'name': name, 'root': os.path.basename(os.path.dirname(root)) or root,
+                                     'tracks': [], 'lossless': 0})
+        ext = (e.get('ext') or '').lower()
+        if ext in LOSSLESS_EXT:
+            g['lossless'] += 1
+        # 581 files carry no tags at all. Their filename is the only name they
+        # have, and a blank row is useless to browse, so it stands in.
+        stem = os.path.splitext(parts[-1])[0]
+        artist, title = e.get('artist') or '', e.get('title') or ''
+        if not (artist or title):
+            title = stem
+        g['tracks'].append({
+            'key': S.key_for(e.get('artist'), e.get('title')) or S.key_for('', stem),
+            'artist': artist, 'title': title, 'file': parts[-1],
+            'album': e.get('album'), 'secs': e.get('duration_sec'),
+            'ext': ext, 'lossless': ext in LOSSLESS_EXT,
+            # a sub-path is worth showing: "Bought Tracks" is 1,180 files deep
+            'sub': os.sep.join(parts[1:-1]) or None,
+            'untagged': bool(e.get('untagged')),
+        })
+    for g in groups.values():
+        g['tracks'].sort(key=lambda t: ((t['sub'] or '').lower(), t['artist'].lower(), t['title'].lower()))
+    out = sorted(groups.values(), key=lambda g: g['name'].lower())
+    return {'roots': roots, 'built': time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(idx))),
+            'folders': out}
+
+
 def local_keys():
     """Keys we hold a playable file for, from the index of your own drive.
 
@@ -551,6 +607,8 @@ def adopt(st, body):
 
 def apply_decision(body):
     with LOCK:
+        global LOCAL_KEYS
+        LOCAL_KEYS = local_keys()
         st = S.load()
         adopt(st, body)
         keys = body.get('keys') or ([body['key']] if body.get('key') else [])
@@ -573,6 +631,18 @@ def apply_decision(body):
                     mode = body.get('mode')          # add | remove | toggle
                     has = c in rec['collections']
                     order = st.setdefault('collection_order', {}).setdefault(c, [])
+                    # Putting a track in a collection says it belongs on the
+                    # iPod. If there is no file for it and it was never bought,
+                    # that is the same sentence as "I have to go and buy this"
+                    # -- so it joins the buy list rather than sitting undecided
+                    # in a playlist that sync will report as no_source.
+                    if (mode != 'remove' and not has
+                            and not rec.get('bought')
+                            and not (rec.get('device') or {}).get('origin')
+                            and k not in LOCAL_KEYS
+                            and rec.get('tier') in (None, '', 'seen', 'maybe', 'skipped')):
+                        rec['tier'] = 'shortlisted'
+                        rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
                     if mode == 'add' or (mode != 'remove' and not has):
                         if not has:
                             rec['collections'].append(c)
@@ -710,6 +780,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps(health()))
         if u.path == '/api/plan':
             return self._send(200, json.dumps(plan_summary()))
+        if u.path == '/api/local':
+            d = local_index()
+            want = (parse_qs(u.query).get('folder') or [None])[0]
+            # the folder list is small; the tracks are 4,000+, so they come one
+            # folder at a time, the way a peek reads one playlist
+            folders = [{'name': g['name'], 'n': len(g['tracks']), 'lossless': g['lossless']}
+                       for g in d['folders']]
+            body = {'root': os.path.basename(d['roots'][0]) if d['roots'] else None,
+                    'built': d['built'], 'folders': folders,
+                    'total': sum(f['n'] for f in folders)}
+            if want is not None:
+                g = next((x for x in d['folders'] if x['name'] == want), None)
+                body['folder'] = want
+                body['tracks'] = (g or {}).get('tracks') or []
+            return self._send(200, json.dumps(body))
         if u.path == '/api/library':
             return self._send(200, json.dumps({'tracks': am_index().get('library') or []}))
         if u.path == '/api/peek':
