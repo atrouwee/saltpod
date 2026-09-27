@@ -11,8 +11,20 @@
 //      pages are per-seller subdomains: cross-origin for CORS, and the Chrome
 //      extension grants site access per domain. Search alone is same-origin.
 //
-// COST: ~45s of CDP budget per call is the ceiling. At ~500-800ms per query
-// that is ~12 tracks per call. Chunk the list; accumulate into window.__res.
+//   3. PACE IT, AND CHECK THE HIT RATE. Bandcamp starts serving resultless
+//      pages once you have queried too fast for too long -- the same 200-with-
+//      nothing-in-it as trap 1, but earned rather than configured. A 550ms gap
+//      held for ~120 queries and then every result went empty; five of those
+//      "misses" found their track immediately when retried at 1.5s. Use ~1.5s,
+//      and treat a hit rate much below 60%, or a run of consecutive misses at
+//      the tail, as throttling rather than absence. Re-run misses; never trust
+//      them. A false "not on Bandcamp" quietly removes a lossless source from
+//      the buy list and nothing will ever contradict it.
+//
+// COST: ~45s of CDP budget per call is the ceiling. At ~1.5s per query that is
+// ~25 tracks per minute. Chunk the list; accumulate into window.__res. Note
+// the evaluate returns before an await'd loop finishes -- the page keeps
+// working, so poll a counter rather than trusting the return value.
 //
 // LIMIT: search results carry no running time, so this establishes AVAILABILITY,
 // never identity of the cut. Confirm length on the release page before paying.
