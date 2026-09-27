@@ -197,6 +197,46 @@ needs to go in, even though it's not purchased yet"* — sync writes what it
 finds a file for and names the rest. **Every panel is one shape**, with its
 single action in its own title strip.
 
+## Phase 7 — Two libraries, side by side (27 September, night)
+
+**The switcher was a userflow bug.** Phase 6 put the iPod and Apple Music
+behind one left pane with a switcher. Every Apple Music row was already
+draggable and the server already gave a dropped track its first record — but
+switching to Apple Music hid the collections, which were the only place to
+drop. The owner named it exactly: *"It's more of a userflow issue. And it
+could be solved by having the ipod panel open on the left as a side panel, the
+apple music open next to it as a left side panel and then being able to drag
+tracks into the ipod. The last playlist clicked (either ipod or apple music)
+is the list that shows in the middle."*
+
+Four directions were drawn against a miniature of the page — both libraries
+stacked in one pane, a spring-loaded pane that swaps for the length of a drag,
+Apple Music moved to the right beside Buy and Vinyl, and the owner's own: two
+panes on the left. His won, and it won on the merits: Apple Music stays
+visible *while* a collection is being built, so inspiration and the thing
+being made are on screen together. That was the ask from the start.
+
+**A playlist became a thing you can pick up.** Onto a collection to pour it
+in, onto `+ new` to become one. Not a copy — a declaration: every track earns
+a record and joins in the playlist's own order, after what is already there.
+Sync writes what has a file and names the rest, and with most of the library
+rented most of a fresh playlist lands in Buy, which is the point. The `⋯` on a
+playlist does all of it by clicking.
+
+**Which list is active had to be visible** — *"we will need to visually show
+in one of the two left panels which list is active"* — because both panes
+now remember a pick. The active pane's pick is raised and bold; the other
+pane's is bold inside a hairline with no fill. One slot, one meaning.
+
+Then the owner tidied the chrome in two sentences: *"The collapse icons can
+simply be the larger/smaller-than signs left of the title … when collapsed
+you still see a couple of pixels of it and icons vertically."* And: *"the
+buy/vinyl panel … can sit next to each other with the underline where there's
+currently just one title … The stats/counts at the top can go right aligned,
+left of the sync button with a lower opacity."* The deck under the header
+emptied out and was removed; the header is one line again. A folded pane is a
+24px rail, its title turned on its side.
+
 ---
 
 ## The rules that hold
@@ -213,6 +253,7 @@ Each of these has a reason above. Do not relitigate them without reading it.
 - No Rockbox.
 - Stdlib Python plus ffmpeg and ffprobe. Nothing fetched by the page.
 - Every keystroke saves.
+- The last playlist clicked is what the centre shows.
 - **It all runs locally through scripts. Nothing needs a model.** Every
   capability has a verb; the page is a convenience over them.
 
