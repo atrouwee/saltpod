@@ -33,8 +33,7 @@
   --sel-lo: #1450b8;
   --hbtn:  32px; /* the header's controls: search's height, Sync's height, the gear's side */
   --lw: 240px;   /* the side panes; a folded one is simply gone */
-  --aw: 200px;   /* Apple Music, beside the iPod: the library to take from */
-  --tw: 200px;   /* the drive: the music already owned, as the drive files it */
+  --sw: 230px;   /* the source pane: Apple Music or the drive, one at a time */
   --rw: 320px;
 }
 * { box-sizing: border-box; }
@@ -103,25 +102,25 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-t
 /* No boxes. The surface fills the space; the only dividers on it are the two
    hairlines either side of the list. Everything else is separated by air. */
 #work { display: grid; gap: 0; padding: 0; position: relative; overflow: hidden;
-        grid-template-columns: var(--lw) var(--aw) var(--tw) minmax(0, 1fr) var(--rw); min-height: 0; }
+        grid-template-columns: var(--lw) var(--sw) minmax(0, 1fr) var(--rw); min-height: 0; }
 aside, section.mid { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* Pinned to their tracks on purpose: when a side pane is display:none the
    middle would otherwise auto-place into the 0px track it left behind. */
 aside.left  { grid-column: 1; border-right: 1px solid var(--faint); }
-aside.am    { grid-column: 2; border-right: 1px solid var(--faint); }
-aside.t7    { grid-column: 3; border-right: 1px solid var(--faint); }
-section.mid { grid-column: 4; }
-aside.right { grid-column: 5; border-left: 1px solid var(--faint); }
-body.nl { --lw: 24px; }  body.na { --aw: 24px; }  body.nt { --tw: 24px; }  body.nr { --rw: 24px; }
+aside.srcpane   { grid-column: 2; border-right: 1px solid var(--faint); }
+section.mid { grid-column: 3; }
+aside.right { grid-column: 4; border-left: 1px solid var(--faint); }
+body.nl { --lw: 24px; }  body.ns { --sw: 24px; }  body.nr { --rw: 24px; }
 body.nl aside.left .pbody, body.nl aside.left .act, body.nl aside.left .pstat,
-body.na aside.am .pbody,  body.na aside.am .act,  body.na aside.am .pstat,
-body.nt aside.t7 .pbody,  body.nt aside.t7 .act,  body.nt aside.t7 .pstat,
+body.ns aside.srcpane .pbody,  body.ns aside.srcpane .act,  body.ns aside.srcpane .pstat,
 body.nr aside.right .pbody, body.nr aside.right .pstat { display: none; }
-body.nl aside.left .plabel, body.na aside.am .plabel, body.nt aside.t7 .plabel, body.nr aside.right .plabel {
+/* A folded pane names every list behind it -- one pill would not say what
+   else is there. The same reason BUY VINYL both survive on the right. */
+body.nl aside.left .plabel, body.ns aside.srcpane .plabel, body.nr aside.right .plabel {
   writing-mode: vertical-rl; flex: 1 1 auto; flex-wrap: nowrap; justify-content: flex-start; align-items: center;
   gap: 12px; padding: 14px 0; cursor: pointer; }
-body.nl aside.left .plabel .name, body.na aside.am .plabel .name,
-body.nt aside.t7 .plabel .name { flex: 0 0 auto; min-width: 0; }
+body.nl aside.left .plabel .name { flex: 0 0 auto; min-width: 0; }
+body.ns #stabs { flex: 0 0 auto; }
 body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
 .plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
@@ -146,7 +145,7 @@ section.mid.fx .filters { display: flex; }
 .fold { font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--dim); flex: none;
         cursor: pointer; user-select: none; writing-mode: horizontal-tb; padding: 0 2px; }
 .fold:hover { color: var(--ink); }
-#rtabs { display: flex; gap: 14px; flex: 0 0 auto; min-width: 0; }
+#rtabs, #stabs { display: flex; gap: 14px; flex: 0 0 auto; min-width: 0; }
 /* The right pane's title mirrors the left ones: text, then the chevron at the
    outer edge, everything pushed to the right. The stat takes its own line. */
 aside.right .plabel { justify-content: flex-end; }
@@ -432,17 +431,15 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
   </aside>
   <!-- The library to take from, always beside the iPod. Nothing here is edited:
        a click shows the playlist in the centre, a drag pours it into a collection. -->
-  <aside class="am" id="am">
-    <div class="plabel"><span class="fold" id="foldA" title="fold Apple Music away">&lt;</span><span class="name" id="amhead">Apple Music</span><span class="sp"></span><span class="pstat" id="amstat"></span></div>
-    <div class="pbody" id="ambody"></div>
-  </aside>
-
-  <!-- The music already owned, grouped the way the drive itself groups it.
-       No taxonomy invented: the folders ARE the filing, and a second scheme
-       would just be another thing to hold in your head. -->
-  <aside class="t7" id="t7">
-    <div class="plabel"><span class="fold" id="foldT" title="fold the drive away">&lt;</span><span class="name" id="t7head">T7</span><span class="sp"></span><span class="pstat" id="t7stat"></span></div>
-    <div class="pbody" id="t7body"></div>
+  <!-- Where music comes FROM, both behind one pane the way Buy and Vinyl
+       share the one on the right. You take from one or the other, never both
+       at once, so they never need to be on screen together. Apple Music is
+       what you have listened to; the drive is what you already own, grouped
+       the way the drive itself groups it -- the folders ARE the filing, and
+       a second scheme would just be another thing to hold in your head. -->
+  <aside class="srcpane" id="src">
+    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am">Apple Music</span><span class="pill" data-s="t7">Drive</span></span><span class="sp"></span><span class="pstat" id="srcstat"></span></div>
+    <div class="pbody" id="srcbody"></div>
   </aside>
 
   <section class="mid" id="mid">
@@ -523,9 +520,77 @@ let AMP=[], AMREAD=null, AMLIB=0;
 // to take from. Everything in Apple Music is browsable, but a track earns a
 // record in state only when a decision is made about it. `active` says which
 // pane's pick the centre is showing: whichever playlist was clicked last.
+let stab='am';               // which source the shared pane is showing
+try{ stab=localStorage['saltpod.stab']||'am'; }catch(e){}
 let active='ipod';
 try{ active=localStorage['saltpod.active']||'ipod'; }catch(e){}
-function activate(which){ active=which; try{ localStorage['saltpod.active']=which; }catch(e){} }
+function activate(which){ captureScroll(); active=which; try{ localStorage['saltpod.active']=which; }catch(e){} }
+function setSrc(which){ captureScroll(); stab=which; try{ localStorage['saltpod.stab']=which; }catch(e){} }
+
+/* ---------------- where you were ----------------
+   Every redraw replaces the innerHTML of a pane, which puts its scroll back
+   to the top. That is fine for a list of 14 and maddening for one of 4,048:
+   decide on a track two thirds down Bought Tracks and the redraw throws you
+   back to the As. So each scrollable body remembers its offset, keyed by
+   WHAT IS IN IT rather than by the element -- the drive pane scrolled to
+   `beatles` and the same pane scrolled to Apple Music are different places,
+   and switching between them should return you to each.  */
+const SCROLL={};
+// One identity for "which list is on screen". Both memories key off it, so a
+// place you come back to is the same place you left -- the row you had
+// selected as well as how far down you were.
+function listKey(){
+  const pick = active==='ipod' ? (colPick||devPick||'__all') : active==='am' ? amPick : t7Pick;
+  return 'list:'+active+':'+pick+':'+filter+':'+(q||'');
+}
+const SELMEM={};
+function recallSel(){ return SELMEM[listKey()]||0; }
+function scrollKey(el){
+  if(el.id==='srcbody') return 'src:'+stab;
+  if(el.id==='list')     return listKey();
+  if(el.id==='rbody')    return 'right:'+rtab;
+  return el.id;
+}
+// DO NOT RECORD FROM THE SCROLL EVENT. A backgrounded tab dispatches no
+// scroll events at all -- not even for a programmatic scrollTop -- so a
+// listener-based memory is simply absent whenever the window is behind
+// another one, which is most of the time. The offset is instead READ
+// SYNCHRONOUSLY, under the key the pane is LEAVING, before anything changes.
+// (An earlier attempt also cleared a `drawing` flag inside
+// requestAnimationFrame, which likewise never fires in a background tab: the
+// flag wedged on and disabled the whole thing. A deadline is used below
+// instead, because a deadline expires on its own.)
+let drawUntil=0;
+const redrawing=()=>performance.now()<drawUntil;
+const PANES=['#colbody','#srcbody','#list','#rbody'];
+const LASTKEY={};                  // element id -> the key it is showing now
+function captureScroll(){
+  PANES.forEach(id=>{
+    const el=$(id); if(!el)return;
+    const k=LASTKEY[id];
+    if(k!==undefined)SCROLL[k]=el.scrollTop;
+  });
+}
+function noteKeys(){
+  PANES.forEach(id=>{ const el=$(id); if(el)LASTKEY[id]=scrollKey(el); });
+}
+function restoreScroll(){
+  PANES.forEach(id=>{
+    const el=$(id); if(!el)return;
+    const v=SCROLL[scrollKey(el)];
+    if(v)el.scrollTop=v;
+  });
+}
+// Where events DO fire (a foreground tab), this keeps the memory current
+// between redraws -- a scroll with no redraw after it would otherwise only be
+// captured at the next one. It is a top-up, never the source of truth.
+PANES.forEach(id=>{
+  const el=$(id);
+  if(el)el.addEventListener('scroll',()=>{
+    if(redrawing())return;             // a redraw zeroing the box is not a scroll
+    SCROLL[scrollKey(el)]=el.scrollTop;
+  },{passive:true});
+});
 let SYNCED=[], BYKEY=new Map();
 let LIB=[], libLoaded=false, amPick=null, PEEK=null, peeking=false;
 let T7={folders:[],root:null,built:null,total:0}, t7Pick=null, T7TRACKS=null, t7Loading=false;
@@ -534,7 +599,7 @@ const CAP=400;                       // rows drawn at once; search narrows the r
 /* ---------------- folding the side panes ---------------- */
 // L is the iPod, A is Apple Music, R is buy/vinyl. Each is pinned to its own
 // grid track, so folding one never moves another.
-const FOLD={L:['nl','<','>'],A:['na','<','>'],T:['nt','<','>'],R:['nr','>','<']};
+const FOLD={L:['nl','<','>'],S:['ns','<','>'],R:['nr','>','<']};
 function setFold(which,off){
   const [cls,open,shut]=FOLD[which];
   document.body.classList.toggle(cls,off);
@@ -543,20 +608,16 @@ function setFold(which,off){
 }
 function fold(which){ setFold(which,!document.body.classList.contains(FOLD[which][0])); }
 (function(){
-  let l=null,a=null,t=null,r=null;
-  try{ l=localStorage['saltpod.foldL']; a=localStorage['saltpod.foldA'];
-       t=localStorage['saltpod.foldT']; r=localStorage['saltpod.foldR']; }catch(e){}
-  // No stored preference: fold from the outside in, by how much room there is.
-  // Five panes need about 1500px before the list itself stops being the thing
-  // that suffers, so the drive starts folded on any normal laptop -- its rail
-  // is one click away, and the iPod pane is the one that must always stay.
-  const narrow=window.innerWidth<860, tight=window.innerWidth<1250, roomy=window.innerWidth<1500;
+  let l=null,a=null,r=null;
+  try{ l=localStorage['saltpod.foldL']; a=localStorage['saltpod.foldS']; r=localStorage['saltpod.foldR']; }catch(e){}
+  // No stored preference: fold from the outside in. Four panes fit a laptop,
+  // so only a genuinely narrow window starts folded.
+  const narrow=window.innerWidth<860, tight=window.innerWidth<1040;
   setFold('L', l==null ? narrow : l==='1');
-  setFold('A', a==null ? tight : a==='1');
-  setFold('T', t==null ? roomy : t==='1');
+  setFold('S', a==null ? tight : a==='1');
   setFold('R', r==null ? narrow : r==='1');
 })();
-[['L','#left'],['A','#am'],['T','#t7'],['R','#right']].forEach(([w,id])=>{
+[['L','#left'],['S','#src'],['R','#right']].forEach(([w,id])=>{
   $('#fold'+w).onclick=e=>{e.stopPropagation();fold(w);};
   // the rail is 24px wide: the whole title strip brings the pane back
   $(id).querySelector('.plabel').onclick=()=>{ if(document.body.classList.contains(FOLD[w][0]))fold(w); };
@@ -584,7 +645,9 @@ async function load(){
     fetch('/api/device').then(r=>r.json()).catch(()=>null),
     fetch('/api/local').then(r=>r.json()).catch(()=>null)]);
   if(dv){DEV=dv; if(devPick&&!DEV.playlists.some(p=>p.name===devPick))devPick=null;}
-  if(lo){T7=lo; if(t7Pick&&!T7.folders.some(f=>f.name===t7Pick))t7Pick=null;}
+  if(lo){T7=lo; if(t7Pick&&!T7.folders.some(f=>f.name===t7Pick))t7Pick=null;
+    const pill=document.querySelector('#stabs .pill[data-s="t7"]');
+    if(pill&&T7.root)pill.textContent=T7.root;}
   if(d){DISCOGS=d; OWN=new Map((d.collection||[]).map(x=>[x.key,x])); WANT=new Map((d.wantlist||[]).map(x=>[x.key,x]));}
   if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
@@ -683,7 +746,14 @@ function rowHTML(t,i,pos,ro){
 }
 
 /* ---------------- drawing ---------------- */
-function draw(){ closeMenu(); counts(); drawCols(); drawMid(); drawRight(); drawFoot(); paintPlaying(); }
+function draw(){
+  drawUntil=performance.now()+150;
+  closeMenu(); counts(); drawCols(); drawMid(); drawRight(); drawFoot(); paintPlaying();
+  restoreScroll(); noteKeys();
+  // any scroll events innerHTML caused land after this tick; setTimeout fires
+  // in a background tab, requestAnimationFrame does not
+  setTimeout(()=>{ restoreScroll(); noteKeys(); },0);
+}
 
 function drawFoot(){
   const inCol=active==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
@@ -699,7 +769,7 @@ function drawMid(){
   if(active==='t7')return drawMidT7();
   $('#ctl').innerHTML=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove']
     .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
-  $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{filter=p.dataset.f;sel=0;draw();});
+  $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{captureScroll();filter=p.dataset.f;sel=recallSel();draw();});
   paintFilterToggle();
 
   const acts=$('#midacts');
@@ -745,7 +815,7 @@ function drawMid(){
   }
   $('#list').innerHTML=h;
   wireRows();
-  if(sel>=view.length)sel=Math.max(0,view.length-1);
+  if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
   mark();
 }
 function drawMidAM(){
@@ -776,7 +846,7 @@ function drawMidAM(){
        + (rows.length>CAP?`<p class="note">${rows.length-CAP} more — search to narrow.</p>`:'');
   $('#list').innerHTML=h;
   wireRows();
-  if(sel>=view.length)sel=Math.max(0,view.length-1);
+  if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
   mark();
 }
 // An iTunes-made or hand-made playlist becomes a collection of the same name
@@ -821,9 +891,14 @@ function wireRows(){
   });
 }
 function mark(){
+  if(view.length)SELMEM[listKey()]=sel;   // never record the empty loading state
+
   document.querySelectorAll('#list .row').forEach(r=>r.classList.remove('sel'));
   const r=document.querySelector(`#list .row[data-i="${sel}"]`);
-  if(r){r.classList.add('sel');r.scrollIntoView({block:'nearest'});}
+  // Scrolling the selected row into view is right when YOU moved the
+  // selection, and wrong during a redraw -- there it fights the restore and
+  // wins, dragging you back to the selected row instead of where you were.
+  if(r){r.classList.add('sel'); if(!redrawing())r.scrollIntoView({block:'nearest'});}
 }
 async function saveOrder(col,keys,to){
   ORDER[col]=keys; sel=to;
@@ -846,7 +921,7 @@ function nudge(dir){
 function drawCols(){
   $('#left').querySelector('.plabel').classList.toggle('off',active!=='ipod');
   $('#newcol').textContent='+ new';
-  drawAM(); drawT7();
+  drawSrc();
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All tracks<span class="cnt">${ALL.length}</span></div>`;
@@ -875,11 +950,11 @@ function drawCols(){
   }
   $('#colbody').innerHTML=h;
   const body=$('#colbody');
-  body.querySelectorAll('[data-dev]').forEach(el=>el.onclick=()=>{activate('ipod');devPick=el.dataset.dev;colPick=null;sel=0;draw();});
-  body.querySelector('[data-all]').onclick=()=>{activate('ipod');colPick=null;devPick=null;sel=0;draw();};
+  body.querySelectorAll('[data-dev]').forEach(el=>el.onclick=()=>{activate('ipod');devPick=el.dataset.dev;colPick=null;sel=recallSel();draw();});
+  body.querySelector('[data-all]').onclick=()=>{activate('ipod');colPick=null;devPick=null;sel=recallSel();draw();};
   body.querySelectorAll('[data-c]').forEach(el=>{
     const name=el.dataset.c;
-    el.onclick=()=>{activate('ipod');colPick=name;devPick=null;sel=0;draw();};
+    el.onclick=()=>{activate('ipod');colPick=name;devPick=null;sel=recallSel();draw();};
     const mo=el.querySelector('.more');
     if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'col',name);};
     el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('drop');};
@@ -941,10 +1016,22 @@ function paintSeeds(){
   el.querySelectorAll('[data-seed]').forEach(x=>x.onclick=()=>seedFrom(x.dataset.seed));
 }
 
-/* the other library: everything in Apple Music, for looking at and taking from */
+/* Where music comes from. Two libraries, one pane, the way Buy and Vinyl
+   share the one on the right -- you take from one or the other, never both at
+   once. Switching the tab is only looking; it does not change what the centre
+   shows, which is still the last playlist actually clicked. */
+function drawSrc(){
+  const pane=$('#src');
+  pane.querySelector('.plabel').classList.toggle('off',active==='ipod');
+  document.querySelectorAll('#stabs .pill').forEach(p=>p.classList.toggle('on',p.dataset.s===stab));
+  if(stab==='t7')drawT7(); else drawAM();
+  document.querySelectorAll('#stabs .pill').forEach(p=>p.onclick=()=>{
+    if(stab===p.dataset.s)return;
+    setSrc(p.dataset.s); drawCols(); restoreScroll();
+  });
+}
 function drawAM(){
-  $('#am').querySelector('.plabel').classList.toggle('off',active!=='am');
-  $('#amstat').innerHTML = AMP.length ? `<s>${AMP.length}</s>` : '';
+  $('#srcstat').innerHTML = AMP.length ? `<s>${AMP.length}</s>` : '';
   const st=p=>p.slug===amPick?(active==='am'?'on':'was'):'';
   let h=`<div class="col ${amPick==='__all__'?(active==='am'?'on':'was'):''}" data-am="__all__">All of Apple Music
       <span class="cnt">${AMLIB||''}</span></div>`;
@@ -953,11 +1040,11 @@ function drawAM(){
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
       <span class="cnt">${(p.created||'').slice(0,7)||p.tracks}</span><span class="more" title="more">&#8943;</span></div>`).join('')
     : `<p class="note">Not read yet. Open the gear and press <b style="color:var(--ink)">Read Apple Music</b>.</p>`;
-  $('#ambody').innerHTML=h;
-  $('#ambody').querySelectorAll('[data-am]').forEach(el=>{
+  $('#srcbody').innerHTML=h;
+  $('#srcbody').querySelectorAll('[data-am]').forEach(el=>{
     const slug=el.dataset.am, p=AMP.find(x=>x.slug===slug);
     el.onclick=async()=>{
-      activate('am'); amPick=slug; sel=0; PEEK=null;
+      activate('am'); setSrc('am'); amPick=slug; PEEK=null; sel=recallSel();
       if(amPick==='__all__'){ await ensureLib(); }
       else { await peek(p&&p.name); }
       draw();
@@ -972,19 +1059,17 @@ function drawAM(){
 }
 /* the drive: what is already owned, filed the way the drive files it */
 function drawT7(){
-  $('#t7').querySelector('.plabel').classList.toggle('off',active!=='t7');
-  $('#t7head').textContent = T7.root || 'T7';
-  $('#t7stat').innerHTML = T7.total ? `<s>${T7.total}</s>` : '';
+  $('#srcstat').innerHTML = T7.total ? `<s>${T7.total}</s>` : '';
   const st=n=>n===t7Pick?(active==='t7'?'on':'was'):'';
   let h = T7.folders.length ? T7.folders.map(f=>`<div class="col ${st(f.name)} ${f.lossless?'':'dim'}" data-t7="${esc(f.name)}" draggable="true"
         title="${esc(f.name)} — ${f.n} files${f.lossless?`, ${f.lossless} lossless`:', none lossless'} — drag onto a collection, or onto + new">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
       <span class="cnt">${f.n}</span><span class="more" title="more">&#8943;</span></div>`).join('')
     : `<p class="note">Nothing indexed yet. Open the gear and press <b style="color:var(--ink)">Index the drive</b>.</p>`;
-  $('#t7body').innerHTML=h;
-  $('#t7body').querySelectorAll('[data-t7]').forEach(el=>{
+  $('#srcbody').innerHTML=h;
+  $('#srcbody').querySelectorAll('[data-t7]').forEach(el=>{
     const name=el.dataset.t7;
-    el.onclick=async()=>{ activate('t7'); t7Pick=name; sel=0; T7TRACKS=null; await t7Peek(name); draw(); };
+    el.onclick=async()=>{ activate('t7'); setSrc('t7'); t7Pick=name; T7TRACKS=null; sel=recallSel(); await t7Peek(name); draw(); };
     const mo=el.querySelector('.more');
     if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'t7f',T7.folders.find(f=>f.name===name));};
     el.ondragstart=e=>{ e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
@@ -1023,7 +1108,7 @@ function drawMidT7(){
        + (rows.length>CAP?`<p class="note">${rows.length-CAP} more — search to narrow.</p>`:'');
   $('#list').innerHTML=h;
   wireRows();
-  if(sel>=view.length)sel=Math.max(0,view.length-1);
+  if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
   mark();
 }
 // A file on the drive is owned by definition: T7 lit, and never "to buy".
