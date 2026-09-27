@@ -156,6 +156,14 @@ mention are left alone.
 - macOS writes `._` AppleDouble stubs on FAT32 with real extensions, and
   ffprobe parses some of them. Skip `._*` everywhere.
 
+## Reading further
+
+**HISTORY.md** is how this came to be — the finding that started it, every
+phase since, and the owner's own words where they carried a decision. Read it
+before changing a rule; each one has a reason there. **CONTRIBUTING.md** is
+how to run it against your own Classic and what a change that lands looks
+like. **HANDOFF.md** is what is true right now.
+
 ## Independence and licence
 
 Unaffiliated with Apple. MIT. The checksum is a port of libgpod's

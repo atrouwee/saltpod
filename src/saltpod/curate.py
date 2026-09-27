@@ -160,9 +160,57 @@ def music_playlists():
 
 # ---------------------------------------------------------------- data
 
+def plan_summary(mount=None):
+    """What a sync would do, as JSON, touching nothing.
+
+    The device has to be there to answer honestly -- the plan is a diff
+    against what the iPod actually holds, not a guess from state -- so when it
+    is not mounted this says so rather than inventing an answer.
+    """
+    try:
+        from . import apply as A
+        A._cfg()
+        m = mount or A.MOUNT
+        if not os.path.exists(os.path.join(m, A.DB_REL)):
+            return {'ok': False, 'reason': 'no iPod at %s' % m}
+        p = A.plan(m)
+        return {
+            'ok': True, 'mount': m,
+            'new': p['new_playlists'], 'update': p['update_playlists'],
+            'delete': p['delete_playlists'],
+            'adds': [{'artist': r['artist'], 'title': r['title'],
+                      'convert': os.path.splitext(src)[1].lower() in A.CONVERT}
+                     for k, r, src in p['adds']],
+            'no_source': [{'artist': r['artist'], 'title': r['title']}
+                          for k, r in p['no_source']],
+            'removes': [{'artist': r['artist'], 'title': r['title']}
+                        for k, r, t in p['removes']],
+        }
+    except Exception as e:
+        return {'ok': False, 'reason': str(e)[:300]}
+
+
+def local_keys():
+    """Keys we hold a playable file for, from the index of your own drive.
+
+    A collection may name a track you have not bought; sync reports it under
+    `no_source` and writes the rest. This is what lets the page say which is
+    which before you plug anything in.
+    """
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    if not os.path.exists(idx):
+        return set()
+    try:
+        return {S.key_for(e.get('artist'), e.get('title'))
+                for e in json.load(open(idx))['tracks']}
+    except Exception:
+        return set()
+
+
 def tracks_payload(scope=''):
     st = S.load()
     am_keys = set(am_index().get('keys') or [])
+    loc_keys = local_keys()
     out = []
     for k, r in st['tracks'].items():
         if scope and not any(p.startswith(scope) for p in r['playlists']):
@@ -182,6 +230,7 @@ def tracks_payload(scope=''):
             't7': t7, 'am': bool(r['playlists']) or k in am_keys,
             'am_owned': bool(r.get('am_owned')),
             'am_status': r.get('am_status'),
+            'local': t7 or k in loc_keys,      # a file exists; sync could write it
             'play_from': 't7' if t7 else ('ipod' if dev.get('location') else None),
             'audio': bool(dev.get('origin') or dev.get('location')),
             'key': k, 'artist': r['artist'], 'title': r['title'],
@@ -340,6 +389,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({'playlists': d.get('playlists', []),
                                                'read_at': d.get('read_at'),
                                                'library': len(d.get('keys', []))}))
+        if u.path == '/api/plan':
+            return self._send(200, json.dumps(plan_summary()))
         if u.path == '/api/library':
             return self._send(200, json.dumps({'tracks': am_index().get('library') or []}))
         if u.path == '/api/peek':
@@ -463,6 +514,11 @@ class Handler(BaseHTTPRequestHandler):
         if a == 'device':
             S.import_device(verbose=False)
             return {'ok': True}
+        if a == 'sync':
+            return {'ok': True, 'job': run_job('sync to the iPod', [
+                ('sync', [py, '-c',
+                 'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
+                 'sys.exit(main(["sync"]))'])]).id}
         if a == 'am_index':
             return {'ok': True, 'job': run_job('read Apple Music', [
                 ('read playlists and library', [py, '-c',

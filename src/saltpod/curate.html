@@ -31,6 +31,7 @@
      drop is also a "here", never a "hear". */
   --sel-hi: #6aa9f4;
   --sel-lo: #1450b8;
+  --hbtn:  36px; /* the header's buttons: Sync's height, and the gear's side */
   --lw: 240px;   /* the side panes; a folded one is simply gone */
   --rw: 320px;
 }
@@ -59,7 +60,10 @@ input:focus, select:focus { outline: none; border-color: var(--ink); }
 header { background: var(--ground); padding: 22px 24px 0; display: flex; flex-direction: column; gap: 14px; }
 header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 0 -24px; }
 .brandline { display: grid; grid-template-columns: 1fr minmax(220px, 440px) 1fr; align-items: center; gap: 16px; }
-.hright { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+/* One number drives both, because aspect-ratio loses to a button's intrinsic
+   width and the gear came out 13px wide against Sync's 31. */
+.hright { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.hright button { height: var(--hbtn); }
 h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; }
 #q { width: 100%; padding: 7px 12px; }
 .deck { display: grid; align-items: end; margin: 0 -24px; padding: 0 0 12px;
@@ -77,7 +81,8 @@ body.nr #rtabs { display: none; }
         color: var(--dim); cursor: pointer; user-select: none; padding: 3px 0; border-bottom: 1px solid transparent; }
 .pill:hover { color: var(--ink); }
 .pill.on { color: var(--ink); border-bottom-color: var(--ink); }
-#gear { padding: 5px 9px; font-size: 13px; line-height: 1; position: relative; }
+#gear { padding: 0; width: var(--hbtn); flex: none; display: inline-flex; align-items: center;
+        justify-content: center; font-size: 19px; line-height: 1; position: relative; }
 #gear.busy:after { content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
                    border-radius: 99px; background: var(--orange); }
 
@@ -214,14 +219,26 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
 p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 1.5; }
 
 /* ---------- settings overlay, where Data lives now ---------- */
-#ovl { position: fixed; inset: 0; background: rgba(7,12,19,.8); display: none;
-       align-items: flex-start; justify-content: center; z-index: 20; padding: 40px 20px; }
+/* The data panel is the sync panel at a larger size: the same hairline edge,
+   the same title strip with its one action at the top right, the same section
+   labels. Two panels, one shape. */
+#ovl { position: fixed; inset: 0; background: rgba(7,12,19,.72); display: none;
+       align-items: flex-start; justify-content: center; z-index: 20; padding: 48px 20px; }
 #ovl.on { display: flex; }
-#ovlbox { background: var(--ground); border: 1px solid var(--ink); padding: 22px;
-          width: min(760px, 96vw); max-height: 86vh; overflow: auto; }
-#ovlbox h2 { margin: 0 0 4px; font-size: 18px; text-transform: uppercase; letter-spacing: -.01em; }
-.box { border-top: 1px solid var(--ink); padding: 14px 0; margin: 0 0 18px; }
-pre { background: var(--seam); border: 0; padding: 12px; font: 11.5px/1.5 var(--mono); overflow: auto; max-height: 320px; margin: 10px 0 0; color: var(--ink); }
+#ovlbox { background: var(--ground); border: 1px solid var(--faint); border-radius: 10px;
+          width: min(680px, 96vw); max-height: 84vh; display: flex; flex-direction: column;
+          overflow: hidden; }
+#ovlh { padding: 8px 10px 8px 16px; display: flex; align-items: center; gap: 12px;
+        min-height: 40px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+        text-transform: uppercase; color: var(--dim); font-weight: 500;
+        border-bottom: 1px solid var(--faint); background: var(--panel); }
+#ovlt { flex: 1 1 auto; }
+#ovlbody { padding: 14px 16px 18px; overflow: auto; }
+.box { padding: 0; margin: 0 0 20px; }
+.box:last-child { margin-bottom: 0; }
+.brow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+pre { background: var(--panel); border-radius: 8px; padding: 12px; font: 11px/1.5 var(--mono);
+      overflow: auto; max-height: 280px; margin: 10px 0 0; color: var(--ink); }
 
 /* the status line at the foot, like the room page's */
 footer { position: relative; background: var(--ground);
@@ -230,17 +247,40 @@ footer { position: relative; background: var(--ground);
          display: flex; gap: 18px; flex-wrap: wrap; }
 footer:before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--faint); }
 kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint); padding: 0 5px; margin-right: 2px; }
-#dlg { position: fixed; inset: 0; background: rgba(7,12,19,.8); display: none; align-items: center; justify-content: center; z-index: 30; }
+/* Built like a screen on the device rather than a window: a hairline edge, a
+   title strip, and a list underneath whose rows take the same selection blue
+   the library uses. Nothing here is heavier than the panes behind it. */
+#dlg { position: fixed; inset: 0; background: rgba(7,12,19,.72); display: none;
+       align-items: center; justify-content: center; z-index: 30; }
 #dlg.on { display: flex; }
-#dlgbox { background: var(--ground); border: 1px solid var(--ink); padding: 22px; width: min(440px, 92vw); }
-#dlgbox h3 { margin: 0 0 4px; font-size: 16px; text-transform: uppercase; letter-spacing: -.01em; }
-#dlgbox p { margin: 0 0 14px; color: var(--dim); font-size: 13px; }
-#dlgbox input { width: 100%; background: transparent; border: 1px solid var(--faint); color: var(--ink); padding: 10px; font: inherit; }
-#dlgbox .go { margin-top: 12px; }
-.exist { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.exist span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
-              padding: 4px 10px; border: 1px solid var(--faint); cursor: pointer; color: var(--dim); }
-.exist span:hover { color: var(--ink); border-color: var(--ink); }
+#dlgbox { background: var(--ground); border: 1px solid var(--faint); border-radius: 10px;
+          width: min(420px, 92vw); max-height: 78vh; display: flex; flex-direction: column;
+          overflow: hidden; }
+/* The panel's own header carries its title on the left and the one thing it
+   does on the right -- the same place the page header keeps Sync. */
+#dlgh { margin: 0; padding: 8px 10px 8px 16px; display: flex; align-items: center; gap: 12px;
+        min-height: 40px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+        text-transform: uppercase; color: var(--dim); font-weight: 500;
+        border-bottom: 1px solid var(--faint); background: var(--panel); }
+#dlgt { flex: 1 1 auto; }
+#dlgbtn:empty { display: none; }
+#dlgbody { padding: 14px 16px 16px; overflow: auto; }
+#dlgp { margin: 0 0 12px; color: var(--dim); font-size: 12.5px; line-height: 1.5; }
+#dlgin { width: 100%; background: transparent; border: 1px solid var(--faint);
+         border-radius: 8px; color: var(--ink); padding: 9px 12px; font: inherit; }
+#dlgin:focus { outline: none; border-color: var(--ink); }
+
+.dsec { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+        color: var(--dim); margin: 16px 0 6px; }
+/* the list, in the device's idiom: a row, a count, and the blue on the one under the cursor */
+.drow { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px;
+        cursor: pointer; font-size: 13.5px; }
+.drow:hover { background: linear-gradient(var(--sel-hi), var(--sel-lo)); }
+.drow:hover .dc { color: rgba(255,255,255,.8); }
+.drow .dn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drow .dc { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.drow.tick .dn:after { content: " ✓"; color: var(--dim); }
+#dlglist { max-height: 34vh; overflow: auto; margin-top: 2px; }
 #toast { position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--ground);
          padding: 8px 14px; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase;
          opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 40; }
@@ -254,7 +294,10 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
   <div class="brandline">
     <h1>saltpod</h1>
     <input type="search" id="q" placeholder="search everything   /">
-    <div class="hright"><button id="gear" title="settings and data jobs">&#9881;</button></div>
+    <div class="hright">
+      <button id="dosync" title="write the collections to the iPod">Sync</button>
+      <button id="gear" title="settings and data jobs">&#9881;</button>
+    </div>
   </div>
   <div class="deck">
     <div class="dl"><span class="fold" id="foldL" title="fold this pane away">[&lt;]</span>
@@ -292,9 +335,14 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 <audio id="au"></audio><div id="toast"></div>
 
 <div id="dlg"><div id="dlgbox">
-  <h3 id="dlgh">Collection</h3><p id="dlgp"></p>
-  <input id="dlgin" placeholder="Late Night"><div class="exist" id="dlgex"></div>
-  <div id="dlgbtn"></div>
+  <div id="dlgh"><span id="dlgt">Collection</span><span id="dlgbtn"></span></div>
+  <div id="dlgbody">
+    <p id="dlgp"></p>
+    <input id="dlgin" placeholder="Late Night">
+    <div id="dlgex"></div>
+    <div id="dlgsec" class="dsec" hidden>or from an Apple Music playlist</div>
+    <div id="dlglist"></div>
+  </div>
 </div></div>
 
 <div id="ovl"><div id="ovlbox"></div></div>
@@ -621,11 +669,12 @@ function drawCols(){
   h+=names.map(c=>{
       // what sync would still have to do: tracks in it that are not on the device,
       // plus the playlist itself if it has never been written
-      const waiting=(ORDER[c]||[]).filter(k=>!(BYKEY.get(k)||{}).device).length;
+      const off=(ORDER[c]||[]).filter(k=>!(BYKEY.get(k)||{}).device);
+      const ready=off.filter(k=>(BYKEY.get(k)||{}).local).length, waiting=off.length-ready;
       const never=!SYNCED.includes(c)&&!PENDING.has(c);
-      const mark=PENDING.has(c)?'new':(waiting?`+${waiting}`:(never?'unsynced':(n[c]||0)));
-      return `<div class="col ${c===colPick?'on':''} ${(waiting||never||PENDING.has(c))?'pend':''}" data-c="${esc(c)}"
-        title="${esc(c)} — ${n[c]||0} tracks${waiting?', '+waiting+' not yet on the iPod':', all on the iPod'}">
+      const mark=PENDING.has(c)?'new':(off.length?`+${off.length}`:(never?'unsynced':(n[c]||0)));
+      return `<div class="col ${c===colPick?'on':''} ${(off.length||never||PENDING.has(c))?'pend':''}" data-c="${esc(c)}"
+        title="${esc(c)} — ${n[c]||0} tracks${off.length?`, ${ready} ready to sync, ${waiting} not owned yet`:', all on the iPod'}">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c)}</span>
       <span class="cnt">${mark}</span></div>`;}).join('');
   if(!names.length)h+=`<p class="note">None yet. Press <b style="color:var(--ink)">+ new</b>, then drag tracks onto it.</p>`;
@@ -824,42 +873,45 @@ function play(){
 let MUSIC=null;
 function openSettings(){
   $('#ovl').classList.add('on');
-  $('#ovlbox').innerHTML=`<h2>Data</h2><p class="note" style="margin:0 0 14px">Everything that used to be a
-      command. Long jobs run in the background and keep running if you close this.</p>
-    <div class="box" id="jobbox" style="display:none"><b id="jobname"></b>
-      <span id="jobstate" style="color:var(--dim)"></span><pre id="joblog"></pre></div>
-    <div class="box"><b>Playlists already imported</b> (${SLUGS.length})
-      <div style="color:var(--dim);font-size:12px;margin-top:6px">${SLUGS.join(' · ')}</div>
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <select id="slug">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select>
-        <button id="doMatch">Match against iTunes</button>
-        <button id="doVerify">Verify Bandcamp durations</button>
-        <button id="doRebuild">Rebuild state</button></div></div>
-    <div class="box"><b>The iPod</b>
-      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">
-        ${ALL.filter(t=>t.device).length} tracks on the device ·
-        ${ALL.filter(t=>t.device&&t.tier==='skipped').length} marked to remove ·
-        ${ALL.filter(t=>t.lossless).length} have a lossless original</div>
-      <button id="doDevice">Re-read the device</button></div>
-    <div class="box"><b>Discogs</b>
-      <div style="color:var(--dim);font-size:12px;margin:6px 0 0;line-height:1.6">
-        ${['wantlist','collection'].map(k=>{const f=(DISCOGS.files||{})[k]||{};
-          return `${k}: ${f.modified?`<b style="color:var(--ink)">${f.rows}</b> releases, exported ${f.modified}`:'<span class="warn">not found</span>'}`;}).join('<br>')}<br>
-        Export both from Discogs and drop them at <code>${esc(DISCOGS.dir||'data/discogs')}/wantlist.csv</code> and
-        <code>${esc(DISCOGS.dir||'data/discogs')}/collection.csv</code>. They are read on every load; nothing is fetched.</div></div>
-    <div class="box"><b>Apple Music</b>
-      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px;line-height:1.6">
-        ${AMREAD?`<b style="color:var(--ink)">${AMP.length}</b> playlists and <b style="color:var(--ink)">${AMLIB}</b> library tracks, read ${esc(AMREAD)}`:'<span class="warn">not read yet</span>'}<br>
-        Music.app has no creation date for a playlist, so the dates are derived: the
-        earliest and latest a track in it was added. The list is ordered by the latest,
-        which is when you last worked on it.</div>
-      <button id="doAM">Read Apple Music</button></div>
-    <div class="box"><b>Import a playlist by name</b>
-      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">The left pane lists them all;
-        this is the long way round.</div>
-      <button id="loadMusic">List my playlists</button>
-      <div id="musiclist" style="margin-top:10px"></div></div>
-    <button id="ovlclose">Close</button>`;
+  $('#ovlbox').innerHTML=`
+    <div id="ovlh"><span id="ovlt">Data</span><span><button id="ovlclose">Close</button></span></div>
+    <div id="ovlbody">
+      <p class="note" style="margin:0 0 4px">Everything that used to be a command. Long jobs run in
+        the background and keep running if you close this.</p>
+      <div class="box" id="jobbox" style="display:none">
+        <div class="dsec" id="jobname"></div>
+        <span id="jobstate" style="color:var(--dim);font:11px var(--mono)"></span><pre id="joblog"></pre></div>
+      <div class="box"><div class="dsec">playlists already imported &middot; ${SLUGS.length}</div>
+        <div style="color:var(--dim);font-size:12px">${SLUGS.join(' · ')}</div>
+        <div class="brow">
+          <select id="slug">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select>
+          <button id="doMatch">Match against iTunes</button>
+          <button id="doVerify">Verify Bandcamp durations</button>
+          <button id="doRebuild">Rebuild state</button></div></div>
+      <div class="box"><div class="dsec">the iPod</div>
+        <div style="color:var(--dim);font-size:12px">
+          ${ALL.filter(t=>t.device).length} tracks on the device &middot;
+          ${ALL.filter(t=>t.device&&t.tier==='skipped').length} marked to remove &middot;
+          ${ALL.filter(t=>t.lossless).length} have a lossless original</div>
+        <div class="brow"><button id="doDevice">Re-read the device</button></div></div>
+      <div class="box"><div class="dsec">Apple Music</div>
+        <div style="color:var(--dim);font-size:12px;line-height:1.6">
+          ${AMREAD?`<b style="color:var(--ink)">${AMP.length}</b> playlists and <b style="color:var(--ink)">${AMLIB}</b> library tracks, read ${esc(AMREAD)}`:'<span class="warn">not read yet</span>'}<br>
+          Music.app has no creation date for a playlist, so the dates are derived: the earliest and
+          latest a track in it was added. The list is ordered by the latest, which is when you last
+          worked on it.</div>
+        <div class="brow"><button id="doAM">Read Apple Music</button></div></div>
+      <div class="box"><div class="dsec">Discogs</div>
+        <div style="color:var(--dim);font-size:12px;line-height:1.6">
+          ${['wantlist','collection'].map(k=>{const f=(DISCOGS.files||{})[k]||{};
+            return `${k}: ${f.modified?`<b style="color:var(--ink)">${f.rows}</b> releases, exported ${f.modified}`:'<span class="warn">not found</span>'}`;}).join('<br>')}<br>
+          Export both from Discogs and drop them at <code>${esc(DISCOGS.dir||'data/discogs')}/wantlist.csv</code> and
+          <code>${esc(DISCOGS.dir||'data/discogs')}/collection.csv</code>. They are read on every load; nothing is fetched.</div></div>
+      <div class="box"><div class="dsec">import a playlist by name</div>
+        <div style="color:var(--dim);font-size:12px">The left pane lists them all; this is the long way round.</div>
+        <div class="brow"><button id="loadMusic">List my playlists</button></div>
+        <div id="musiclist" style="margin-top:10px"></div></div>
+    </div>`;
   $('#ovlclose').onclick=closeSettings;
   $('#doDevice').onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
   $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
@@ -886,6 +938,14 @@ function openSettings(){
 }
 function closeSettings(){$('#ovl').classList.remove('on');}
 $('#gear').onclick=openSettings;
+// Sync is never one click. It asks the device what it actually holds, shows
+// the diff, and only then writes -- the same plan / sync pair the terminal has.
+$('#dosync').onclick=async()=>{
+  toast('asking the iPod…');
+  const p=await fetch('/api/plan').then(r=>r.json()).catch(()=>null);
+  if(!p||!p.ok){openDlg('__sync__',(p&&p.reason)||'could not reach the iPod');return;}
+  openDlg('__sync__',null,p);
+};
 $('#ovl').onclick=e=>{if(e.target===$('#ovl'))closeSettings();};
 
 // A job keeps being polled whether or not the overlay is open; the overlay, when
@@ -895,7 +955,7 @@ let lastJob=null;
 function paintJob(r){
   const box=$('#jobbox'); if(!box||!r)return;
   box.style.display='';
-  $('#jobname').textContent=r.name||job||'';
+  const jn=$('#jobname'); if(jn)jn.textContent=r.name||job||'';
   $('#jobstate').textContent=` — ${r.state}${r.seconds?` · ${r.seconds}s`:''}`;
   $('#joblog').textContent=(r.log||[]).join('\n');
   $('#joblog').scrollTop=1e6;
@@ -918,27 +978,86 @@ async function pollJob(){
 /* ---------------- the collection dialog ---------------- */
 const dlg=$('#dlg'), dlgin=$('#dlgin');
 let dlgMode=null;
-function openDlg(mode){
+function openDlg(mode,why,plan){
   dlgMode=mode;
+  if(mode==='__sync__'){
+    $('#dlgt').textContent='Sync to the iPod';
+    dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
+    if(!plan){
+      $('#dlgp').innerHTML=`${esc(why||'')}<br><br>Plug the iPod in and put it in Disk Mode:
+        hold <kbd>Select</kbd>+<kbd>Menu</kbd> to reset, then immediately
+        <kbd>Select</kbd>+<kbd>Play</kbd> until the screen says Disk Mode.`;
+      $('#dlglist').innerHTML=''; $('#dlgbtn').innerHTML='';
+    } else {
+      const n=plan.new.length+plan.update.length+plan.delete.length+plan.adds.length+plan.removes.length;
+      $('#dlgp').innerHTML = n
+        ? 'A dated backup is taken first, and tracks the collections do not mention are left alone.'
+        : 'Nothing to do — the iPod already matches.';
+      const line=(label,items)=>items.length?`<div class="dsec">${label} · ${items.length}</div>`
+        + items.slice(0,12).map(x=>`<div class="drow"><span class="dn">${esc(typeof x==='string'?x:x.artist+' — '+x.title)}</span>${x.convert?'<span class="dc">&rarr; ALAC</span>':''}</div>`).join('')
+        + (items.length>12?`<div class="dc" style="padding:4px 10px">and ${items.length-12} more</div>`:''):'';
+      $('#dlglist').innerHTML = line('playlists to create',plan.new)+line('playlists to update',plan.update)
+        + line('playlists to delete',plan.delete)+line('tracks to copy across',plan.adds)
+        + line('tracks to take off',plan.removes)
+        + line('in a collection but not owned yet — left until there is a file',plan.no_source);
+      $('#dlgbtn').innerHTML = n?'<button class="go" id="dlgok">Sync</button>':'';
+      const ok=$('#dlgok'); if(ok)ok.onclick=()=>{closeDlg();startJob({action:'sync'});};
+    }
+    dlg.classList.add('on'); return;
+  }
   const t=view[sel];
   const cfg={
     null:        {h:'Collection', p:t?`Put “${t.artist} — ${t.title}” in a collection. Type a new name, or pick one; picking one it is already in takes it out.`:'Select a track first.', input:true, list:true},
-    __new__:     {h:'New collection', p:'Name it. It becomes a playlist on the iPod once something is in it.', input:true, list:false},
+    __new__:     {h:'New collection', p:'Name it, or take one whole from Apple Music. A collection may hold tracks you have not bought — sync writes the ones it finds a file for and leaves the rest.', input:true, list:false},
     __rename__:  {h:'Rename collection', p:`Rename “${colPick}”. Its order is kept.`, input:true, list:false},
     __delete__:  {h:'Delete collection', p:`Remove “${colPick}” from every track and take it off the iPod on the next sync. The tracks themselves stay.`, input:false, list:false},
   }[mode];
-  $('#dlgh').textContent=cfg.h; $('#dlgp').textContent=cfg.p;
+  $('#dlgt').textContent=cfg.h; $('#dlgp').textContent=cfg.p;
   dlgin.style.display=cfg.input?'':'none';
   dlgin.value = mode==='__rename__' ? colPick : '';
+  // the collections this track is already in, as a list rather than a row of chips
   $('#dlgex').innerHTML = cfg.list && t
-    ? [...new Set([...COLS,...PENDING])].sort().map(c=>`<span data-c="${esc(c)}">${esc(c)}${t.collections.includes(c)?' ✓':''}</span>`).join('')
+    ? [...new Set([...COLS,...PENDING])].sort().map(c=>`<div class="drow ${t.collections.includes(c)?'tick':''}" data-c="${esc(c)}">
+        <span class="dn">${esc(c)}</span></div>`).join('')
     : '';
   $('#dlgex').querySelectorAll('[data-c]').forEach(s=>s.onclick=()=>{decide({collection:s.dataset.c});closeDlg();});
+  // A collection can be seeded from an Apple Music playlist. It may name
+  // tracks you have not bought; sync writes the ones it finds a file for and
+  // says so about the rest, so the collection is the intent and the device
+  // catches up.
+  const seed = mode==='__new__';
+  $('#dlgsec').hidden = !seed;
+  $('#dlglist').innerHTML = !seed ? '' : (AMP.length
+    ? AMP.map(p=>`<div class="drow" data-seed="${esc(p.name)}" title="created ${(p.created||'?').slice(0,10)}">
+        <span class="dn">${esc(p.name)}</span><span class="dc">${p.tracks}</span></div>`).join('')
+    : `<p id="dlgp">Nothing read yet — the gear has <b style="color:var(--ink)">Read Apple Music</b>.</p>`);
+  $('#dlglist').querySelectorAll('[data-seed]').forEach(el=>el.onclick=()=>seedFrom(el.dataset.seed));
   $('#dlgbtn').innerHTML = mode==='__delete__' ? '<button class="go" id="dlgok">Delete</button>' : '';
   const ok=$('#dlgok'); if(ok)ok.onclick=submitDlg;
   dlg.classList.add('on'); if(cfg.input)dlgin.focus();
 }
 function closeDlg(){dlg.classList.remove('on');dlgin.blur();dlgMode=null;}
+// Make a collection out of an Apple Music playlist, in its order. Tracks with
+// no record yet get one; tracks you do not own yet come along anyway and sync
+// leaves them until there is a file.
+async function seedFrom(name){
+  const exists=[...COLS,...PENDING].includes(name);
+  toast('reading '+name+'…');
+  const r=await fetch('/api/peek?name='+encodeURIComponent(name)).then(r=>r.json()).catch(()=>null);
+  if(!r||r.error||!r.tracks||!r.tracks.length){toast('could not read that playlist');return;}
+  const seen=new Set(), rows=[];
+  for(const t of r.tracks){ if(t.key&&!seen.has(t.key)){seen.add(t.key);rows.push(t);} }
+  const keys=rows.map(t=>t.key);
+  const res=await post('/api/decide',{keys, adopt:rows.map(t=>({key:t.key,artist:t.artist,title:t.title})),
+                                      collection:name, mode:'add'});
+  if(!res.ok){toast('NOT SAVED — check the terminal');return;}
+  await post('/api/decide',{reorder:{collection:name, keys}});
+  closeDlg(); side='ipod'; colPick=name; sel=0;
+  try{ localStorage['saltpod.side']='ipod'; }catch(e){}
+  await load();
+  const waiting=keys.filter(k=>!(BYKEY.get(k)||{}).local).length;
+  toast(`${keys.length} in ${name}${exists?' (added to the existing one)':''}${waiting?` · ${waiting} not owned yet`:''}`);
+}
 async function submitDlg(){
   const val=dlgin.value.trim();
   if(dlgMode==='__delete__'){
