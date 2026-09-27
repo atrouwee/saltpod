@@ -402,7 +402,10 @@ let rtab='buy';
 // A collection made with "+ new" does not exist on the server until its first
 // track lands. Until then it lives here, so it does not vanish on the next load.
 let PENDING=new Set();
-let newMode=false, newQ='';           // the inline new-collection field, open or not
+let newMode=false, newQ='';           // the new-collection sheet, open or not
+// What the iPod actually carries, ours or not. devPick shows one of the others
+// in the middle, read-only, with one way in: make it a collection.
+let DEV={mounted:false,source:null,playlists:[]}, devPick=null;
 let HEALTH=null;
 // The Discogs exports, and two maps from a match key to a release. A track
 // meets a release on artist + album; see discogs.py for what the key strips.
@@ -442,7 +445,7 @@ function fold(side){ setFold(side,!document.body.classList.contains(side==='L'?'
 })();
 $('#foldL').onclick=()=>fold('L'); $('#foldR').onclick=()=>fold('R');
 document.querySelectorAll('#ltabs .pill').forEach(p=>p.onclick=async()=>{
-  leaveNew(); side=p.dataset.s; sel=0;
+  leaveNew(); devPick=null; side=p.dataset.s; sel=0;
   try{ localStorage['saltpod.side']=side; }catch(e){}
   if(side==='am'&&amPick==='__all__')await ensureLib();
   draw();
@@ -463,10 +466,12 @@ $('#fltoggle').onclick=()=>{
 
 /* ---------------- loading, counting, filtering ---------------- */
 async function load(){
-  const [r,d,a]=await Promise.all([
+  const [r,d,a,dv]=await Promise.all([
     fetch('/api/tracks').then(r=>r.json()),
     fetch('/api/discogs').then(r=>r.json()).catch(()=>null),
-    fetch('/api/playlists').then(r=>r.json()).catch(()=>null)]);
+    fetch('/api/playlists').then(r=>r.json()).catch(()=>null),
+    fetch('/api/device').then(r=>r.json()).catch(()=>null)]);
+  if(dv){DEV=dv; if(devPick&&!DEV.playlists.some(p=>p.name===devPick))devPick=null;}
   if(d){DISCOGS=d; OWN=new Map((d.collection||[]).map(x=>[x.key,x])); WANT=new Map((d.wantlist||[]).map(x=>[x.key,x]));}
   if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
@@ -579,7 +584,18 @@ function drawMid(){
 
   const acts=$('#midacts');
   let h='';
-  if(colPick){
+  const dp=devPick&&DEV.playlists.find(p=>p.name===devPick);
+  if(dp){
+    const all=dp.keys.map(k=>BYKEY.get(k)).filter(Boolean);
+    view=all.filter(pass);
+    $('#midh').textContent=dp.name;
+    $('#midstat').innerHTML=`<s>${all.length}</s> tracks · on the iPod · ${dp.smart?'a smart playlist, never written':'not a collection yet'}`;
+    acts.innerHTML = dp.smart ? '' : `<span class="act" id="takeover" title="a collection of the same name and order; from then on it is yours to edit and sync">make it a collection</span>`;
+    const tk=$('#takeover'); if(tk)tk.onclick=()=>takeOver(dp);
+    h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1)).join('')
+      : all.length ? '<p class="note">Nothing in here matches.</p>'
+      : '<p class="note">Empty on the device.</p>';
+  } else if(colPick){
     // A collection is a sequence: drawn in its own order, never sorted. A filter
     // or a search narrows what is SHOWN, and while one is on, re-sequencing is
     // off -- moving a row past neighbours you cannot see would be a lie.
@@ -650,6 +666,16 @@ function drawMidAM(){
   wireRows();
   if(sel>=view.length)sel=Math.max(0,view.length-1);
   mark();
+}
+// An iTunes-made or hand-made playlist becomes a collection of the same name
+// and order. Sync then treats it as an update, and from then on it is ours.
+async function takeOver(dp){
+  if(COLS.includes(dp.name)){toast('already a collection');return;}
+  if(!dp.keys.length){toast('nothing in it to take');return;}
+  const r=await post('/api/decide',{keys:dp.keys,collection:dp.name,mode:'add'});
+  if(!r.ok){toast('NOT SAVED — check the terminal');return;}
+  await post('/api/decide',{reorder:{collection:dp.name,keys:dp.keys}});
+  devPick=null; colPick=dp.name; sel=0; await load(); toast(`${dp.name} is a collection now`);
 }
 function wireRows(){
   const canSeq=side==='ipod'&&!!colPick&&!filtered();
@@ -724,12 +750,22 @@ function drawCols(){
       <span class="cnt">${mark}</span></div>`;}).join('');
   if(!names.length)h+=`<p class="note">None yet. Press <b style="color:var(--ink)">+ new</b>, then drag tracks onto it.</p>`;
 
+  // then everything else the iPod carries -- iTunes-made, hand-made, smart
+  const others=DEV.playlists.filter(p=>!p.ours);
+  if(others.length){
+    h+=`<div class="month" title="${DEV.mounted?'read from the device':'read from '+esc(DEV.source||'the last backup')+' — the iPod is not connected'}">on the iPod${DEV.mounted?'':' · last seen'}</div>`;
+    h+=others.map(p=>`<div class="col dim ${p.name===devPick?'on':''}" data-dev="${esc(p.name)}"
+        title="${esc(p.name)} — ${p.n} tracks${p.smart?', a smart playlist: shown, never written':', made by iTunes or by hand; not a collection yet'}">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
+      <span class="cnt">${p.smart?'smart':p.n}</span></div>`).join('');
+  }
   $('#colbody').innerHTML=h;
   const body=$('#colbody');
-  body.querySelector('[data-all]').onclick=()=>{colPick=null;sel=0;draw();};
+  body.querySelectorAll('[data-dev]').forEach(el=>el.onclick=()=>{devPick=el.dataset.dev;colPick=null;sel=0;draw();});
+  body.querySelector('[data-all]').onclick=()=>{colPick=null;devPick=null;sel=0;draw();};
   body.querySelectorAll('[data-c]').forEach(el=>{
     const name=el.dataset.c;
-    el.onclick=()=>{colPick=name;sel=0;draw();};
+    el.onclick=()=>{colPick=name;devPick=null;sel=0;draw();};
     el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('drop');};
     el.ondragleave=()=>el.classList.remove('drop');
     el.ondrop=async e=>{
@@ -1221,7 +1257,7 @@ document.addEventListener('keydown',e=>{
   if(k==='/'){e.preventDefault();qi.focus();return;}
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}
-  if(k==='Escape'){ if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick){colPick=null;sel=0;draw();} return; }
+  if(k==='Escape'){ if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
   if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
   if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}

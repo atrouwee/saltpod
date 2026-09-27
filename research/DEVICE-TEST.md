@@ -153,3 +153,27 @@ conversion · hash58 · zeroed hash72.
 Still not exercised on the device: **track removal**, **playlist deletion**
 (both pass on copies).
 
+---
+
+# Fifth write — a playlist deleted, from the page — 2026-09-27 18:14
+
+**Result: accepted.** `test r` deleted in the page (the collection's *delete*
+action), then Sync. Read back off stock firmware (`device-test5-deleted.jpg`):
+Playlists shows `My Shazam Tracks`, `My Shazam Tracks1`, `Saltgate Test`,
+`Test Rename (saltgate)` — `test r` gone, everything the tool did not make
+untouched. The owner: *"Deletion worked."*
+
+Deletion is guarded by `state.synced_playlists`; only a playlist this tool
+wrote is ever a candidate. That guard is why the iTunes-made playlists above
+survive a sync in which they are not mentioned.
+
+## Proven on hardware now
+
+rename playlist · create playlist (both sections) · create from the page ·
+**delete from the page** · update an existing device playlist (re-sequence)
+· playlist membership with position mhods · new `mhit` by template cloning ·
+new file placement · master playlist append · dropped positional indexes ·
+`Play Counts` deletion · ALAC conversion · hash58 · zeroed hash72.
+
+Still not exercised on the device: **track removal** (passes on copies).
+

@@ -239,6 +239,50 @@ def music_playlists():
 
 # ---------------------------------------------------------------- data
 
+def device_playlists():
+    """Every playlist the iPod carries, ours or not.
+
+    The pane used to list only the collections this tool made, and the owner
+    noticed the rest were missing -- the iPod has fourteen it never made. They
+    are read from the device when it is mounted and from the latest backup
+    otherwise, and a smart playlist is shown but never authored.
+    """
+    from . import itunesdb as I
+    try:
+        from . import config
+        mount = config.load().get('mount', '/Volumes/IPOD')
+    except SystemExit:
+        mount = '/Volumes/IPOD'
+    dbp = os.path.join(mount, 'iPod_Control/iTunes/iTunesDB')
+    mounted = os.path.exists(dbp)
+    if not mounted:
+        cand = sorted(glob.glob(os.path.join(ROOT, 'backups/ipod-*/iTunesDB')))
+        if not cand:
+            return {'mounted': False, 'source': None, 'playlists': []}
+        dbp = cand[-1]
+    try:
+        db = I.read(dbp)
+    except Exception as e:
+        return {'mounted': mounted, 'source': None, 'error': str(e)[:200], 'playlists': []}
+    by_id = {t['id']: S.key_for(t.get('artist'), t.get('title')) for t in db['tracks']}
+    st = S.load()
+    ours = set(st.get('collections', [])) | set(st.get('synced_playlists', []))
+    out = []
+    for p in db['playlists']:
+        if p.get('master'):
+            continue
+        keys = []
+        for it in p.get('items') or []:
+            tid = it if isinstance(it, int) else (it.get('track_id') or it.get('id') or it.get('tid')) if isinstance(it, dict) else None
+            k = by_id.get(tid)
+            if k:
+                keys.append(k)
+        out.append({'name': p['name'], 'n': len(keys), 'keys': keys,
+                    'smart': bool(p.get('smart')), 'ours': p['name'] in ours})
+    src = 'device' if mounted else os.path.basename(os.path.dirname(dbp)).replace('ipod-', 'backup ')
+    return {'mounted': mounted, 'source': src, 'playlists': out}
+
+
 def plan_summary(mount=None):
     """What a sync would do, as JSON, touching nothing.
 
@@ -485,6 +529,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({'playlists': d.get('playlists', []),
                                                'read_at': d.get('read_at'),
                                                'library': len(d.get('keys', []))}))
+        if u.path == '/api/device':
+            return self._send(200, json.dumps(device_playlists()))
         if u.path == '/api/health':
             return self._send(200, json.dumps(health()))
         if u.path == '/api/plan':
