@@ -118,8 +118,13 @@ def plan(mount=None):
 
     # Sequence comes from state.collection_order -- what the user arranged --
     # never from a sort. A playlist's order on the device is the product.
+    # A collection is what state DECLARES, not only what has members: one
+    # emptied in the page stays on the device as an empty playlist, the way a
+    # phone keeps one. It is deleted only when it is deleted -- removed from
+    # state.collections by the collection's own delete.
     cols = {}
-    for c in sorted({c for r in st['tracks'].values() for c in r['collections']}):
+    names = set(st.get('collections', [])) | {c for r in st['tracks'].values() for c in r['collections']}
+    for c in sorted(names):
         cols[c] = [(k, st['tracks'][k]) for k in S.order_for(st, c)]
 
     # Files for tracks that are not on the device: a device record's origin

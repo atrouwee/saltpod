@@ -85,6 +85,10 @@ body.nr #rtabs { display: none; }
         justify-content: center; font-size: 19px; line-height: 1; position: relative; }
 #gear.busy:after { content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
                    border-radius: 99px; background: var(--orange); }
+/* Sync carries a count while state and the device disagree: tracks marked to
+   come off, and tracks in a collection with a file waiting to go on. A change
+   made in the page is not made on the iPod until this reads plain "Sync". */
+#dosync.pending { border-color: var(--orange); color: var(--orange); }
 
 /* ---------- the three panes ---------- */
 /* No boxes. The surface fills the space; the only dividers on it are the two
@@ -511,8 +515,17 @@ async function load(){
 function counts(){
   const c={seen:0,shortlisted:0,maybe:0,skipped:0,vinyl:0,bought:0};
   ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
-  const todo=ALL.filter(t=>t.tier==='shortlisted'&&!t.bought);
+  // "to buy" is what you still have to go and get: shortlisted, not marked
+  // bought, and no file for it anywhere on your drives.
+  const todo=ALL.filter(t=>t.tier==='shortlisted'&&!t.bought&&!t.local);
   const eur=todo.reduce((a,t)=>a+(t.price||0),0);
+  // what the next sync would do, as far as the page can know without the device
+  const offs=ALL.filter(t=>t.device&&t.tier==='skipped').length;
+  const ons=ALL.filter(t=>!t.device&&t.local&&t.collections.length).length;
+  const pend=offs+ons, sb=$('#dosync');
+  sb.textContent = pend ? `Sync · ${pend}` : 'Sync';
+  sb.classList.toggle('pending',pend>0);
+  sb.title = pend ? `${offs} to take off the iPod, ${ons} to put on — nothing has changed on the device yet` : 'write the collections to the iPod';
   $('#counts').innerHTML=`<span><s>${ALL.length}</s> tracks</span>
     <span><s>${todo.length}</s> to buy</span>
     <span><s>&euro;${eur.toFixed(2)}</s> final</span>
@@ -879,11 +892,19 @@ function drawRight(){
   const el=$('#rbody');
   if(rtab==='buy'){
     const short=ALL.filter(t=>t.tier==='shortlisted');
-    const todo=short.filter(t=>!t.bought), done=short.filter(t=>t.bought);
+    // Three stages, in the direction they move: still to buy; bought -- a file
+    // exists on your drive, found by the index -- and waiting for a sync; and
+    // already on the iPod. "Bought" is not a button you have to remember; the
+    // index finding the file is what bought means.
+    const todo=short.filter(t=>!t.bought&&!t.local), ready=short.filter(t=>t.local&&!t.device), done=short.filter(t=>t.device);
     const eur=todo.reduce((a,t)=>a+(t.price||0),0);
     const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
-    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · ${flac} FLAC · ${done.length} owned`;
+    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · ${ready.length} ready to sync · ${done.length} on the iPod`;
     let h='';
+    if(ready.length) h+=`<div class="month vg">bought · ready for the next sync · ${ready.length}</div>`
+      + ready.map(t=>`<div class="card"><b>${esc(t.artist)} — ${esc(t.title)}</b>
+        <div class="sub">a file is on your drive${t.lossless?', lossless':''} · goes on with the next sync${t.collections.length?' · in '+esc(t.collections.join(', ')):' · <span style="color:var(--orange)">not in any playlist yet</span>'}</div></div>`).join('')
+      + `<div class="month vg">still to buy · ${todo.length} · ${flac} confirmed FLAC</div>`;
     h+= todo.length ? todo.map(t=>`<div class="card">
         <b>${esc(t.artist)} — ${esc(t.title)}</b>
         <div class="sub">${esc(t.album||'')} · ${mmss(t.seconds)} · ${t.playlists.map(MONTH).join(', ')}</div>
@@ -891,7 +912,9 @@ function drawRight(){
           ${t.bandcamp?`<a href="${t.bandcamp}" target="_blank">Bandcamp${t.bc_verdict==='confirmed'?' FLAC':' (check length)'}</a>`:''}
           ${t.url?`<a href="${t.url}" target="_blank">iTunes €${(t.price||0).toFixed(2)}</a>`:'<span class="warn">no source</span>'}
           <button data-bought="${esc(t.key)}">bought</button></div></div>`).join('')
-      : `<p class="note">Nothing to buy. Drag a track here, or press <kbd>b</kbd> on one.</p>`;
+      : (ready.length ? '' : `<p class="note">Nothing to buy. Drag a track here, or press <kbd>b</kbd> on one.</p>`);
+    if(todo.length||ready.length) h+=`<p class="note" style="margin-top:14px">Buy on Bandcamp or iTunes, download, drop the file in your music folder, then
+      <b style="color:var(--ink)">Index the drive</b> in the gear. The index finding it is what bought means; the next sync copies it across.</p>`;
     el.innerHTML=h;
     el.querySelectorAll('[data-bought]').forEach(b=>b.onclick=()=>decide({bought:true},[b.dataset.bought]));
   } else {
@@ -1027,6 +1050,12 @@ function openSettings(){
           <button id="doMatch">Match against iTunes</button>
           <button id="doVerify">Verify Bandcamp durations</button>
           <button id="doRebuild">Rebuild state</button></div></div>
+      <div class="box"><div class="dsec">the music drive</div>
+        <div style="color:var(--dim);font-size:12px">
+          ${HEALTH&&HEALTH.index?`<b style="color:var(--ink)">${HEALTH.index.tracks}</b> files indexed, ${HEALTH.index.built}`:'<span class="warn">never indexed</span>'} ·
+          ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' · ')||'no drive configured'}<br>
+          Walks the folders in <code>library_roots</code> and remembers every audio file. Run it after you buy something.</div>
+        <div class="brow"><button id="doIndex">Index the drive</button></div></div>
       <div class="box"><div class="dsec">the iPod</div>
         <div style="color:var(--dim);font-size:12px">
           ${ALL.filter(t=>t.device).length} tracks on the device &middot;
@@ -1054,6 +1083,7 @@ function openSettings(){
   $('#doDevice').onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
   $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
   $('#doAM').onclick=()=>startJob({action:'am_index'});
+  $('#doIndex').onclick=()=>startJob({action:'index'});
   $('#doMatch').onclick=()=>startJob({action:'match',slugs:[$('#slug').value]});
   $('#doVerify').onclick=()=>startJob({action:'verify',slugs:[$('#slug').value]});
   $('#loadMusic').onclick=async()=>{

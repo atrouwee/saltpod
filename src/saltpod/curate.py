@@ -663,6 +663,11 @@ class Handler(BaseHTTPRequestHandler):
                  'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
                  'sys.exit(main(["sync"]))']),
                 ('ejected', _mark_ejected)]).id}
+        if a == 'index':
+            return {'ok': True, 'job': run_job('index the music drive', [
+                ('index', [py, '-u', '-c',
+                 'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
+                 'sys.exit(main(["index"]))'])]).id}
         if a == 'am_index':
             return {'ok': True, 'job': run_job('read Apple Music', [
                 ('read playlists and library', [py, '-c',
