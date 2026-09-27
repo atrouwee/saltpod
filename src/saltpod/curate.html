@@ -170,6 +170,31 @@ section.mid.fx .filters { display: flex; }
 .row.dragging { opacity: .35; }
 .row.over { box-shadow: inset 0 2px 0 var(--sel-hi); }
 .pos { color: var(--dim); font-family: var(--mono); font-size: 11px; width: 24px; text-align: right; }
+/* Three dots on every row. Everything a drag can do, a click can do: the menu
+   lists it, and "Add to playlist" opens a picker the way a phone does. */
+.more { font-family: var(--mono); font-size: 14px; line-height: 1; color: var(--dim); padding: 2px 6px;
+        cursor: pointer; flex: none; opacity: 0; border-radius: 6px; }
+.row:hover .more, .row.sel .more, .col:hover .more, .col.on .more { opacity: 1; }
+.more:hover { color: var(--ink); background: var(--raised); }
+.row.sel .more { color: #fff; }
+#menu { position: fixed; z-index: 40; display: none; min-width: 230px; max-width: 320px;
+        background: var(--ground); border: 1px solid var(--faint); border-radius: 10px; overflow: hidden;
+        box-shadow: 0 14px 28px rgba(0,0,0,.45); }
+#menu.on { display: block; }
+#menu .mh { padding: 8px 12px; display: flex; align-items: center; gap: 10px; min-height: 34px;
+            font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+            color: var(--dim); border-bottom: 1px solid var(--faint); background: var(--panel);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#menu .mh .back { cursor: pointer; color: var(--dim); font-size: 13px; }
+#menu .mh .back:hover { color: var(--ink); }
+#menu .mb { padding: 6px; max-height: 52vh; overflow: auto; }
+#menu .drow { padding: 7px 10px; }
+#menu .drow .dk { margin-left: auto; font: 9.5px var(--mono); color: var(--dim); letter-spacing: .08em; }
+#menu .drow:hover .dk, #menu .drow:hover .dc { color: rgba(255,255,255,.85); }
+#menu .sep { height: 1px; background: var(--faint); margin: 5px 4px; }
+#menu input { width: 100%; background: transparent; border: 1px solid var(--faint); border-radius: 8px;
+              color: var(--ink); padding: 7px 10px; font: 12px var(--mono); margin: 2px 0; }
+#menu input:focus { outline: none; border-color: var(--ink); }
 .grab { cursor: grab; color: var(--dim); padding: 0 4px; }
 .month { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase;
          color: var(--dim); margin: 22px 0 6px; padding: 0 10px; }
@@ -377,6 +402,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 
 <footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
+<div id="menu"><div class="mh" id="menuh"></div><div class="mb" id="menub"></div></div>
 
 <div id="dlg"><div id="dlgbox">
   <div id="dlgh"><span id="dlgt">Collection</span><span id="dlgbtn"></span></div>
@@ -557,11 +583,11 @@ function rowHTML(t,i,pos,ro){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}</div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
-function draw(){ counts(); drawCols(); drawMid(); drawRight(); drawFoot(); paintPlaying(); }
+function draw(){ closeMenu(); counts(); drawCols(); drawMid(); drawRight(); drawFoot(); paintPlaying(); }
 
 function drawFoot(){
   const inCol=side==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
@@ -570,7 +596,7 @@ function drawFoot(){
     <span><kbd>x</kbd> ${inCol?'take out of collection':'skip'}</span>
     <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
     ${canSeq?'<span><kbd>J</kbd><kbd>K</kbd> re-sequence</span>':''}
-    <span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span><span><kbd>[</kbd><kbd>]</kbd> panes</span>
+    <span><kbd>.</kbd> menu</span><span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span><span><kbd>[</kbd><kbd>]</kbd> panes</span>
     ${inCol?'<span><kbd>esc</kbd> back to library</span>':''}
     <span id="saved" style="margin-left:auto"></span>`;
 }
@@ -606,15 +632,7 @@ function drawMid(){
     $('#midstat').innerHTML = filtered()
       ? `<s>${view.length}</s> of ${all.length} shown · clear the filter to re-sequence`
       : `<s>${all.length}</s> tracks · ${mins} min`;
-    const nShort=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(colPick)).length;
-    acts.innerHTML=`<span class="act" id="addshort" title="every shortlisted track not yet in here">+ shortlisted (${nShort})</span>
-      <span class="act" id="renamecol">rename</span><span class="act" id="delcol">delete</span>`;
-    $('#addshort').onclick=async()=>{
-      const ks=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(colPick)).map(t=>t.key);
-      if(!ks.length)return toast('nothing new to add');
-      await decide({collection:colPick,mode:'add'},ks); toast(`added ${ks.length}`);};
-    $('#renamecol').onclick=()=>openDlg('__rename__');
-    $('#delcol').onclick=()=>openDlg('__delete__');
+    acts.innerHTML='';
     h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1)).join('')
       : all.length ? '<p class="note">Nothing in here matches.</p>'
       : '<p class="note">Empty. Drag tracks in from the library, or press <kbd>c</kbd> on a track.</p>';
@@ -681,6 +699,8 @@ function wireRows(){
   const canSeq=side==='ipod'&&!!colPick&&!filtered();
   [...$('#list').querySelectorAll('.row')].forEach(r=>{
     r.onclick=()=>{sel=+r.dataset.i;mark();};
+    const mo=r.querySelector('.more');
+    if(mo)mo.onclick=e=>{e.stopPropagation(); sel=+r.dataset.i; mark(); openMenu(mo,'track',view[sel]);};
     r.ondblclick=()=>{sel=+r.dataset.i;mark();play();};
     r.ondragstart=e=>{
       e.dataTransfer.setData('text/plain',r.dataset.k);
@@ -747,7 +767,7 @@ function drawCols(){
       return `<div class="col ${c===colPick?'on':''} ${(off.length||never||PENDING.has(c))?'pend':''}" data-c="${esc(c)}"
         title="${esc(c)} — ${n[c]||0} tracks${off.length?`, ${ready} ready to sync, ${waiting} not owned yet`:', all on the iPod'}">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c)}</span>
-      <span class="cnt">${mark}</span></div>`;}).join('');
+      <span class="cnt">${mark}</span><span class="more" title="more">&#8943;</span></div>`;}).join('');
   if(!names.length)h+=`<p class="note">None yet. Press <b style="color:var(--ink)">+ new</b>, then drag tracks onto it.</p>`;
 
   // then everything else the iPod carries -- iTunes-made, hand-made, smart
@@ -767,6 +787,8 @@ function drawCols(){
   body.querySelectorAll('[data-c]').forEach(el=>{
     const name=el.dataset.c;
     el.onclick=()=>{colPick=name;devPick=null;sel=0;draw();};
+    const mo=el.querySelector('.more');
+    if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'col',name);};
     el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('drop');};
     el.ondragleave=()=>el.classList.remove('drop');
     el.ondrop=async e=>{
@@ -1135,6 +1157,89 @@ async function runSyncInPanel(){
   tick();
 }
 
+/* ---------------- the three-dot menu ----------------
+   One menu, two kinds. A track's lists what a keystroke or a drag would do,
+   and "Add to playlist" swaps the menu for a picker of the collections, ticks
+   for the ones it is in, a field to make a new one. A collection's carries
+   rename, add-all-shortlisted and delete -- the confirms stay as panels. */
+const menu=$('#menu');
+let MENU=null;
+function menuRow(label,key,tick,cls){
+  return `<div class="drow ${cls||''}"><span class="dn">${label}</span>${tick?'<span class="dc">&#10003;</span>':''}${key?`<span class="dk">${key}</span>`:''}</div>`;
+}
+function openMenu(anchor,kind,payload){
+  MENU={kind,payload};
+  paintMenu();
+  menu.classList.add('on');
+  const a=anchor.getBoundingClientRect(), m=menu.getBoundingClientRect();
+  let x=a.right-m.width, y=a.bottom+4;
+  if(x<8)x=8; if(x+m.width>window.innerWidth-8)x=window.innerWidth-8-m.width;
+  if(y+m.height>window.innerHeight-8)y=a.top-4-m.height;
+  if(y<8)y=8;
+  menu.style.left=x+'px'; menu.style.top=y+'px';
+}
+function closeMenu(){ menu.classList.remove('on'); MENU=null; }
+function paintMenu(){
+  if(!MENU)return;
+  const h=$('#menuh'), b=$('#menub');
+  if(MENU.kind==='col'){
+    const c=MENU.payload;
+    const nShort=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(c)).length;
+    h.innerHTML=esc(c);
+    b.innerHTML=menuRow('Rename…','',false,'m-rename')+menuRow(`Add all shortlisted${nShort?' · '+nShort:''}`,'',false,'m-addshort')
+      +'<div class="sep"></div>'+menuRow('Delete…','',false,'m-delete');
+    b.querySelector('.m-rename').onclick=()=>{closeMenu();colPick=c;openDlg('__rename__');};
+    b.querySelector('.m-delete').onclick=()=>{closeMenu();colPick=c;openDlg('__delete__');};
+    b.querySelector('.m-addshort').onclick=async()=>{closeMenu();
+      const ks=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(c)).map(t=>t.key);
+      if(!ks.length)return toast('nothing new to add');
+      await decide({collection:c,mode:'add'},ks); toast(`added ${ks.length} to ${c}`);};
+    return;
+  }
+  const t=MENU.payload; if(!t){closeMenu();return;}
+  if(MENU.kind==='pick'){
+    h.innerHTML=`<span class="back" title="back">&lsaquo;</span>Add to playlist`;
+    h.querySelector('.back').onclick=()=>{MENU.kind='track';paintMenu();};
+    const cols=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
+    b.innerHTML=(cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}"><span class="dn">${esc(c)}</span>${t.collections.includes(c)?'<span class="dc">&#10003;</span>':''}</div>`).join(''):'')
+      +'<div class="sep"></div>'+`<input id="menunew" placeholder="new playlist…">`;
+    b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=async()=>{
+      const c=x.dataset.pc, had=t.collections.includes(c);
+      await decide({collection:c},[t.key]); toast(had?`out of ${c}`:`added to ${c}`);
+      const nt=BYKEY.get(t.key); if(nt){MENU.payload=nt;paintMenu();} else closeMenu();
+    });
+    const inp=b.querySelector('#menunew');
+    inp.onkeydown=async e=>{e.stopPropagation();
+      if(e.key==='Escape'){closeMenu();return;}
+      if(e.key==='Enter'){const v=inp.value.trim(); if(!v)return;
+        if(!COLS.includes(v))PENDING.add(v);
+        closeMenu(); await decide({collection:v,mode:'add'},[t.key]); toast(`added to ${v}`);}};
+    setTimeout(()=>inp.focus({preventScroll:true}),0);
+    return;
+  }
+  // a track
+  h.innerHTML=esc(t.artist+' — '+t.title);
+  const inCol=side==='ipod'&&!!colPick;
+  b.innerHTML=menuRow('Add to playlist &rsaquo;','c',false,'m-add')
+    +(inCol?menuRow('Take out of '+esc(colPick),'x',false,'m-out'):'')
+    +'<div class="sep"></div>'
+    +menuRow('Buy','b',t.tier==='shortlisted','m-buy')+menuRow('Maybe','m',t.tier==='maybe','m-maybe')
+    +(inCol?'':menuRow('Skip','x',t.tier==='skipped','m-skip'))+menuRow('Undecided','u',t.tier==='seen','m-undo')
+    +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play');
+  const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
+  on('m-add',()=>{MENU.kind='pick';paintMenu();});
+  on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},[t.key]);});
+  on('m-buy',()=>{closeMenu();decide({tier:'shortlisted'},[t.key]);});
+  on('m-maybe',()=>{closeMenu();decide({tier:'maybe'},[t.key]);});
+  on('m-skip',()=>{closeMenu();decide({tier:'skipped'},[t.key]);});
+  on('m-undo',()=>{closeMenu();decide({tier:'seen'},[t.key]);});
+  on('m-vinyl',()=>{closeMenu();decide({vinyl:!t.vinyl},[t.key]);});
+  on('m-play',()=>{closeMenu();play();});
+}
+document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more'))closeMenu(); });
+// a scroll of the page closes the menu; a scroll inside the menu is the menu working
+document.addEventListener('scroll',e=>{ if(MENU&&!(e.target instanceof Node&&menu.contains(e.target)))closeMenu(); },true);
+
 /* ---------------- the collection dialog ---------------- */
 const dlg=$('#dlg'), dlgin=$('#dlgin');
 let dlgMode=null;
@@ -1260,7 +1365,8 @@ document.addEventListener('keydown',e=>{
   if(k==='/'){e.preventDefault();qi.focus();return;}
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}
-  if(k==='Escape'){ if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
+  if(k==='.'){ const mo=document.querySelector('#list .row.sel .more'); if(mo){e.preventDefault(); if(MENU)closeMenu(); else openMenu(mo,'track',view[sel]);} return; }
+  if(k==='Escape'){ if(MENU){closeMenu();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
   if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
   if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
