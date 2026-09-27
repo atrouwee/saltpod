@@ -22,6 +22,7 @@ import argparse
 import glob
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -119,6 +120,73 @@ def health():
 
 # ---------------------------------------------------------------- jobs
 
+LOGS = os.path.join(ROOT, 'data/logs')
+
+# ---------------------------------------------------------------- live updates
+#
+# One-way server -> browser over Server-Sent Events. Stdlib only: SSE is a plain
+# text/event-stream response held open, which ThreadingHTTPServer already
+# supports because every request gets its own thread.
+#
+# Two kinds of push, because they deserve different answers:
+#
+#   data   -- the underlying facts moved (a sync finished, the device was read).
+#             The page re-fetches and redraws IN PLACE. Scroll position, the
+#             open sheet and the selected collection all survive, which a
+#             refresh would throw away mid-task.
+#   reload -- curate.html itself changed on disk. Nothing short of a real reload
+#             can pick up new markup or new script, so this one is the blunt
+#             instrument, used only when the file's mtime actually moves.
+#
+CLIENTS = []
+CLIENTS_LOCK = threading.Lock()
+
+
+def push(event):
+    """Fan out to every open page. A dead client is dropped, never raised."""
+    line = 'data: %s\n\n' % json.dumps(event, ensure_ascii=False)
+    with CLIENTS_LOCK:
+        for q in list(CLIENTS):
+            try:
+                q.put_nowait(line)
+            except Exception:
+                pass
+
+
+def watch_page(path, interval=1.0):
+    """Push `reload` when the page file is edited. This is the dev loop: save
+    curate.html, and every open tab has the new page a second later."""
+    def run():
+        last = None
+        while True:
+            try:
+                m = os.path.getmtime(path)
+                if last is not None and m != last:
+                    push({'type': 'reload', 'why': 'curate.html changed'})
+                last = m
+            except Exception:
+                pass
+            time.sleep(interval)
+    threading.Thread(target=run, daemon=True).start()
+
+
+
+def device_fingerprint():
+    """What the iPod holds right now, cheap enough to take twice per sync.
+
+    This is the audit record. `backups/` proves what the database WAS; this
+    says what a run changed, which is the question actually asked afterwards
+    -- and answering it used to mean parsing a backup by hand.
+    """
+    try:
+        from . import config, itunesdb
+        db = itunesdb.read(os.path.join(config.load()['mount'], A.DB_REL))
+        return {'tracks': len(db['tracks']),
+                'playlists': {p['name']: len(p['items']) for p in db['playlists']}}
+    except Exception as e:
+        return {'error': '%s: %s' % (type(e).__name__, e)}
+
+
 class Job:
     def __init__(self, name):
         self.id = '%s-%d' % (name, int(time.time() * 1000) % 10_000_000)
@@ -126,24 +194,81 @@ class Job:
         self.state = 'running'
         self.log = []
         self.started = time.time()
+        # A job log used to live only in this dict, capped at 400 lines, gone
+        # the moment the server restarted -- for a tool whose whole job is
+        # writing to hardware. Now every line also lands on disk as it streams.
+        self.slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+        self.path = os.path.join(LOGS, '%s-%s.log' % (
+            time.strftime('%Y-%m-%d-%H%M%S'), self.slug))
+        self.fp = None
+        try:
+            os.makedirs(LOGS, exist_ok=True)
+            self.fp = open(self.path, 'a', buffering=1)     # line-buffered
+            self.fp.write('# %s -- started %s\n' % (name, time.strftime('%Y-%m-%d %H:%M:%S')))
+        except Exception:
+            self.fp = None                                  # never fail a sync over a log
 
     def line(self, s):
         with JOBS_LOCK:
             self.log.append(s.rstrip())
             del self.log[:-400]          # a long match run must not eat memory
+        if self.fp:
+            try:
+                self.fp.write(s.rstrip() + '\n')
+            except Exception:
+                pass
+
+    def close(self, before=None, after=None):
+        """Seal the log and append one line to the history."""
+        rec = {'id': self.id, 'name': self.name, 'state': self.state,
+               'started': time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(self.started)),
+               'seconds': round(time.time() - self.started),
+               'log': os.path.relpath(self.path, ROOT)}
+        if before is not None or after is not None:
+            rec['device'] = {'before': before, 'after': after}
+            if isinstance(before, dict) and isinstance(after, dict) \
+                    and 'tracks' in before and 'tracks' in after:
+                pb, pa = before.get('playlists', {}), after.get('playlists', {})
+                rec['changed'] = {
+                    'tracks': [before['tracks'], after['tracks']],
+                    'playlists_removed': sorted(set(pb) - set(pa)),
+                    'playlists_added': sorted(set(pa) - set(pb)),
+                    'counts_changed': {k: [pb[k], pa[k]] for k in set(pb) & set(pa)
+                                       if pb[k] != pa[k]}}
+        if self.fp:
+            try:
+                self.fp.write('# %s after %ds\n' % (self.state, rec['seconds']))
+                if 'changed' in rec:
+                    self.fp.write('# changed: %s\n' % json.dumps(rec['changed'], ensure_ascii=False))
+                self.fp.close()
+            except Exception:
+                pass
+            self.fp = None
+        try:
+            os.makedirs(LOGS, exist_ok=True)
+            with open(os.path.join(LOGS, 'history.jsonl'), 'a') as h:
+                h.write(json.dumps(rec, ensure_ascii=False) + '\n')
+        except Exception:
+            pass
 
     def as_dict(self):
         return {'id': self.id, 'name': self.name, 'state': self.state,
                 'log': self.log[-60:], 'seconds': round(time.time() - self.started)}
 
 
-def run_job(name, steps):
-    """steps: list of (label, argv) or (label, callable)."""
+def run_job(name, steps, fingerprint=False):
+    """steps: list of (label, argv) or (label, callable).
+
+    `fingerprint` reads the device before and after, so the history line says
+    what the run actually changed rather than only that it ran.
+    """
     job = Job(name)
     with JOBS_LOCK:
         JOBS[job.id] = job
 
     def work():
+        before = device_fingerprint() if fingerprint else None
+        after = None
         try:
             for label, step in steps:
                 job.line('--- %s' % label)
@@ -166,6 +291,15 @@ def run_job(name, steps):
         except Exception as e:
             job.line('!! %s' % e)
             job.state = 'error'
+        finally:
+            # The fingerprint is taken BEFORE the eject step in a sync job would
+            # make it unreadable; on the error path it is the more useful of the
+            # two, because it says how far the write got.
+            if fingerprint:
+                after = device_fingerprint()
+            job.close(before, after)
+            push({'type': 'job', 'id': job.id, 'state': job.state, 'name': job.name})
+            push({'type': 'data', 'why': job.name})
 
     threading.Thread(target=work, daemon=True).start()
     return job
@@ -364,8 +498,14 @@ def tracks_payload(scope=''):
         # came out of an Apple Music playlist at all. audio_source() prefers the
         # T7 original, so play_from says the same thing rather than guessing.
         t7 = bool(dev.get('origin'))
+        # `device` must mean ON THE IPOD RIGHT NOW, not "has been". The metadata
+        # blob survives a removal -- sync clears `on_ipod` but keeps the blob so
+        # the origin path and duration stay available -- so testing the blob
+        # alone left a removed track wearing POD, filtered as "on iPod", offered
+        # "Delete from iPod", and counted forever in the Sync badge.
+        on_pod = bool(dev) and r.get('on_ipod', True) is not False
         out.append({
-            'device': bool(dev), 'dev_album': dev.get('album'),
+            'device': on_pod, 'had_device': bool(dev), 'dev_album': dev.get('album'),
             'dev_seconds': dev.get('seconds'), 'origin_ext': dev.get('origin_ext'),
             'lossless': dev.get('lossless'),
             't7': t7, 'am': bool(r['playlists']) or k in am_keys,
@@ -530,6 +670,40 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({'playlists': d.get('playlists', []),
                                                'read_at': d.get('read_at'),
                                                'library': len(d.get('keys', []))}))
+        if u.path == '/api/events':
+            q = queue.Queue(maxsize=64)
+            with CLIENTS_LOCK:
+                CLIENTS.append(q)
+            try:
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Connection', 'keep-alive')
+                self.end_headers()
+                self.wfile.write(b'retry: 2000\n\n')
+                while True:
+                    try:
+                        self.wfile.write(q.get(timeout=20).encode())
+                    except queue.Empty:
+                        self.wfile.write(b': keepalive\n\n')   # through proxies and idle timeouts
+                    self.wfile.flush()
+            except Exception:
+                pass                                            # the tab closed
+            finally:
+                with CLIENTS_LOCK:
+                    if q in CLIENTS:
+                        CLIENTS.remove(q)
+            return
+        if u.path == '/api/history':
+            hp = os.path.join(LOGS, 'history.jsonl')
+            rows = []
+            if os.path.exists(hp):
+                for ln in open(hp):
+                    try:
+                        rows.append(json.loads(ln))
+                    except Exception:
+                        pass
+            return self._send(200, json.dumps({'runs': rows[-50:][::-1]}))
         if u.path == '/api/device':
             return self._send(200, json.dumps(device_playlists()))
         if u.path == '/api/health':
@@ -662,7 +836,7 @@ class Handler(BaseHTTPRequestHandler):
                 ('sync', [py, '-u', '-c',
                  'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
                  'sys.exit(main(["sync"]))']),
-                ('ejected', _mark_ejected)]).id}
+                ('ejected', _mark_ejected)], fingerprint=True).id}
         if a == 'index':
             return {'ok': True, 'job': run_job('index the music drive', [
                 ('index', [py, '-u', '-c',
@@ -715,9 +889,11 @@ def main(argv=None):
         print('first run - building state'); S.rebuild()
 
     srv = ThreadingHTTPServer(('127.0.0.1', a.port), Handler)
+    watch_page(os.path.join(HERE, 'curate.html'))
     url = 'http://127.0.0.1:%d/' % a.port
     print('saltpod  ->  %s' % url)
     print('everything happens in the page. ctrl-c here when done.')
+    print('live: edits to curate.html reload open tabs; jobs redraw them in place.')
     if not a.no_open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:

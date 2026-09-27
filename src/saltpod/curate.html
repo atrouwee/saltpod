@@ -1445,6 +1445,27 @@ function paintHealth(){
   if(h.config)g.push(dot('warn','config','missing'));
   el.innerHTML=g.join('');
 }
+// PRE-SYNC ON RECONNECT. The page's idea of what the iPod holds is fetched
+// once, at load. Plug the device back in after a sync done elsewhere -- or
+// after our own sync ejected it -- and every count on screen is describing a
+// device that has since changed. So the moment health flips TO ready from
+// anything else, re-read the device and recompute, before you are offered a
+// Sync button whose number you would otherwise have to distrust.
+let lastPod=null, presyncing=false;
+async function preSync(){
+  if(presyncing)return; presyncing=true;
+  try{
+    toast('asking the iPod what it holds…');
+    await load();                       // /api/device is a live read
+    const p=await fetch('/api/plan').then(r=>r.json()).catch(()=>null);
+    if(p&&p.ok){
+      const n=(p.adds||[]).length+(p.removes||[]).length
+             +(p.new||[]).length+(p.update||[]).length+(p.delete||[]).length;
+      toast(n?`iPod read — ${n} change${n>1?'s':''} pending`:'iPod read — nothing to sync');
+    }
+  }catch(e){ toast('could not read the iPod'); }
+  finally{ presyncing=false; }
+}
 async function pollHealth(){
   try{
     const c=new AbortController(); const t=setTimeout(()=>c.abort(),3000);
@@ -1452,7 +1473,33 @@ async function pollHealth(){
     clearTimeout(t);
   }catch(e){ HEALTH={ipod:'absent',music:'closed',sources:[],tools:{ffmpeg:true,ffprobe:true}}; }
   paintHealth();
+  const pod=HEALTH.ipod;
+  if(pod==='ready'&&lastPod!==null&&lastPod!=='ready')preSync();
+  lastPod=pod;
 }
 pollHealth(); setInterval(pollHealth,4000);
+
+// LIVE UPDATES from the server, over SSE. The page no longer has to guess that
+// something moved underneath it -- the thing that moved says so.
+//
+//   data   -> re-fetch and redraw in place. Deliberately NOT a refresh: a
+//             refresh during curation loses your scroll, your open sheet and
+//             your selected collection, which is worse than a stale count.
+//   reload -> curate.html itself changed, so nothing but a real reload will do.
+//
+// EventSource reconnects on its own, so a server restart heals without a
+// keystroke; `retry: 2000` on the stream sets how fast.
+let ES=null;
+function liveConnect(){
+  try{ ES=new EventSource('/api/events'); }catch(e){ return; }
+  ES.onmessage=async ev=>{
+    let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
+    if(m.type==='reload'){ toast('page changed — reloading'); setTimeout(()=>location.reload(),150); return; }
+    if(m.type==='data'){ await load(); toast(m.why?`updated — ${m.why}`:'updated'); return; }
+    if(m.type==='job'&&m.state&&m.state!=='running') toast(`${m.name} — ${m.state}`);
+  };
+  ES.onerror=()=>{};                     // EventSource retries by itself
+}
+liveConnect();
 load();
 </script></body></html>

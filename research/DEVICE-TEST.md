@@ -177,3 +177,44 @@ new file placement · master playlist append · dropped positional indexes ·
 
 Still not exercised on the device: **track removal** (passes on copies).
 
+
+---
+
+# Sixth write — an *adopted* playlist deleted — 2026-09-27 19:01
+
+**Result: accepted.** `2018 Dec`, a playlist **iTunes made**, not saltpod —
+adopted into `collections` by `adopt_device_playlists()` on a device read, then
+deleted from the page and synced.
+
+Verified by parsing the 19:01:39 backup against the live database:
+
+|  | before 19:01 | now |
+|---|---|---|
+| playlists | 23 | **22** |
+| `2018 Dec` | 2 items | **not on device** |
+| tracks in the library | 482 | **482** |
+
+**The track count is the point.** Deleting a playlist that holds two tracks
+must not delete the two tracks — a playlist is a reference list, and the
+`mhit` records live in a different `mhsd` section. Both survived, and both are
+still reachable from the master playlist.
+
+This is a different case from the fifth write, which deleted a playlist
+saltpod had created itself. Here the deletion guard (`state.synced_playlists`,
+which only admits playlists this tool wrote) was satisfied by **adoption** —
+the rule that every non-smart playlist on the device becomes an editable
+collection. Adoption and deletion work end to end on a playlist whose origin
+was iTunes.
+
+## Proven on hardware now
+
+rename playlist · create playlist (both sections) · create from the page ·
+delete from the page · **delete an adopted iTunes-made playlist** · update an
+existing device playlist (re-sequence) · playlist membership with position
+mhods · new `mhit` by template cloning · new file placement · master playlist
+append · dropped positional indexes · `Play Counts` deletion · ALAC conversion
+· hash58 · zeroed hash72.
+
+Still not exercised on the device: **track removal**. It remains queued —
+`plan` lists *Monte Booker — interstellar house mix* (id 439) under removes,
+with `2019 Feb` going 1 → 0 and `B - Exp 2` going 6 → 5. One sync away.
