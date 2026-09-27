@@ -100,9 +100,9 @@ def main(argv=None):
         return reconcile.main(["--mount", a.mount] if a.mount else [])
     if a.cmd == "index":
         from . import local_index, config
-        roots = a.roots or [config.load().get("library_root", "")]
-        if not roots[0]:
-            fail("no library root", "pass folders, or set library_root in data/device.json")
+        roots = a.roots or config.load().get("library_roots") or []
+        if not roots:
+            fail("no library root", "pass folders, or set library_roots in data/device.json")
         return local_index.main(roots)
     if a.cmd == "applemusic":
         from . import curate as C

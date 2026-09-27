@@ -244,7 +244,27 @@ pre { background: var(--panel); border-radius: 8px; padding: 12px; font: 11px/1.
 footer { position: relative; background: var(--ground);
          padding: 10px 24px calc(10px + env(safe-area-inset-bottom, 0px));
          font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--dim);
-         display: flex; gap: 18px; flex-wrap: wrap; }
+         display: flex; gap: 18px; align-items: center; }
+#keys { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; flex: 1 1 auto; min-width: 0; }
+/* What the machine can reach: one slot per dependency, always present, always
+   in this order, changing state rather than appearing. Lit is reachable,
+   hollow is not here, orange is here and misbehaving. "Ejected" is hollow on
+   purpose: after a good sync the iPod is gone, and that is not a fault. */
+.st { display: flex; align-items: center; gap: 14px; flex: none;
+      font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; }
+.st i { font-style: normal; color: var(--dim); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.st i:before { content: ""; width: 5px; height: 5px; border-radius: 99px; background: var(--faint); flex: none; }
+.st i.ok { color: var(--ink); } .st i.ok:before { background: var(--ink); }
+.st i.warn { color: var(--orange); } .st i.warn:before { background: var(--orange); }
+.st i.off:before { background: transparent; box-shadow: inset 0 0 0 1px var(--faint); }
+.st .w { color: var(--dim); text-transform: none; letter-spacing: .02em; }
+/* the inline new-collection field, in the pane it belongs to */
+.ninl { padding: 4px 8px 8px; }
+#newin { width: 100%; background: transparent; border: 1px solid var(--faint); border-radius: 8px;
+         color: var(--ink); padding: 8px 11px; font: 12px var(--mono); }
+#newin:focus { outline: none; border-color: var(--ink); }
+.col[data-seed]:hover { background: linear-gradient(var(--sel-hi), var(--sel-lo)); }
+.col[data-seed]:hover > span, .col[data-seed]:hover .cnt { color: #fff; }
 footer:before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--faint); }
 kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint); padding: 0 5px; margin-right: 2px; }
 /* Built like a screen on the device rather than a window: a hairline edge, a
@@ -331,7 +351,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
   </aside>
 </div>
 
-<footer id="foot"></footer>
+<footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
 
 <div id="dlg"><div id="dlgbox">
@@ -359,6 +379,8 @@ let rtab='buy';
 // A collection made with "+ new" does not exist on the server until its first
 // track lands. Until then it lives here, so it does not vanish on the next load.
 let PENDING=new Set();
+let newMode=false, newQ='';           // the inline new-collection field, open or not
+let HEALTH=null;
 // The Discogs exports, and two maps from a match key to a release. A track
 // meets a release on artist + album; see discogs.py for what the key strips.
 let DISCOGS={wantlist:[],collection:[],files:{},dir:'data/discogs'}, OWN=new Map(), WANT=new Map();
@@ -515,7 +537,7 @@ function draw(){ counts(); drawCols(); drawMid(); drawRight(); drawFoot(); paint
 
 function drawFoot(){
   const inCol=side==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
-  $('#foot').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
+  $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
     <span><kbd>b</kbd> buy</span><span><kbd>m</kbd> maybe</span>
     <span><kbd>x</kbd> ${inCol?'take out of collection':'skip'}</span>
     <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
@@ -661,8 +683,9 @@ function nudge(dir){
 function drawCols(){
   document.querySelectorAll('#ltabs .pill').forEach(p=>p.classList.toggle('on',p.dataset.s===side));
   $('#lhead').textContent = side==='am' ? 'Apple Music' : 'Collections';
-  $('#newcol').style.display = side==='am' ? 'none' : '';
+  const nc=$('#newcol'); nc.style.display = side==='am' ? 'none' : ''; nc.textContent='+ new';
   if(side==='am')return drawAM();
+  if(newMode)return drawNew();
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=`<div class="col ${colPick===null?'on':''}" data-all="1">All tracks<span class="cnt">${ALL.length}</span></div>`;
@@ -696,7 +719,39 @@ function drawCols(){
       toast('added to '+name);
     };
   });
-  $('#newcol').onclick=()=>openDlg('__new__');
+  $('#newcol').onclick=enterNew;
+}
+
+/* A new collection is made in the pane it will live in: a field at the top of
+   the list, and the Apple Music playlists underneath as rows in the same
+   shape. Nothing floats, nothing dims, nothing is covered. The field is also
+   the filter -- type to narrow the playlists, or press enter to name one. */
+function enterNew(){ side='ipod'; newMode=true; newQ=''; drawCols(); }
+function drawNew(){
+  $('#lhead').textContent='New collection';
+  const nc=$('#newcol'); nc.textContent='esc'; nc.onclick=()=>{newMode=false;newQ='';drawCols();};
+  $('#colbody').innerHTML=`<div class="ninl"><input type="text" id="newin" placeholder="name it, or pick below" value="${esc(newQ)}"></div>
+    <div class="month">from Apple Music</div><div id="seedrows"></div>`;
+  const inp=$('#newin');
+  inp.oninput=e=>{newQ=e.target.value;paintSeeds();};
+  inp.onkeydown=e=>{e.stopPropagation();
+    if(e.key==='Escape'){newMode=false;newQ='';drawCols();return;}
+    if(e.key==='Enter'){const v=newQ.trim(); if(!v)return;
+      if(!COLS.includes(v))PENDING.add(v);
+      newMode=false; newQ=''; colPick=v; sel=0; draw();}};
+  paintSeeds(); inp.focus();
+}
+function paintSeeds(){
+  const el=$('#seedrows'); if(!el)return;
+  const q=newQ.trim().toLowerCase();
+  const rows=AMP.filter(p=>!q||p.name.toLowerCase().includes(q));
+  el.innerHTML = !AMP.length
+    ? `<p class="note">Not read yet — the gear has <b style="color:var(--ink)">Read Apple Music</b>.</p>`
+    : rows.length
+      ? rows.map(p=>`<div class="col dim" data-seed="${esc(p.name)}" title="${esc(p.name)} — ${p.tracks} tracks, created ${(p.created||'?').slice(0,10)}">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span><span class="cnt">${p.tracks}</span></div>`).join('')
+      : `<p class="note">No playlist called that. <kbd>enter</kbd> makes “${esc(newQ.trim())}” as a new one.</p>`;
+  el.querySelectorAll('[data-seed]').forEach(x=>x.onclick=()=>seedFrom(x.dataset.seed));
 }
 
 /* the other library: everything in Apple Music, for looking at */
@@ -718,7 +773,7 @@ function drawAM(){
       draw();
     };
   });
-  $('#newcol').onclick=()=>openDlg('__new__');
+  $('#newcol').onclick=enterNew;
 }
 async function ensureLib(){
   if(libLoaded)return;
@@ -990,8 +1045,11 @@ function openDlg(mode,why,plan){
       $('#dlglist').innerHTML=''; $('#dlgbtn').innerHTML='';
     } else {
       const n=plan.new.length+plan.update.length+plan.delete.length+plan.adds.length+plan.removes.length;
+      const gb=b=>b==null?'?':(b>=1e9?(b/1e9).toFixed(1)+' GB':Math.round(b/1e6)+' MB');
+      const fits = plan.add_bytes==null||plan.free_bytes==null||plan.add_bytes<=plan.free_bytes;
       $('#dlgp').innerHTML = n
         ? 'A dated backup is taken first, and tracks the collections do not mention are left alone.'
+          + (plan.adds.length?` Adds about <b style="color:var(--ink)">${gb(plan.add_bytes)}</b> after conversion, of ${gb(plan.free_bytes)} free${fits?'':' — <span style="color:var(--orange)">that will not fit</span>'}.`:'')
         : 'Nothing to do — the iPod already matches.';
       const line=(label,items)=>items.length?`<div class="dsec">${label} · ${items.length}</div>`
         + items.slice(0,12).map(x=>`<div class="drow"><span class="dn">${esc(typeof x==='string'?x:x.artist+' — '+x.title)}</span>${x.convert?'<span class="dc">&rarr; ALAC</span>':''}</div>`).join('')
@@ -1000,7 +1058,7 @@ function openDlg(mode,why,plan){
         + line('playlists to delete',plan.delete)+line('tracks to copy across',plan.adds)
         + line('tracks to take off',plan.removes)
         + line('in a collection but not owned yet — left until there is a file',plan.no_source);
-      $('#dlgbtn').innerHTML = n?'<button class="go" id="dlgok">Sync</button>':'';
+      $('#dlgbtn').innerHTML = (n&&fits)?'<button class="go" id="dlgok">Sync</button>':'';
       const ok=$('#dlgok'); if(ok)ok.onclick=()=>{closeDlg();startJob({action:'sync'});};
     }
     dlg.classList.add('on'); return;
@@ -1052,7 +1110,7 @@ async function seedFrom(name){
                                       collection:name, mode:'add'});
   if(!res.ok){toast('NOT SAVED — check the terminal');return;}
   await post('/api/decide',{reorder:{collection:name, keys}});
-  closeDlg(); side='ipod'; colPick=name; sel=0;
+  closeDlg(); newMode=false; newQ=''; side='ipod'; colPick=name; sel=0;
   try{ localStorage['saltpod.side']='ipod'; }catch(e){}
   await load();
   const waiting=keys.filter(k=>!(BYKEY.get(k)||{}).local).length;
@@ -1095,7 +1153,7 @@ document.addEventListener('keydown',e=>{
   if(k==='/'){e.preventDefault();qi.focus();return;}
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}
-  if(k==='Escape'){ if(q){q='';qi.value='';draw();} else if(colPick){colPick=null;sel=0;draw();} return; }
+  if(k==='Escape'){ if(newMode){newMode=false;newQ='';drawCols();} else if(q){q='';qi.value='';draw();} else if(colPick){colPick=null;sel=0;draw();} return; }
   if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
   if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
@@ -1112,5 +1170,30 @@ document.addEventListener('keydown',e=>{
   else if(k==='c'){e.preventDefault();openDlg(null);}
   else if(k==='f'){filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
 });
+/* ---------------- what the machine can reach ---------------- */
+function paintHealth(){
+  const el=$('#hstrip'), h=HEALTH; if(!el)return;
+  if(!h){el.innerHTML='';return;}
+  const dot=(cls,label,word)=>`<i class="${cls}" title="${esc(label)}${word?' — '+esc(word):''}">${esc(label)}${word?` <span class="w">${esc(word)}</span>`:''}</i>`;
+  const g=[];
+  const ip={ready:['ok','iPod',''],waking:['warn','iPod','waking'],
+            ejected:['off','iPod','ejected'+(h.ejected_at?' '+h.ejected_at:'')],absent:['off','iPod','']}[h.ipod]||['off','iPod',''];
+  g.push(dot(...ip));
+  const mu={ok:['ok','Music',''],closed:['off','Music','closed'],wedged:['warn','Music','not answering']}[h.music]||['off','Music',''];
+  g.push(dot(...mu));
+  (h.sources||[]).forEach(s=>g.push(dot(s.online?'ok':'off',s.name,s.online?'':'offline')));
+  if(h.tools&&!(h.tools.ffmpeg&&h.tools.ffprobe))g.push(dot('warn','ffmpeg','missing'));
+  if(h.config)g.push(dot('warn','config','missing'));
+  el.innerHTML=g.join('');
+}
+async function pollHealth(){
+  try{
+    const c=new AbortController(); const t=setTimeout(()=>c.abort(),3000);
+    HEALTH=await fetch('/api/health',{signal:c.signal}).then(r=>r.json());
+    clearTimeout(t);
+  }catch(e){ HEALTH={ipod:'absent',music:'closed',sources:[],tools:{ffmpeg:true,ffprobe:true}}; }
+  paintHealth();
+}
+pollHealth(); setInterval(pollHealth,4000);
 load();
 </script></body></html>

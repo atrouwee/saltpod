@@ -23,6 +23,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -39,6 +40,81 @@ from . import state as S  # noqa: E402
 LOCK = threading.Lock()
 JOBS = {}
 JOBS_LOCK = threading.Lock()
+
+# Two facts the page cannot see from the filesystem alone. A sync ends by
+# ejecting the iPod, so its absence right afterwards is success, not a fault;
+# and Music.app can accept a request and never answer it, which only a real
+# read can discover. Both are remembered here and reported by /api/health.
+EJECTED_AT = None
+MUSIC_WEDGED_AT = None
+_INDEX_CACHE = {}
+
+
+def _mark_ejected(job=None):
+    global EJECTED_AT
+    EJECTED_AT = datetime.now().strftime('%H:%M')
+    if job:
+        job.line('--- ejected at %s' % EJECTED_AT)
+
+
+def _osa(argv, timeout):
+    """Run an AppleScript with a hard timeout, and remember if it hung."""
+    global MUSIC_WEDGED_AT
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=ROOT)
+    except subprocess.TimeoutExpired:
+        MUSIC_WEDGED_AT = datetime.now().strftime('%H:%M')
+        raise RuntimeError('Music.app accepted the request and did not answer within %ds' % timeout)
+    MUSIC_WEDGED_AT = None
+    return r
+
+
+def health():
+    """What the tool can reach right now. Every check here is a filesystem
+    stat or a pgrep -- never an Apple event, which is the one thing that can
+    hang. The iPod's readiness is the database file, the same test plan uses,
+    so the strip and the sync never disagree."""
+    global EJECTED_AT
+    out = {'ipod': 'absent', 'music': 'closed', 'sources': [], 'tools': {}, 'index': None,
+           'ejected_at': None, 'wedged_at': MUSIC_WEDGED_AT, 'config': None}
+    try:
+        from . import config, apply as A
+        cfg = config.load()
+        mount = cfg.get('mount', '/Volumes/IPOD')
+    except SystemExit as e:
+        out['config'] = str(e)
+        return out
+    vol = os.path.isdir(mount)
+    db = os.path.exists(os.path.join(mount, A.DB_REL))
+    if db:
+        out['ipod'] = 'ready'
+        EJECTED_AT = None
+    elif vol:
+        out['ipod'] = 'waking'
+    elif EJECTED_AT:
+        out['ipod'] = 'ejected'
+        out['ejected_at'] = EJECTED_AT
+    running = subprocess.run(['pgrep', '-x', 'Music'], capture_output=True).returncode == 0
+    out['music'] = 'wedged' if (running and MUSIC_WEDGED_AT) else ('ok' if running else 'closed')
+    for root in cfg.get('library_roots', []):
+        # Name it by the drive when it is on one -- the volume, not the folder.
+        # That is the thing that gets unplugged, and the word you would use.
+        parts = root.rstrip('/').split('/')
+        name = parts[2] if len(parts) > 2 and parts[1] == 'Volumes' else (parts[-1] or root)
+        out['sources'].append({'name': name, 'path': root, 'online': os.path.isdir(root)})
+    out['tools'] = {'ffmpeg': bool(shutil.which('ffmpeg')), 'ffprobe': bool(shutil.which('ffprobe'))}
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    if os.path.exists(idx):
+        mt = os.path.getmtime(idx)
+        if _INDEX_CACHE.get('mtime') != mt:
+            try:
+                n = len(json.load(open(idx)).get('tracks', []))
+            except Exception:
+                n = None
+            _INDEX_CACHE.update(mtime=mt, tracks=n)
+        out['index'] = {'built': datetime.fromtimestamp(mt).strftime('%Y-%m-%d %H:%M'),
+                        'tracks': _INDEX_CACHE.get('tracks')}
+    return out
 
 
 # ---------------------------------------------------------------- jobs
@@ -122,9 +198,8 @@ def am_index():
 
 
 def refresh_am_index():
-    out = subprocess.run(['osascript', '-l', 'JavaScript',
-                          os.path.join(ROOT, 'bin/export_playlists.js'), '--index'],
-                         capture_output=True, text=True, timeout=600, cwd=ROOT)
+    out = _osa(['osascript', '-l', 'JavaScript',
+                os.path.join(ROOT, 'bin/export_playlists.js'), '--index'], 600)
     if out.returncode != 0:
         raise RuntimeError((out.stderr or 'osascript failed').strip()[:400])
     d = json.loads(out.stdout)
@@ -174,7 +249,24 @@ def plan_summary(mount=None):
         if not os.path.exists(os.path.join(m, A.DB_REL)):
             return {'ok': False, 'reason': 'no iPod at %s' % m}
         p = A.plan(m)
+        # Estimated on the converted size, not the source: FLAC to ALAC is about
+        # the same, WAV and AIFF roughly halve, lossy files are copied as they
+        # are. Estimates -- the real number is only known after ffmpeg has run.
+        factor = {'.flac': 1.05, '.alac': 1.0, '.wav': 0.55, '.aiff': 0.55, '.aif': 0.55}
+        add_bytes = 0
+        for k, r, src in p['adds']:
+            try:
+                sz = os.path.getsize(src)
+            except OSError:
+                sz = 0
+            add_bytes += int(sz * factor.get(os.path.splitext(src)[1].lower(), 1.0))
+        try:
+            sv = os.statvfs(m)
+            free_bytes = sv.f_bavail * sv.f_frsize
+        except OSError:
+            free_bytes = None
         return {
+            'add_bytes': add_bytes, 'free_bytes': free_bytes,
             'ok': True, 'mount': m,
             'new': p['new_playlists'], 'update': p['update_playlists'],
             'delete': p['delete_playlists'],
@@ -389,6 +481,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({'playlists': d.get('playlists', []),
                                                'read_at': d.get('read_at'),
                                                'library': len(d.get('keys', []))}))
+        if u.path == '/api/health':
+            return self._send(200, json.dumps(health()))
         if u.path == '/api/plan':
             return self._send(200, json.dumps(plan_summary()))
         if u.path == '/api/library':
@@ -396,10 +490,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == '/api/peek':
             name = (parse_qs(u.query).get('name') or [''])[0]
             try:
-                r = subprocess.run(['osascript', '-l', 'JavaScript',
-                                    os.path.join(ROOT, 'bin/export_playlists.js'),
-                                    '--peek', name],
-                                   capture_output=True, text=True, timeout=180, cwd=ROOT)
+                r = _osa(['osascript', '-l', 'JavaScript',
+                          os.path.join(ROOT, 'bin/export_playlists.js'), '--peek', name], 180)
                 d = json.loads(r.stdout or '{}')
             except Exception as e:
                 d = {'error': str(e)[:200]}
@@ -518,7 +610,8 @@ class Handler(BaseHTTPRequestHandler):
             return {'ok': True, 'job': run_job('sync to the iPod', [
                 ('sync', [py, '-c',
                  'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
-                 'sys.exit(main(["sync"]))'])]).id}
+                 'sys.exit(main(["sync"]))']),
+                ('ejected', _mark_ejected)]).id}
         if a == 'am_index':
             return {'ok': True, 'job': run_job('read Apple Music', [
                 ('read playlists and library', [py, '-c',

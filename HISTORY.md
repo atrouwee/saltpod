@@ -219,5 +219,7 @@ Each of these has a reason above. Do not relitigate them without reading it.
 
 See HANDOFF for the current state and the open items. The standing ones:
 the three hardware proofs still to run (track removal, playlist deletion, a
-drag by hand), a status strip for what the tool can reach, a size estimate
-after conversion, and progress while a sync runs.
+drag by hand), and progress by phase while a sync runs. The status strip and
+the size estimate landed the same night they were designed, on the owner's
+picks: status in the footer, opposite the keys; a new collection made inline
+in its own pane rather than in a panel over it.

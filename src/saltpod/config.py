@@ -23,6 +23,14 @@ def load():
     if not re.fullmatch(r'[0-9A-Fa-f]{16}', d.get('firewire_guid', '')):
         raise SystemExit('data/device.json: firewire_guid must be 16 hex characters')
     d.setdefault('mount', '/Volumes/IPOD')
+    # One drive was the first case; anyone else may keep music in several
+    # places. A bare string still works and becomes a one-element list.
+    roots = d.get('library_roots')
+    if isinstance(roots, str):
+        roots = [roots]
+    if not roots and d.get('library_root'):
+        roots = [d['library_root']]
+    d['library_roots'] = [r for r in (roots or []) if r]
     return d
 
 
