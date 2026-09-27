@@ -593,7 +593,7 @@ function drawFoot(){
   const inCol=side==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
   $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
     <span><kbd>b</kbd> buy</span><span><kbd>m</kbd> maybe</span>
-    <span><kbd>x</kbd> ${inCol?'take out of collection':'skip'}</span>
+    <span><kbd>x</kbd> ${inCol?'take out of collection':'skip'}</span>${inCol?'<span><kbd>X</kbd> delete from iPod</span>':''}
     <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
     ${canSeq?'<span><kbd>J</kbd><kbd>K</kbd> re-sequence</span>':''}
     <span><kbd>.</kbd> menu</span><span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span><span><kbd>[</kbd><kbd>]</kbd> panes</span>
@@ -1220,21 +1220,36 @@ function paintMenu(){
   // a track
   h.innerHTML=esc(t.artist+' — '+t.title);
   const inCol=side==='ipod'&&!!colPick;
+  // Inside a collection, x takes the track out of it; X takes it off the iPod
+  // altogether -- out of every playlist, gone from the device on the next
+  // sync. That is what "delete from library" means when the library is the
+  // iPod. For a track not on the device, the same choice is just Skip.
+  const delLabel = t.device ? 'Delete from iPod' : 'Skip';
   b.innerHTML=menuRow('Add to playlist &rsaquo;','c',false,'m-add')
     +(inCol?menuRow('Take out of '+esc(colPick),'x',false,'m-out'):'')
     +'<div class="sep"></div>'
     +menuRow('Buy','b',t.tier==='shortlisted','m-buy')+menuRow('Maybe','m',t.tier==='maybe','m-maybe')
-    +(inCol?'':menuRow('Skip','x',t.tier==='skipped','m-skip'))+menuRow('Undecided','u',t.tier==='seen','m-undo')
-    +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play');
+    +menuRow('Undecided','u',t.tier==='seen','m-undo')
+    +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play')
+    +'<div class="sep"></div>'+menuRow(delLabel,inCol?'X':'x',t.tier==='skipped','m-del');
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
   on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},[t.key]);});
   on('m-buy',()=>{closeMenu();decide({tier:'shortlisted'},[t.key]);});
   on('m-maybe',()=>{closeMenu();decide({tier:'maybe'},[t.key]);});
-  on('m-skip',()=>{closeMenu();decide({tier:'skipped'},[t.key]);});
+  on('m-del',()=>{closeMenu();deleteFromIpod(t);});
   on('m-undo',()=>{closeMenu();decide({tier:'seen'},[t.key]);});
   on('m-vinyl',()=>{closeMenu();decide({vinyl:!t.vinyl},[t.key]);});
   on('m-play',()=>{closeMenu();play();});
+}
+// Off the iPod: out of every playlist it is in, then skipped, which sync
+// reads as "take this track off the device". Nothing happens on the device
+// until the next sync, and the row says so by being struck through.
+async function deleteFromIpod(t){
+  for(const c of (t.collections||[]))
+    await post('/api/decide',{keys:[t.key],collection:c,mode:'remove'});
+  await decide({tier:'skipped'},[t.key]);
+  toast(t.device?'off the iPod on the next sync':'skipped');
 }
 document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more'))closeMenu(); });
 // a scroll of the page closes the menu; a scroll inside the menu is the menu working
@@ -1367,6 +1382,7 @@ document.addEventListener('keydown',e=>{
   if(k===']'){e.preventDefault();fold('R');return;}
   if(k==='.'){ const mo=document.querySelector('#list .row.sel .more'); if(mo){e.preventDefault(); if(MENU)closeMenu(); else openMenu(mo,'track',view[sel]);} return; }
   if(k==='Escape'){ if(MENU){closeMenu();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
+  if(k==='X'){ const t=view[sel]; if(t)deleteFromIpod(t); return; }
   if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
   if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
