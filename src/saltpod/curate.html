@@ -1,11 +1,19 @@
 <!doctype html><html><head><meta charset="utf-8">
 <title>saltpod</title><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-/* One file, no build step, nothing fetched from anywhere. The tokens are
-   PlayPi's (the house style for anything that plays music here): a dark
-   ground, soft-white ink, a seam the lists slide under, and one orange that
-   appears exactly once -- on the row that is playing. Words are set in the
-   face; the machine's own labels (positions, tags, keys) in the mono. */
+/* One file, no build step, nothing fetched from anywhere.
+
+   One workspace, never a set of tabs: collections on the left, the library in
+   the middle, buy and vinyl on the right, and a track moves between them by
+   being dragged. The three are always there because the whole job is moving a
+   record from "I heard it" to "it is on the iPod", and that is a gesture, not
+   a navigation.
+
+   The tokens are PlayPi's (the house style for anything that plays music
+   here): a dark ground, soft-white ink, a seam the lists slide under, and one
+   orange that appears exactly once -- on the row that is playing. Words are
+   set in the face; the machine's own labels (positions, tags, keys) in the
+   mono. The selection blue is the iPod's own. */
 :root {
   --ground: #141d29;
   --ink:    #fffffc;
@@ -14,13 +22,23 @@
   --dim:    rgba(255,255,252,.55);
   --faint:  rgba(255,255,252,.22);
   --panel:  rgba(255,255,252,.05);
+  --raised: rgba(255,255,252,.09);
   --mono:   "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --face:   "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* the selection blue, read off a photograph of the device: bright at the top,
+     deeper below. It marks where you ARE; the orange marks what you HEAR, and
+     the two never mean the same thing. Drop targets borrow the blue, because a
+     drop is also a "here", never a "hear". */
+  --sel-hi: #6aa9f4;
+  --sel-lo: #1450b8;
+  --lw: 240px;   /* the side panes; a folded one is simply gone */
+  --rw: 320px;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--ground); color: var(--ink); font: 400 15px/1.4 var(--face); }
+html { -webkit-text-size-adjust: 100%; height: 100%; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 400 15px/1.4 var(--face);
+       height: 100vh; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--faint); }
 a:hover { text-decoration-color: var(--ink); }
 button, input, select { font: inherit; color: var(--ink); }
@@ -32,148 +50,381 @@ button.go { background: var(--ink); color: var(--ground); border-color: var(--in
 input[type=text], input[type=search], select { background: transparent; border: 1px solid var(--faint);
          padding: 6px 9px; font-family: var(--mono); font-size: 12px; }
 input::placeholder { color: var(--dim); }
+input:focus, select:focus { outline: none; border-color: var(--ink); }
 
-/* header: brand, the views, the counts. A seam under it, full-bleed. */
-header { position: sticky; top: 0; z-index: 5; background: var(--ground);
-         padding: 22px 24px 0; display: flex; flex-direction: column; gap: 14px; }
+/* header: the brand line, then the deck -- the last line before the seam, laid
+   out on the same three columns as the panes below it, so every control sits
+   directly above the pane it governs: the left fold over the collections, the
+   counts over the list, buy / vinyl and the right fold over the right pane. */
+header { background: var(--ground); padding: 22px 24px 0; display: flex; flex-direction: column; gap: 14px; }
 header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 0 -24px; }
-.brandline { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.brandline { display: grid; grid-template-columns: 1fr minmax(220px, 440px) 1fr; align-items: center; gap: 16px; }
+.hright { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .01em; text-transform: uppercase; }
-nav { display: flex; gap: 18px; }
-nav b { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-        font-weight: 500; cursor: pointer; color: var(--dim); padding: 4px 0; border-bottom: 1px solid transparent; }
-nav b:hover { color: var(--ink); }
-nav b.on { color: var(--ink); border-bottom-color: var(--ink); }
+#q { width: 100%; padding: 7px 12px; }
+.deck { display: grid; align-items: end; margin: 0 -24px; padding: 0 0 12px;
+        grid-template-columns: max(var(--lw), 50px) minmax(0, 1fr) max(var(--rw), 50px); }
+.deck .dl { padding-left: 24px; display: flex; align-items: center; gap: 14px; }
+#ltabs { display: flex; gap: 14px; }
+body.nl #ltabs { display: none; }
+.deck .dr { padding-right: 24px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+#rtabs { display: flex; gap: 14px; }
+body.nr #rtabs { display: none; }
 .counts { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--dim);
-          display: flex; gap: 14px; flex-wrap: wrap; }
+          display: flex; gap: 14px; flex-wrap: wrap; padding-left: 18px; }
 .counts s { text-decoration: none; color: var(--ink); }
-.ctlrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-bottom: 12px; }
 .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
         color: var(--dim); cursor: pointer; user-select: none; padding: 3px 0; border-bottom: 1px solid transparent; }
+.pill:hover { color: var(--ink); }
 .pill.on { color: var(--ink); border-bottom-color: var(--ink); }
+#gear { padding: 5px 9px; font-size: 13px; line-height: 1; position: relative; }
+#gear.busy:after { content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
+                   border-radius: 99px; background: var(--orange); }
 
-main { max-width: 1040px; margin: 0 auto; padding: 8px 24px 120px; }
-.view { display: none; } .view.on { display: block; }
+/* ---------- the three panes ---------- */
+/* No boxes. The surface fills the space; the only dividers on it are the two
+   hairlines either side of the list. Everything else is separated by air. */
+#work { display: grid; gap: 0; padding: 0;
+        grid-template-columns: var(--lw) minmax(0, 1fr) var(--rw); min-height: 0; }
+aside, section.mid { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+/* Pinned to their tracks on purpose: when a side pane is display:none the
+   middle would otherwise auto-place into the 0px track it left behind. */
+aside.left  { grid-column: 1; border-right: 1px solid var(--faint); }
+section.mid { grid-column: 2; }
+aside.right { grid-column: 3; border-left: 1px solid var(--faint); }
+body.nl { --lw: 0px; }  body.nl aside.left  { display: none; }
+body.nr { --rw: 0px; }  body.nr aside.right { display: none; }
+/* each pane opens with one quiet mono line: what it is, and what can be done to it */
+.plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
+          padding: 16px 18px 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+          text-transform: uppercase; color: var(--dim); }
+.plabel .name { color: var(--ink); flex: 1 1 auto; min-width: 10ch; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; }
+.plabel .sp { display: none; }
+.plabel .act { cursor: pointer; white-space: nowrap; }
+.plabel .act:hover { color: var(--ink); }
+.pstat { letter-spacing: .06em; }
+.pstat s { text-decoration: none; color: var(--ink); }
+.pbody { overflow: auto; padding: 4px 14px 24px; flex: 1 1 auto; min-height: 0; }
+/* the filters: a section of the list, folded away until wanted. The toggle
+   always names the active filter, so a folded section never hides one. */
+.filters { display: none; gap: 12px; flex-wrap: wrap; align-items: center; padding: 2px 18px 10px; }
+section.mid.fx .filters { display: flex; }
 
-/* the month heading: a rule, then the machine's label */
-.month { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
-         color: var(--dim); margin: 28px 0 6px; padding-top: 8px; border-top: 1px solid var(--faint); }
+/* the boxed chevrons in the header corners that fold a side pane away */
+.fold { font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--dim); flex: none;
+        border: 1px solid var(--faint); width: 26px; height: 22px; display: inline-flex;
+        align-items: center; justify-content: center; cursor: pointer; user-select: none; }
+.fold:hover { color: var(--ink); border-color: var(--ink); }
 
-/* rows slide under the seam; the selected one lifts on the panel tone */
-.row { display: grid; grid-template-columns: 44px 1fr auto; gap: 14px; align-items: center;
-       padding: 9px 8px; cursor: pointer; border-bottom: 1px solid var(--faint); }
+/* ---------- rows ---------- */
+/* Rows float on the ground -- separated by space, not rules -- and the selected
+   one takes the device's blue. */
+.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
+       padding: 9px 10px; cursor: pointer; border-radius: 10px; margin-bottom: 3px; user-select: none; }
 .row:hover { background: var(--panel); }
-.row.sel, .row.csel { background: var(--panel); box-shadow: inset 2px 0 0 var(--ink); }
-.row.playing { box-shadow: inset 2px 0 0 var(--orange); }        /* the orange, once */
-.row.playing .n { color: var(--orange); }
-.art { width: 44px; height: 44px; background: var(--seam); object-fit: cover; flex: none; }
+.row.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo));
+       box-shadow: inset 0 1px 0 rgba(255,255,255,.16); }
+.row.sel .s { color: rgba(255,255,255,.82); }
+.row.sel .ch, .row.sel .pos, .row.sel .grab { color: #fff; }
+.row.sel .tag { color: #fff; border-color: rgba(255,255,255,.55); }
+.art { width: 44px; height: 44px; border-radius: 7px; background: var(--seam);
+       object-fit: cover; flex: none; -webkit-user-drag: none; }
 .t { min-width: 0; }
 .t .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;
-        letter-spacing: -.01em; text-transform: uppercase; font-size: 14px; }
-.t .s { color: var(--dim); font-family: var(--mono); font-size: 11px; letter-spacing: .02em;
+        letter-spacing: -.005em; font-size: 14px; }
+.t .s { color: var(--dim); font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+.ch { color: var(--dim); font-size: 13px; padding-left: 2px; }
+/* Where a track LIVES, as against what you have decided about it. Facts get
+   plain mono with no border; decisions keep the bordered pills.
+
+   The places are PEERS -- Apple Music, the T7, the iPod, a record -- and no
+   attempt is made to say which came first. A track can sit in all four and
+   the order it arrived in is unknowable. What is owned shows in full ink and
+   what is only rented stays dim, so the gap this tool exists to close can be
+   read by scanning one column. */
+.src { display: flex; gap: 7px; align-items: center; flex: none;
+       font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--dim); }
+.src b { font-weight: 400; color: var(--ink); }
+.src .gone { text-decoration: line-through; }
+.row.sel .src, .row.sel .src b { color: #fff; }
 .tags { display: flex; gap: 6px; align-items: center; flex: none; }
-.tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
-       padding: 2px 6px; border: 1px solid var(--faint); color: var(--dim); white-space: nowrap; }
+.tag { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+       padding: 2px 7px; border-radius: 99px; border: 1px solid var(--faint);
+       color: var(--dim); white-space: nowrap; }
 .tag.buy, .tag.ok { color: var(--ink); border-color: var(--ink); }
 .tag.maybe { color: var(--ink); border-style: dashed; }
 .tag.skip { opacity: .5; }
 .tag.vinyl { color: var(--ink); background: var(--panel); }
-.tag.col { color: var(--ink); }
-.row.skip .t { opacity: .38; }
+/* One meaning for each: dim is "not on the iPod yet", struck through is "on
+   its way off it". Two directions, two signals, never the same ink. */
+.row.pending .t, .row.pending .art { opacity: .45; }
+.row.skip .t .n { text-decoration: line-through; }
+.col.pend .cnt { color: var(--orange); }
 .row.dragging { opacity: .35; }
-.row.over { border-top: 2px solid var(--ink); }
-.pos { color: var(--dim); font-family: var(--mono); font-size: 11px; width: 28px; text-align: right; }
-.grab { cursor: grab; color: var(--dim); padding: 0 6px; }
+.row.over { box-shadow: inset 0 2px 0 var(--sel-hi); }
+.pos { color: var(--dim); font-family: var(--mono); font-size: 11px; width: 24px; text-align: right; }
+.grab { cursor: grab; color: var(--dim); padding: 0 4px; }
+.month { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase;
+         color: var(--dim); margin: 22px 0 6px; padding: 0 10px; }
+.month:first-child { margin-top: 4px; }
+.month.vg { cursor: pointer; user-select: none; margin: 16px 0 6px; padding: 0 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.month.vg:hover { color: var(--ink); }
+code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
 
-h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; text-transform: uppercase; margin: 22px 0 8px; }
-h2:first-child { margin-top: 12px; }
-p.note { color: var(--dim); font-size: 14px; margin: 0 0 16px; max-width: 66ch; }
+/* Playing is said twice and never with a bar: the equaliser takes the chevron's
+   slot -- a playing row is not going anywhere -- and the duration stops being a
+   fact about the file and becomes a position inside it. Both in the orange. */
+.eq { display: none; align-items: flex-end; gap: 2px; height: 13px; width: 15px; }
+.eq i { width: 3px; border-radius: 1px; background: var(--orange); transform-origin: bottom;
+        animation: eq .9s ease-in-out infinite; }
+.eq i:nth-child(1) { height: 40%; animation-delay: -.2s; }
+.eq i:nth-child(2) { height: 95%; animation-delay: -.5s; }
+.eq i:nth-child(3) { height: 62%; animation-delay: -.8s; }
+@keyframes eq { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .eq i { animation: none; } }
+.row.playing .ch { display: none; }
+.row.playing .eq { display: inline-flex; }
+.dur { font-variant-numeric: tabular-nums; }
+.row.playing .dur { color: var(--orange); }
+.row.sel .eq i { background: #fff; }
+.row.sel.playing .dur { color: #fff; }
+
+/* ---------- left pane: collections ---------- */
+.col { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px;
+       cursor: pointer; font-size: 13.5px; margin-bottom: 2px; }
+.col:hover { background: var(--panel); }
+.col.on { background: var(--raised); font-weight: 700; }
+.col .cnt { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.col.pending .cnt { font-style: italic; }
+.col.dim > span:first-child { color: var(--dim); }
+.col .cnt .act { cursor: pointer; }
+.col .cnt .act:hover { color: var(--ink); }
+.col.drop, aside.right.drop .pbody { outline: 2px dashed var(--sel-hi); outline-offset: -3px; border-radius: 10px; }
+.col.drop { background: rgba(106,169,244,.12); }
+
+/* ---------- right pane: buy / vinyl ---------- */
+.card { background: var(--panel); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+.card b { font-size: 13px; }
+.card .sub { color: var(--dim); font-size: 10.5px; margin-top: 3px; font-family: var(--mono); }
+.card .acts { margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
+.card .acts button { padding: 4px 9px; font-size: 9.5px; margin-left: auto; }
+p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 1.5; }
+
+/* ---------- settings overlay, where Data lives now ---------- */
+#ovl { position: fixed; inset: 0; background: rgba(7,12,19,.8); display: none;
+       align-items: flex-start; justify-content: center; z-index: 20; padding: 40px 20px; }
+#ovl.on { display: flex; }
+#ovlbox { background: var(--ground); border: 1px solid var(--ink); padding: 22px;
+          width: min(760px, 96vw); max-height: 86vh; overflow: auto; }
+#ovlbox h2 { margin: 0 0 4px; font-size: 18px; text-transform: uppercase; letter-spacing: -.01em; }
 .box { border-top: 1px solid var(--ink); padding: 14px 0; margin: 0 0 18px; }
-.cols { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-.colchip { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-           padding: 6px 12px; border: 1px solid var(--faint); cursor: pointer; color: var(--dim); }
-.colchip.on { border-color: var(--ink); color: var(--ink); }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-td, th { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--faint); vertical-align: top; }
-th { color: var(--dim); font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
 pre { background: var(--seam); border: 0; padding: 12px; font: 11.5px/1.5 var(--mono); overflow: auto; max-height: 320px; margin: 10px 0 0; color: var(--ink); }
 
 /* the status line at the foot, like the room page's */
-footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--ground);
+footer { position: relative; background: var(--ground);
          padding: 10px 24px calc(10px + env(safe-area-inset-bottom, 0px));
          font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--dim);
          display: flex; gap: 18px; flex-wrap: wrap; }
 footer:before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--faint); }
 kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint); padding: 0 5px; margin-right: 2px; }
-#dlg { position: fixed; inset: 0; background: rgba(7,12,19,.8); display: none; align-items: center; justify-content: center; z-index: 20; }
+#dlg { position: fixed; inset: 0; background: rgba(7,12,19,.8); display: none; align-items: center; justify-content: center; z-index: 30; }
 #dlg.on { display: flex; }
 #dlgbox { background: var(--ground); border: 1px solid var(--ink); padding: 22px; width: min(440px, 92vw); }
 #dlgbox h3 { margin: 0 0 4px; font-size: 16px; text-transform: uppercase; letter-spacing: -.01em; }
 #dlgbox p { margin: 0 0 14px; color: var(--dim); font-size: 13px; }
 #dlgbox input { width: 100%; background: transparent; border: 1px solid var(--faint); color: var(--ink); padding: 10px; font: inherit; }
+#dlgbox .go { margin-top: 12px; }
 .exist { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .exist span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
               padding: 4px 10px; border: 1px solid var(--faint); cursor: pointer; color: var(--dim); }
 .exist span:hover { color: var(--ink); border-color: var(--ink); }
 #toast { position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--ground);
          padding: 8px 14px; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase;
-         opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 30; }
+         opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 40; }
 #toast.on { opacity: 1; }
 .warn { color: var(--dim); }
+
+@media (max-width: 1000px) { :root { --lw: 200px; --rw: 260px; } }
 </style></head><body>
+
 <header>
-  <div class="brandline"><h1>saltpod</h1>
-  <nav>
-    <b data-v="curate" class="on">Curate</b><b data-v="collections">Collections</b>
-    <b data-v="buy">Buy</b><b data-v="vinyl">Vinyl</b><b data-v="data">Data</b>
-  </nav></div>
-  <div class="counts" id="counts"></div>
-  <div class="ctlrow" id="ctl"></div>
+  <div class="brandline">
+    <h1>saltpod</h1>
+    <input type="search" id="q" placeholder="search everything   /">
+    <div class="hright"><button id="gear" title="settings and data jobs">&#9881;</button></div>
+  </div>
+  <div class="deck">
+    <div class="dl"><span class="fold" id="foldL" title="fold this pane away">[&lt;]</span>
+      <span id="ltabs"><span class="pill on" data-s="ipod">iPod</span><span class="pill" data-s="am">Apple Music</span></span>
+    </div>
+    <div class="counts" id="counts"></div>
+    <div class="dr">
+      <span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span>
+      <span class="fold" id="foldR" title="fold the buy and vinyl lists away">[&gt;]</span>
+    </div>
+  </div>
 </header>
-<main>
-  <div class="view on" id="v-curate"><div id="list"></div></div>
-  <div class="view" id="v-collections"></div>
-  <div class="view" id="v-buy"></div>
-  <div class="view" id="v-vinyl"></div>
-  <div class="view" id="v-data"></div>
-</main>
-<audio id="au"></audio><div id="toast"></div>
-<div id="dlg"><div id="dlgbox">
-  <h3 id="dlgh">Collection</h3><p id="dlgp">Type a name and press Enter. An existing name toggles it off.</p>
-  <input id="dlgin" placeholder="Late Night"><div class="exist" id="dlgex"></div>
-</div></div>
+
+<div id="work">
+  <aside class="left" id="left">
+    <div class="plabel"><span class="name" id="lhead">Collections</span><span class="sp"></span><span class="act" id="newcol">+ new</span></div>
+    <div class="pbody" id="colbody"></div>
+  </aside>
+
+  <section class="mid" id="mid">
+    <div class="plabel"><span class="name" id="midh">Library</span>
+      <span id="midacts" style="display:flex;gap:12px"></span>
+      <span class="act" id="fltoggle">filter</span><span class="pstat" id="midstat"></span></div>
+    <div class="filters" id="ctl"></div>
+    <div class="pbody" id="list"></div>
+  </section>
+
+  <aside class="right" id="right">
+    <div class="plabel"><span class="pstat" id="rstat"></span></div>
+    <div class="pbody" id="rbody"></div>
+  </aside>
+</div>
+
 <footer id="foot"></footer>
+<audio id="au"></audio><div id="toast"></div>
+
+<div id="dlg"><div id="dlgbox">
+  <h3 id="dlgh">Collection</h3><p id="dlgp"></p>
+  <input id="dlgin" placeholder="Late Night"><div class="exist" id="dlgex"></div>
+  <div id="dlgbtn"></div>
+</div></div>
+
+<div id="ovl"><div id="ovlbox"></div></div>
+
 <script>
 const MONTH = s => s.replace(/^(\d{4})-/,'$1 ').replace(/\b\w/g,c=>c.toUpperCase());
 const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const mmss = s => s?`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`:'';
-let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', tab='curate', job=null;
-let csel=0;   // selected row in the Collections view
 const $=s=>document.querySelector(s), au=$('#au');
 
+let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', job=null;
+let colPick=null;          // null = the whole library; a name = that collection, in its order
+let rtab='buy';
+// A collection made with "+ new" does not exist on the server until its first
+// track lands. Until then it lives here, so it does not vanish on the next load.
+let PENDING=new Set();
+// The Discogs exports, and two maps from a match key to a release. A track
+// meets a release on artist + album; see discogs.py for what the key strips.
+let DISCOGS={wantlist:[],collection:[],files:{},dir:'data/discogs'}, OWN=new Map(), WANT=new Map();
+const norm=s=>(s||'').toLowerCase().replace(/\s*[\(\[].*?[\)\]]/g,'').replace(/^(the|a)\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();
+const vkey=t=>{const a=norm(t.artist), b=norm(t.album||t.dev_album||''); return a&&b ? a+'|'+b : null;};
+const owned=t=>{const k=vkey(t); return k?OWN.get(k):undefined;}, wanted=t=>{const k=vkey(t); return k?WANT.get(k):undefined;};
+let VG={add:true,want:true,own:false};     // which vinyl groups are open
+// Apple Music: its playlists, and whether the left pane's section is open.
+// A collection is where a track is GOING and is the only thing edited; an
+// Apple Music playlist is where it CAME from and is only ever looked at.
+let AMP=[], AMREAD=null, AMLIB=0;
+// The left pane is one panel with two libraries behind a switcher. iPod is the
+// working surface -- collections are the only thing edited, and they are what
+// sync writes. Apple Music is for looking at: everything in it is browsable,
+// but a track earns a record in state only when a decision is made about it.
+let side='ipod';
+try{ side=localStorage['saltpod.side']||'ipod'; }catch(e){}
+let SYNCED=[], BYKEY=new Map();
+let LIB=[], libLoaded=false, amPick=null, PEEK=null, peeking=false;
+const CAP=400;                       // rows drawn at once; search narrows the rest
+
+/* ---------------- folding the side panes ---------------- */
+function setFold(side,off){
+  document.body.classList.toggle(side==='L'?'nl':'nr',off);
+  $('#fold'+side).textContent = side==='L' ? (off?'[>]':'[<]') : (off?'[<]':'[>]');
+  try{ localStorage['saltpod.fold'+side]=off?'1':'0'; }catch(e){}
+}
+function fold(side){ setFold(side,!document.body.classList.contains(side==='L'?'nl':'nr')); }
+(function(){
+  let l=null,r=null;
+  try{ l=localStorage['saltpod.foldL']; r=localStorage['saltpod.foldR']; }catch(e){}
+  // no stored preference on a narrow window: start with the sides away
+  const narrow=window.innerWidth<860;
+  setFold('L', l==null ? narrow : l==='1');
+  setFold('R', r==null ? narrow : r==='1');
+})();
+$('#foldL').onclick=()=>fold('L'); $('#foldR').onclick=()=>fold('R');
+document.querySelectorAll('#ltabs .pill').forEach(p=>p.onclick=async()=>{
+  side=p.dataset.s; sel=0;
+  try{ localStorage['saltpod.side']=side; }catch(e){}
+  if(side==='am'&&amPick==='__all__')await ensureLib();
+  draw();
+});
+
+/* the filter section: open or shut, remembered; its toggle names the active filter */
+const MID=$('#mid');
+try{ if(localStorage['saltpod.filters']==='1')MID.classList.add('fx'); }catch(e){}
+function paintFilterToggle(){
+  const open=MID.classList.contains('fx');
+  $('#fltoggle').textContent=(filter==='all'?'filter':'filter · '+filter)+(open?' \u25B4':' \u25BE');
+}
+$('#fltoggle').onclick=()=>{
+  MID.classList.toggle('fx');
+  try{ localStorage['saltpod.filters']=MID.classList.contains('fx')?'1':'0'; }catch(e){}
+  paintFilterToggle();
+};
+
+/* ---------------- loading, counting, filtering ---------------- */
 async function load(){
-  const r=await fetch('/api/tracks').then(r=>r.json());
-  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs; draw();
+  const [r,d,a]=await Promise.all([
+    fetch('/api/tracks').then(r=>r.json()),
+    fetch('/api/discogs').then(r=>r.json()).catch(()=>null),
+    fetch('/api/playlists').then(r=>r.json()).catch(()=>null)]);
+  if(d){DISCOGS=d; OWN=new Map((d.collection||[]).map(x=>[x.key,x])); WANT=new Map((d.wantlist||[]).map(x=>[x.key,x]));}
+  if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
+        if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
+  SYNCED=r.synced||[];
+  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs;
+  BYKEY=new Map(ALL.map(t=>[t.key,t]));
+  COLS.forEach(c=>PENDING.delete(c));                    // it exists now
+  if(colPick&&!COLS.includes(colPick)&&!PENDING.has(colPick))colPick=null;   // renamed or deleted under us
+  draw();
 }
 function counts(){
   const c={seen:0,shortlisted:0,maybe:0,skipped:0,vinyl:0,bought:0};
   ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
+  const todo=ALL.filter(t=>t.tier==='shortlisted'&&!t.bought);
+  const eur=todo.reduce((a,t)=>a+(t.price||0),0);
   $('#counts').innerHTML=`<span><s>${ALL.length}</s> tracks</span>
-    <span style="color:var(--ink)"><s>${c.shortlisted}</s> buy</span>
-    <span style="color:var(--dim)"><s>${c.maybe}</s> maybe</span>
-    <span><s>${c.seen}</s> undecided</span>
-    <span style="color:var(--ink)"><s>${c.vinyl}</s> vinyl</span>`;
-  return c;
+    <span><s>${todo.length}</s> to buy</span>
+    <span><s>&euro;${eur.toFixed(2)}</s> final</span>
+    <span><s>${c.seen}</s> undecided</span>`;
 }
 function pass(t){
   if(q){const h=(t.artist+' '+t.title+' '+(t.album||'')).toLowerCase(); if(!h.includes(q))return false;}
   if(filter==='undecided')return t.tier==='seen';
   if(filter==='vinyl')return t.vinyl;
+  if(filter==='on vinyl')return !!owned(t);
+  if(filter==='on T7')return t.t7;
+  // in Apple Music and nowhere you own: the work still to do
+  if(filter==='rented only')return t.am&&!t.t7&&!owned(t);
   if(filter==='on iPod')return t.device;
   if(filter==='remove')return t.device&&t.tier==='skipped';
   if(filter==='all')return true;
   return t.tier===filter;
+}
+const filtered=()=>!!q||filter!=='all';
+// what a click would actually play, named rather than left to be guessed
+function heard(t){
+  if(t.play_from==='t7')   return '<span style="color:var(--ink)">plays from the T7</span>';
+  if(t.play_from==='ipod') return '<span style="color:var(--ink)">plays from the iPod</span>';
+  if(t.preview)            return 'a 30s preview';
+  return '<span class="warn">nothing to play</span>';
+}
+// every place that holds it, in a fixed order -- never a claim about which came first
+function srcStrip(t){
+  const g=[];
+  if(t.am)      g.push(t.am_status ? `<span class="gone" title="in Apple Music, ${esc(t.am_status)}">AM</span>`
+                                   : (t.am_owned?'<b title="owned in Apple Music">AM</b>':'<span title="in Apple Music, rented">AM</span>'));
+  if(t.t7)      g.push(`<b title="stored on the T7${t.lossless?', lossless':''}">T7</b>`);
+  if(t.device)  g.push('<b title="stored on the iPod">POD</b>');
+  if(owned(t))  g.push('<b title="you own the record">LP</b>');
+  else if(wanted(t)) g.push('<span title="on the Discogs wantlist">lp</span>');
+  return g.join('');
 }
 function tagsFor(t){
   const g=[];
@@ -182,68 +433,334 @@ function tagsFor(t){
   if(t.tier==='skipped')g.push('<span class="tag skip">skip</span>');
   if(t.bought)g.push('<span class="tag ok">owned</span>');
   if(t.vinyl)g.push('<span class="tag vinyl">vinyl</span>');
-  t.collections.forEach(c=>g.push(`<span class="tag col">${esc(c)}</span>`));
-  if(t.device)g.push('<span class="tag">on iPod</span>');
-  if(t.lossless)g.push('<span class="tag ok">lossless src</span>');
+  if(!colPick)t.collections.forEach(c=>g.push(`<span class="tag">${esc(c)}</span>`));
   if(t.bc_verdict==='confirmed')g.push('<span class="tag">FLAC</span>');
   return g.join('');
 }
-function rowHTML(t,i){
+// A row for something seen only in Apple Music. It renders like any other so
+// the eye does not have to switch modes; the moment you decide on it, `adopt`
+// gives it a record and it becomes one.
+const AM_OWNED=['purchased','matched','uploaded'];
+function libRow(r){
+  const hit=BYKEY.get(r.key); if(hit)return hit;
+  return {key:r.key, artist:r.artist, title:r.title, album:r.album, seconds:r.secs,
+          tier:'', vinyl:false, bought:false, collections:[], playlists:[],
+          device:false, t7:false, am:true, am_owned:AM_OWNED.includes(r.cloud),
+          am_status:(r.cloud==='subscription'||AM_OWNED.includes(r.cloud))?null:r.cloud,
+          play_from:null, audio:false, preview:null, art:null, lean:true};
+}
+function rowHTML(t,i,pos){
   const dur=mmss(t.seconds||t.dev_seconds);
-  return `<div class="row ${t.tier==='skipped'?'skip':''}" data-i="${i}">
-    ${t.art?`<img class="art" src="${t.art}" loading="lazy">`:'<div class="art"></div>'}
+  return `<div class="row ${t.tier==='skipped'?'skip':''} ${t.device?'':'pending'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}"
+      ${pos!=null?'style="grid-template-columns:24px 44px minmax(0,1fr) auto auto"':''}>
+    ${pos!=null?`<span class="pos">${pos}</span>`:''}
+    ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
-      <div class="s">${esc(t.album||t.dev_album||'')}${dur?' · '+dur:''}${t.price?' · €'+t.price.toFixed(2):''}${t.audio?' · <span style="color:var(--ink)">full track</span>':(t.preview?'':' · <span class="warn">nothing to play</span>')}</div></div>
-    <div class="tags">${tagsFor(t)}</div></div>`;
+      <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
+        heard(t)].filter(Boolean).join(' · ')}</div></div>
+    <div class="src">${srcStrip(t)}</div>
+    <div class="tags">${tagsFor(t)}<span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null?'<span class="grab">⋮⋮</span>':''}</div></div>`;
 }
-function draw(){
-  counts();
-  document.querySelectorAll('nav b').forEach(b=>b.classList.toggle('on',b.dataset.v===tab));
-  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+tab));
-  ({curate:drawCurate,collections:drawCols,buy:drawBuy,vinyl:drawVinyl,data:drawData}[tab])();
-  drawFoot();
-}
+
+/* ---------------- drawing ---------------- */
+function draw(){ counts(); drawCols(); drawMid(); drawRight(); drawFoot(); paintPlaying(); }
+
 function drawFoot(){
-  $('#foot').innerHTML = tab==='curate'
-    ? `<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> preview</span>
-       <span><kbd>b</kbd> buy</span><span><kbd>m</kbd> maybe</span><span><kbd>x</kbd> skip</span>
-       <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
-       <span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span>
-       <span id="saved" style="margin-left:auto"></span>`
-    : tab==='collections'
-    ? `<span><kbd>j</kbd><kbd>k</kbd> select</span><span><kbd>J</kbd><kbd>K</kbd> move</span><span><kbd>space</kbd> play</span>
-       <span><kbd>x</kbd> remove</span><span>drag rows to reorder</span><span id="saved" style="margin-left:auto"></span>`
-    : `<span>decisions save the moment you make them — data/state.json</span>`;
+  const inCol=side==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
+  $('#foot').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
+    <span><kbd>b</kbd> buy</span><span><kbd>m</kbd> maybe</span>
+    <span><kbd>x</kbd> ${inCol?'take out of collection':'skip'}</span>
+    <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
+    ${canSeq?'<span><kbd>J</kbd><kbd>K</kbd> re-sequence</span>':''}
+    <span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span><span><kbd>[</kbd><kbd>]</kbd> panes</span>
+    ${inCol?'<span><kbd>esc</kbd> back to library</span>':''}
+    <span id="saved" style="margin-left:auto"></span>`;
 }
-function drawCurate(){
-  $('#ctl').innerHTML=`${['all','undecided','shortlisted','maybe','vinyl','on iPod','remove']
-    .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join(' ')}
-    <input type="search" id="q" placeholder="search  /" value="${esc(q)}" style="width:170px;margin-left:8px">`;
+
+function drawMid(){
+  if(side==='am')return drawMidAM();
+  $('#ctl').innerHTML=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove']
+    .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
   $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{filter=p.dataset.f;sel=0;draw();});
-  const qi=$('#q');
-  qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawCurate();};
-  qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';draw();}};
-  view=ALL.filter(pass);
-  let h='',last='';
-  view.forEach((t,i)=>{
-    const m=t.playlists[0]||(t.device?'__device':'__other');
-    if(m!==last){h+=`<div class="month">${m==='__device'?'Already on the iPod':m==='__other'?'Other':MONTH(m)}</div>`;last=m;}
-    h+=rowHTML(t,i);
-  });
-  $('#list').innerHTML=h||'<p class="note" style="padding:30px 0">Nothing matches.</p>';
-  const L=$('#list');
-  L.onclick=e=>{const r=e.target.closest('.row'); if(r){sel=+r.dataset.i;mark();}};
-  L.ondblclick=e=>{const r=e.target.closest('.row'); if(r){sel=+r.dataset.i;play();}};
+  paintFilterToggle();
+
+  const acts=$('#midacts');
+  let h='';
+  if(colPick){
+    // A collection is a sequence: drawn in its own order, never sorted. A filter
+    // or a search narrows what is SHOWN, and while one is on, re-sequencing is
+    // off -- moving a row past neighbours you cannot see would be a lie.
+    const all=(ORDER[colPick]||[]).map(k=>ALL.find(t=>t.key===k)).filter(Boolean);
+    view=all.filter(pass);
+    const mins=Math.round(all.reduce((a,t)=>a+(t.seconds||t.dev_seconds||0),0)/60);
+    $('#midh').textContent=colPick;
+    $('#midstat').innerHTML = filtered()
+      ? `<s>${view.length}</s> of ${all.length} shown · clear the filter to re-sequence`
+      : `<s>${all.length}</s> tracks · ${mins} min`;
+    const nShort=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(colPick)).length;
+    acts.innerHTML=`<span class="act" id="addshort" title="every shortlisted track not yet in here">+ shortlisted (${nShort})</span>
+      <span class="act" id="renamecol">rename</span><span class="act" id="delcol">delete</span>`;
+    $('#addshort').onclick=async()=>{
+      const ks=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(colPick)).map(t=>t.key);
+      if(!ks.length)return toast('nothing new to add');
+      await decide({collection:colPick,mode:'add'},ks); toast(`added ${ks.length}`);};
+    $('#renamecol').onclick=()=>openDlg('__rename__');
+    $('#delcol').onclick=()=>openDlg('__delete__');
+    h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1)).join('')
+      : all.length ? '<p class="note">Nothing in here matches.</p>'
+      : '<p class="note">Empty. Drag tracks in from the library, or press <kbd>c</kbd> on a track.</p>';
+  } else {
+    view=ALL.filter(pass);
+    $('#midh').textContent='Library';
+    $('#midstat').innerHTML=filtered()?`<s>${view.length}</s> of ${ALL.length}`:`<s>${ALL.length}</s> tracks`;
+    acts.innerHTML='';
+    let last='';
+    view.forEach((t,i)=>{
+      const m=t.playlists[0]||(t.device?'__device':'__other');
+      if(m!==last){h+=`<div class="month">${m==='__device'?'Already on the iPod':m==='__other'?'Other':MONTH(m)}</div>`;last=m;}
+      h+=rowHTML(t,i);
+    });
+    if(!view.length)h='<p class="note">Nothing matches.</p>';
+  }
+  $('#list').innerHTML=h;
+  wireRows();
   if(sel>=view.length)sel=Math.max(0,view.length-1);
   mark();
 }
+function drawMidAM(){
+  $('#ctl').innerHTML='';
+  const acts=$('#midacts');
+  const pl=amPick&&amPick!=='__all__'&&AMP.find(p=>p.slug===amPick);
+  const src = amPick==='__all__' ? LIB : (PEEK ? PEEK.tracks : []);
+  const rows = src.map(libRow).filter(t=>{
+    if(!q)return true;
+    return (t.artist+' '+t.title+' '+(t.album||'')).toLowerCase().includes(q);
+  });
+  view=rows.slice(0,CAP);
+  $('#midh').textContent = pl ? pl.name : (amPick==='__all__' ? 'All of Apple Music' : 'Apple Music');
+  acts.innerHTML = pl&&!pl.imported ? `<span class="act" id="impnow">import into curation</span>` : '';
+  if(pl&&!pl.imported)$('#impnow').onclick=()=>startJob({action:'export',names:[pl.name]});
+  const known=rows.filter(t=>!t.lean).length;
+  $('#midstat').innerHTML = !amPick ? ''
+    : peeking ? 'reading Music.app…'
+    : `<s>${rows.length}</s>${rows.length>CAP?' · '+CAP+' shown':''} · ${known} already in curation`
+      + (pl?` · created ${(pl.created||'?').slice(0,10)}`:'');
+  let h='';
+  if(!amPick) h=`<p class="note">Pick a playlist on the left, or All of Apple Music.
+      Nothing here is edited — this is the library to take from. Decide on a track
+      (<kbd>b</kbd>, <kbd>v</kbd>, <kbd>c</kbd>, or drag it) and it joins your curation.</p>`;
+  else if(peeking) h=`<p class="note">Reading Music.app…</p>`;
+  else if(!view.length) h=`<p class="note">Nothing here${q?' matches':''}.</p>`;
+  else h=view.map((t,i)=>rowHTML(t,i)).join('')
+       + (rows.length>CAP?`<p class="note">${rows.length-CAP} more — search to narrow.</p>`:'');
+  $('#list').innerHTML=h;
+  wireRows();
+  if(sel>=view.length)sel=Math.max(0,view.length-1);
+  mark();
+}
+function wireRows(){
+  const canSeq=side==='ipod'&&!!colPick&&!filtered();
+  [...$('#list').querySelectorAll('.row')].forEach(r=>{
+    r.onclick=()=>{sel=+r.dataset.i;mark();};
+    r.ondblclick=()=>{sel=+r.dataset.i;mark();play();};
+    r.ondragstart=e=>{
+      e.dataTransfer.setData('text/plain',r.dataset.k);
+      e.dataTransfer.effectAllowed='copyMove';
+      r.classList.add('dragging');
+      sel=+r.dataset.i; mark();
+    };
+    r.ondragend=()=>{r.classList.remove('dragging');
+      document.querySelectorAll('.over,.drop').forEach(x=>x.classList.remove('over','drop'));};
+    if(canSeq){
+      r.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';r.classList.add('over');};
+      r.ondragleave=()=>r.classList.remove('over');
+      r.ondrop=async e=>{
+        e.preventDefault(); e.stopPropagation(); r.classList.remove('over');
+        const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+        const keys=(ORDER[colPick]||[]).slice();
+        const from=keys.indexOf(key), to=+r.dataset.i;
+        if(from<0){ await decide({collection:colPick,mode:'add'},[key]); return; }   // came from outside
+        if(from===to)return;
+        keys.splice(from,1); keys.splice(to,0,key);
+        await saveOrder(colPick,keys,to);
+      };
+    }
+  });
+}
 function mark(){
-  document.querySelectorAll('.row').forEach(r=>r.classList.remove('sel'));
-  const r=document.querySelector(`.row[data-i="${sel}"]`);
+  document.querySelectorAll('#list .row').forEach(r=>r.classList.remove('sel'));
+  const r=document.querySelector(`#list .row[data-i="${sel}"]`);
   if(r){r.classList.add('sel');r.scrollIntoView({block:'nearest'});}
 }
+async function saveOrder(col,keys,to){
+  ORDER[col]=keys; sel=to;
+  const r=await post('/api/decide',{reorder:{collection:col,keys}});
+  if(!r.ok)toast('NOT SAVED'); else saved();
+  draw();
+}
+// J / K move the selected row one place in the FULL order, so they are only
+// offered when the full order is what is on screen.
+function nudge(dir){
+  if(!colPick||filtered())return;
+  const keys=(ORDER[colPick]||[]).slice(), t=view[sel]; if(!t)return;
+  const from=keys.indexOf(t.key), to=from+dir;
+  if(from<0||to<0||to>=keys.length)return;
+  keys.splice(from,1); keys.splice(to,0,t.key);
+  saveOrder(colPick,keys,to);
+}
+
+/* ---------------- left: collections, each a drop target ---------------- */
+function drawCols(){
+  document.querySelectorAll('#ltabs .pill').forEach(p=>p.classList.toggle('on',p.dataset.s===side));
+  $('#lhead').textContent = side==='am' ? 'Apple Music' : 'Collections';
+  $('#newcol').style.display = side==='am' ? 'none' : '';
+  if(side==='am')return drawAM();
+  const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
+  const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
+  let h=`<div class="col ${colPick===null?'on':''}" data-all="1">All tracks<span class="cnt">${ALL.length}</span></div>`;
+  h+=names.map(c=>{
+      // what sync would still have to do: tracks in it that are not on the device,
+      // plus the playlist itself if it has never been written
+      const waiting=(ORDER[c]||[]).filter(k=>!(BYKEY.get(k)||{}).device).length;
+      const never=!SYNCED.includes(c)&&!PENDING.has(c);
+      const mark=PENDING.has(c)?'new':(waiting?`+${waiting}`:(never?'unsynced':(n[c]||0)));
+      return `<div class="col ${c===colPick?'on':''} ${(waiting||never||PENDING.has(c))?'pend':''}" data-c="${esc(c)}"
+        title="${esc(c)} — ${n[c]||0} tracks${waiting?', '+waiting+' not yet on the iPod':', all on the iPod'}">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c)}</span>
+      <span class="cnt">${mark}</span></div>`;}).join('');
+  if(!names.length)h+=`<p class="note">None yet. Press <b style="color:var(--ink)">+ new</b>, then drag tracks onto it.</p>`;
+
+  $('#colbody').innerHTML=h;
+  const body=$('#colbody');
+  body.querySelector('[data-all]').onclick=()=>{colPick=null;sel=0;draw();};
+  body.querySelectorAll('[data-c]').forEach(el=>{
+    const name=el.dataset.c;
+    el.onclick=()=>{colPick=name;sel=0;draw();};
+    el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('drop');};
+    el.ondragleave=()=>el.classList.remove('drop');
+    el.ondrop=async e=>{
+      e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
+      const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+      const t=ALL.find(x=>x.key===key);
+      if(t&&t.collections.includes(name)){toast('already in '+name);return;}
+      await decide({collection:name,mode:'add'},[key]);
+      toast('added to '+name);
+    };
+  });
+  $('#newcol').onclick=()=>openDlg('__new__');
+}
+
+/* the other library: everything in Apple Music, for looking at */
+function drawAM(){
+  const imported=AMP.filter(p=>p.imported).length;
+  let h=`<div class="col ${amPick==='__all__'?'on':''}" data-am="__all__">All of Apple Music
+      <span class="cnt">${AMLIB||''}</span></div>`;
+  h+= AMP.length ? AMP.map(p=>`<div class="col ${p.slug===amPick?'on':''} ${p.imported?'':'dim'}" data-am="${esc(p.slug)}"
+        title="${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''}">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
+      <span class="cnt">${(p.created||'').slice(0,7)||p.tracks}</span></div>`).join('')
+    : `<p class="note">Not read yet. Open the gear and press <b style="color:var(--ink)">Read Apple Music</b>.</p>`;
+  $('#colbody').innerHTML=h;
+  $('#colbody').querySelectorAll('[data-am]').forEach(el=>{
+    el.onclick=async()=>{
+      amPick=el.dataset.am; sel=0; PEEK=null;
+      if(amPick==='__all__'){ await ensureLib(); }
+      else { const p=AMP.find(x=>x.slug===amPick); await peek(p&&p.name); }
+      draw();
+    };
+  });
+  $('#newcol').onclick=()=>openDlg('__new__');
+}
+async function ensureLib(){
+  if(libLoaded)return;
+  const r=await fetch('/api/library').then(r=>r.json()).catch(()=>null);
+  LIB=(r&&r.tracks)||[]; libLoaded=true;
+}
+async function peek(name){
+  if(!name)return;
+  peeking=true; drawMid();
+  const r=await fetch('/api/peek?name='+encodeURIComponent(name)).then(r=>r.json()).catch(()=>null);
+  peeking=false;
+  if(!r||r.error){PEEK=null;toast(r&&r.error?'could not read it':'could not read it');return;}
+  PEEK=r;
+}
+
+/* ---------------- right: buy and vinyl, the whole pane a drop target ---------------- */
+function drawRight(){
+  document.querySelectorAll('#rtabs .pill').forEach(t=>t.classList.toggle('on',t.dataset.r===rtab));
+  const el=$('#rbody');
+  if(rtab==='buy'){
+    const short=ALL.filter(t=>t.tier==='shortlisted');
+    const todo=short.filter(t=>!t.bought), done=short.filter(t=>t.bought);
+    const eur=todo.reduce((a,t)=>a+(t.price||0),0);
+    const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
+    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · ${flac} FLAC · ${done.length} owned`;
+    let h='';
+    h+= todo.length ? todo.map(t=>`<div class="card">
+        <b>${esc(t.artist)} — ${esc(t.title)}</b>
+        <div class="sub">${esc(t.album||'')} · ${mmss(t.seconds)} · ${t.playlists.map(MONTH).join(', ')}</div>
+        <div class="acts">
+          ${t.bandcamp?`<a href="${t.bandcamp}" target="_blank">Bandcamp${t.bc_verdict==='confirmed'?' FLAC':' (check length)'}</a>`:''}
+          ${t.url?`<a href="${t.url}" target="_blank">iTunes €${(t.price||0).toFixed(2)}</a>`:'<span class="warn">no source</span>'}
+          <button data-bought="${esc(t.key)}">bought</button></div></div>`).join('')
+      : `<p class="note">Nothing to buy. Drag a track here, or press <kbd>b</kbd> on one.</p>`;
+    el.innerHTML=h;
+    el.querySelectorAll('[data-bought]').forEach(b=>b.onclick=()=>decide({bought:true},[b.dataset.bought]));
+  } else {
+    // Vinyl runs in one direction: flagged here -> wanted on Discogs -> owned.
+    // The pane shows the three stages, and the first one is the to-do.
+    const by={};
+    ALL.filter(t=>t.vinyl).forEach(t=>{const k=t.artist+' — '+(t.album||'(unknown release)');
+      (by[k]=by[k]||{name:k,key:vkey(t)||('?'+k),tracks:[]}).tracks.push(t);});
+    const flagged=Object.values(by).sort((a,b)=>a.name.localeCompare(b.name));
+    const fkeys=new Set(flagged.map(f=>f.key));
+    const toAdd=flagged.filter(f=>!OWN.has(f.key)&&!WANT.has(f.key));
+    const W=(DISCOGS.wantlist||[]).slice().sort((a,b)=>(b.added||'').localeCompare(a.added||''));
+    const C=(DISCOGS.collection||[]).slice().sort((a,b)=>norm(a.artist).localeCompare(norm(b.artist))||a.title.localeCompare(b.title));
+    $('#rstat').innerHTML=`<s>${toAdd.length}</s> to add · <s>${W.length}</s> wanted · <s>${C.length}</s> owned`;
+    const rel=x=>`<div class="card"><b>${esc(x.artist)} — ${esc(x.title)}</b>
+        <div class="sub">${[x.label,x.format,x.year!=='0'&&x.year].filter(Boolean).map(esc).join(' · ')}</div>
+        <div class="acts"><a href="https://www.discogs.com/release/${encodeURIComponent(x.release_id)}" target="_blank">Discogs</a>
+          ${fkeys.has(x.key)?'<span class="tag vinyl">flagged</span>':''}
+          ${x.added?`<span class="warn" style="margin-left:auto;font-family:var(--mono);font-size:10px">${esc(x.added.slice(0,10))}</span>`:''}</div></div>`;
+    const grp=(id,title,n,body)=>`<div class="month vg" data-g="${id}">${title} · ${n} ${VG[id]?'&#9652;':'&#9662;'}</div>${VG[id]?body:''}`;
+    const where=`<code>${esc(DISCOGS.dir||'data/discogs')}/</code>`;
+    let h='';
+    h+=grp('add','To add on Discogs',toAdd.length, toAdd.length
+      ? toAdd.map(f=>`<div class="card"><b>${esc(f.name)}</b><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
+          <div class="acts"><a href="https://www.discogs.com/search/?q=${encodeURIComponent(f.name.replace(' — ',' '))}&type=release" target="_blank">Search Discogs</a></div></div>`).join('')
+      : flagged.length ? '<p class="note">Everything flagged is already wanted or owned.</p>'
+      : '<p class="note">Nothing flagged. Drag a track here, or press <kbd>v</kbd> on one.</p>');
+    h+=grp('want','Wantlist',W.length, W.length?W.map(rel).join(''):`<p class="note">No wantlist export yet — drop it at ${where}wantlist.csv</p>`);
+    h+=grp('own','Collection',C.length, C.length?C.map(rel).join(''):`<p class="note">No collection export yet — drop it at ${where}collection.csv</p>`);
+    el.innerHTML=h;
+    el.querySelectorAll('.vg').forEach(g=>g.onclick=()=>{VG[g.dataset.g]=!VG[g.dataset.g];drawRight();});
+  }
+}
+document.querySelectorAll('#rtabs .pill').forEach(t=>t.onclick=()=>{rtab=t.dataset.r;drawRight();});
+(function(){
+  const pane=$('#right');
+  pane.addEventListener('dragover',e=>{ if(document.body.classList.contains('nr'))return;
+    e.preventDefault(); e.dataTransfer.dropEffect='copy'; pane.classList.add('drop'); });
+  pane.addEventListener('dragleave',e=>{ if(!pane.contains(e.relatedTarget))pane.classList.remove('drop'); });
+  pane.addEventListener('drop',async e=>{
+    e.preventDefault(); pane.classList.remove('drop');
+    const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+    const t=ALL.find(x=>x.key===key); if(!t)return;
+    if(rtab==='buy'){
+      if(t.tier==='shortlisted'){toast(t.bought?'already bought':'already on the buy list');return;}
+      await decide({tier:'shortlisted'},[key]); toast('on the buy list');
+    } else {
+      if(t.vinyl){toast('already on the vinyl list');return;}
+      await decide({vinyl:true},[key]); toast('on the vinyl list');
+    }
+  });
+})();
+
+/* ---------------- saving ---------------- */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');
   clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),1400);}
+function saved(){const s=$('#saved'); if(s)s.textContent='saved '+new Date().toLocaleTimeString();}
 async function post(url,body){
   return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({ok:false}));
@@ -251,15 +768,21 @@ async function post(url,body){
 async function decide(patch,keys,advance){
   const ks = keys || (view[sel]?[view[sel].key]:[]);
   if(!ks.length)return;
-  const r=await post('/api/decide',{keys:ks,...patch});
+  // anything decided on that has no record yet gets one, named from the row
+  const newborn=ks.filter(k=>!BYKEY.has(k))
+    .map(k=>{const t=view.find(x=>x.key===k); return t?{key:k,artist:t.artist,title:t.title}:null;})
+    .filter(Boolean);
+  const r=await post('/api/decide',{keys:ks,...(newborn.length?{adopt:newborn}:{}),...patch});
   if(!r.ok){toast('NOT SAVED — check the terminal');return;}
-  const s=$('#saved'); if(s)s.textContent='saved '+new Date().toLocaleTimeString();
+  saved();
   // On an unfiltered list the row stays put, so step on; on a filtered list the
   // row leaves and `sel` already points at the next one. Getting this wrong means
   // every decision needs a following keypress, which ruins the rhythm.
-  if(advance&&filter==='all')sel=Math.min(sel+1,Math.max(0,view.length-1));
+  if(advance&&!filtered())sel=Math.min(sel+1,Math.max(0,view.length-1));
   await load();
 }
+
+/* ---------------- playing ---------------- */
 function srcFor(t){
   // A real file beats a 30s preview every time. Tracks already on the device
   // have no iTunes match at all, so this is the only way to hear them.
@@ -267,140 +790,42 @@ function srcFor(t){
   if(t.preview) return {url:t.preview, full:false};
   return null;
 }
+let playRow=null;
+// A full pass is cheap but not free on a list this long, so it runs only when
+// something actually changes; the clock itself touches one element.
+function paintPlaying(){
+  document.querySelectorAll('.row.playing').forEach(r=>{
+    r.classList.remove('playing');
+    const d=r.querySelector('.dur'); if(d&&d.dataset.full)d.textContent=d.dataset.full;
+  });
+  playRow=null;
+  const k=au.dataset.key; if(!k||au.paused)return;
+  playRow=[...document.querySelectorAll('#list .row')].find(r=>r.dataset.k===k)||null;
+  if(playRow){playRow.classList.add('playing');tickProgress();}
+}
+function tickProgress(){
+  if(!playRow)return;
+  const d=playRow.querySelector('.dur'); if(!d)return;
+  const full=d.dataset.full;
+  d.textContent = full ? `${mmss(au.currentTime)} / ${full}` : mmss(au.currentTime);
+}
+au.ontimeupdate=tickProgress; au.onplay=paintPlaying; au.onpause=paintPlaying; au.onended=paintPlaying;
 function play(){
   const t=view[sel]; if(!t)return;
   const s=srcFor(t);
   if(!s){toast('nothing to play for this one');return;}
-  document.querySelectorAll('.row').forEach(r=>r.classList.remove('playing'));
   if(au.dataset.key===t.key&&!au.paused){au.pause();return;}
   au.dataset.key=t.key; au.src=s.url;
   au.play().catch(()=>toast(s.full?'could not play the file':'preview failed'));
-  const r=document.querySelector(`.row[data-i="${sel}"]`); if(r)r.classList.add('playing');
   if(s.full)toast('playing the full track');
 }
-/* ---------------- collections ---------------- */
-let colPick=null;
-function drawCols(){
-  $('#ctl').innerHTML='';
-  const byCol={}; COLS.forEach(c=>byCol[c]=[]);
-  ALL.forEach(t=>t.collections.forEach(c=>(byCol[c]=byCol[c]||[]).push(t)));
-  const names=Object.keys(byCol).sort();
-  if(!colPick&&names.length)colPick=names[0];
-  let h=`<h2>Collections</h2><p class="note">These are what reach the iPod. Monthly playlists
-    are only where a track came from. Build one by shortlisting first, then adding here in bulk.</p>`;
-  h+=`<div class="cols">${names.map(c=>`<span class="colchip ${c===colPick?'on':''}" data-c="${esc(c)}">${esc(c)} · ${byCol[c].length}</span>`).join('')}
-    <span class="colchip" id="newcol">+ new</span></div>`;
-  if(colPick&&byCol[colPick]){
-    const rs=byCol[colPick];
-    const owned=rs.filter(t=>t.bought).length;
-    const secs=rs.reduce((a,t)=>a+(t.seconds||0),0);
-    h+=`<div class="box"><b>${esc(colPick)}</b> — ${rs.length} tracks, ${owned} owned,
-      ${rs.length-owned} still to buy · ${Math.round(secs/60)} min
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <button id="addshort">Add all shortlisted (${ALL.filter(t=>t.tier==='shortlisted').length})</button>
-        <button id="renamecol">Rename</button></div></div>`;
-    const seq=(ORDER[colPick]||[]).map(k=>rs.find(t=>t.key===k)).filter(Boolean);
-    const mins=Math.round(seq.reduce((a,t)=>a+(t.seconds||t.dev_seconds||0),0)/60);
-    h+=`<p class="note">Drag to reorder, or select a row and use <kbd>J</kbd>/<kbd>K</kbd> (shift) to move it.
-      <kbd>space</kbd> plays so you can sequence by ear. <kbd>x</kbd> removes. This order is what the iPod plays.</p>`;
-    h+=seq.map((t,i)=>`<div class="row ${i===csel?'csel':''}" draggable="true" data-k="${t.key}" data-i="${i}"
-        style="grid-template-columns:28px 44px 1fr auto">
-        <span class="pos">${i+1}</span>
-        ${t.art?`<img class="art" src="${t.art}" loading="lazy">`:'<div class="art"></div>'}
-        <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
-        <div class="s">${esc(t.album||t.dev_album||'')} · ${mmss(t.seconds||t.dev_seconds)}${t.audio?' · <span style="color:var(--ink)">full track</span>':''}</div></div>
-        <div class="tags">${tagsFor(t)}<span class="tag" data-rm="${t.key}" style="cursor:pointer">remove</span><span class="grab">⋮⋮</span></div></div>`).join('');
-  } else if(!names.length){
-    h+=`<p class="note">None yet. Shortlist some tracks, then come back — or press <kbd>c</kbd> while curating.</p>`;
-  }
-  $('#v-collections').innerHTML=h;
-  $('#v-collections').querySelectorAll('.colchip[data-c]').forEach(c=>c.onclick=()=>{colPick=c.dataset.c;draw();});
-  const nc=$('#newcol'); if(nc)nc.onclick=()=>openDlg(null,'New collection','Name it.');
-  const ad=$('#addshort'); if(ad)ad.onclick=async()=>{
-    const ks=ALL.filter(t=>t.tier==='shortlisted').map(t=>t.key);
-    if(!ks.length)return toast('nothing shortlisted yet');
-    await decide({collection:colPick,mode:'add'},ks); toast(`added ${ks.length}`);};
-  const rn=$('#renamecol'); if(rn)rn.onclick=()=>openDlg('__rename__','Rename collection','New name. Empty removes it from every track.');
-  $('#v-collections').querySelectorAll('[data-rm]').forEach(x=>x.onclick=async e=>{
-    e.stopPropagation(); await decide({collection:colPick,mode:'remove'},[x.dataset.rm]);});
-  // selection + drag-and-drop on the ordered rows
-  const rows=[...$('#v-collections').querySelectorAll('.row[data-i]')];
-  rows.forEach(r=>{
-    r.onclick=()=>{csel=+r.dataset.i; markC();};
-    r.ondblclick=()=>{csel=+r.dataset.i; markC(); playC();};
-    r.ondragstart=e=>{e.dataTransfer.setData('text/plain',r.dataset.i); r.classList.add('dragging');};
-    r.ondragend=()=>r.classList.remove('dragging');
-    r.ondragover=e=>{e.preventDefault(); r.classList.add('over');};
-    r.ondragleave=()=>r.classList.remove('over');
-    r.ondrop=async e=>{e.preventDefault(); r.classList.remove('over');
-      const from=+e.dataTransfer.getData('text/plain'), to=+r.dataset.i;
-      if(from===to)return; await moveIn(colPick,from,to);};
-  });
-  if(csel>=rows.length)csel=Math.max(0,rows.length-1);
-}
-function markC(){
-  document.querySelectorAll('#v-collections .row[data-i]').forEach(r=>r.classList.toggle('csel',+r.dataset.i===csel));
-  const r=document.querySelector(`#v-collections .row[data-i="${csel}"]`); if(r)r.scrollIntoView({block:'nearest'});
-}
-async function moveIn(col,from,to){
-  const keys=(ORDER[col]||[]).slice();
-  const [k]=keys.splice(from,1); keys.splice(to,0,k);
-  ORDER[col]=keys; csel=to;
-  const r=await post('/api/decide',{reorder:{collection:col,keys}});
-  if(!r.ok)toast('NOT SAVED'); else {const sv=$('#saved'); if(sv)sv.textContent='saved '+new Date().toLocaleTimeString();}
-  draw();
-}
-function playC(){
-  const keys=ORDER[colPick]||[]; const t=ALL.find(x=>x.key===keys[csel]); if(!t)return;
-  const s=srcFor(t); if(!s){toast('nothing to play');return;}
-  if(au.dataset.key===t.key&&!au.paused){au.pause();return;}
-  au.dataset.key=t.key; au.src=s.url; au.play().catch(()=>toast('could not play'));
-  toast(s.full?'playing the full track':'30s preview');
-}
-/* ---------------- buy ---------------- */
-function drawBuy(){
-  $('#ctl').innerHTML='';
-  const sel2=ALL.filter(t=>t.tier==='shortlisted');
-  const todo=sel2.filter(t=>!t.bought), done=sel2.filter(t=>t.bought);
-  const eur=todo.reduce((a,t)=>a+(t.price||0),0);
-  const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
-  let h=`<h2>Buy list</h2><p class="note">Only what you chose. Prices are the iTunes AAC 256
-    equivalent — buy the FLAC where one is confirmed and convert to ALAC for the iPod.</p>
-    <div class="box"><b>${todo.length}</b> to buy · <b>€${eur.toFixed(2)}</b> at iTunes prices ·
-    <b>${flac}</b> confirmed lossless on Bandcamp · ${done.length} already owned</div>`;
-  if(!todo.length)h+=`<p class="note">Nothing outstanding.</p>`;
-  h+=`<table><tr><th></th><th>track</th><th>where</th><th></th></tr>`+
-    todo.map(t=>`<tr><td>${t.art?`<img class="art" style="width:34px;height:34px" src="${t.art}">`:''}</td>
-      <td><b>${esc(t.artist)}</b> — ${esc(t.title)}<br><span style="color:var(--dim)">${esc(t.album||'')} · ${mmss(t.seconds)} · ${t.playlists.map(MONTH).join(', ')}</span></td>
-      <td>${t.bandcamp?`<a href="${t.bandcamp}" target="_blank">Bandcamp${t.bc_verdict==='confirmed'?' FLAC':' (check length)'}</a><br>`:''}
-          ${t.url?`<a href="${t.url}" target="_blank">iTunes €${(t.price||0).toFixed(2)}</a>`:'<span class="warn">no source</span>'}</td>
-      <td><button data-bought="${t.key}">bought</button></td></tr>`).join('')+`</table>`;
-  $('#v-buy').innerHTML=h;
-  $('#v-buy').querySelectorAll('[data-bought]').forEach(b=>b.onclick=()=>decide({bought:true},[b.dataset.bought]));
-}
-/* ---------------- vinyl ---------------- */
-function drawVinyl(){
-  $('#ctl').innerHTML='';
-  const v=ALL.filter(t=>t.vinyl);
-  const by={};
-  v.forEach(t=>{const k=t.artist+' — '+(t.album||'(unknown release)');(by[k]=by[k]||[]).push(t);});
-  let h=`<h2>Vinyl want-list</h2><p class="note">Grouped by release, because Discogs sells
-    records, not tracks.</p>`;
-  if(!v.length)h+=`<p class="note">Nothing flagged. Press <kbd>v</kbd> while curating.</p>`;
-  h+=Object.keys(by).sort().map(k=>{
-    const q=encodeURIComponent(k.replace(' — ',' '));
-    return `<div class="box"><b>${esc(k)}</b> — ${by[k].length} track${by[k].length>1?'s':''}
-      <div style="color:var(--dim);font-size:12px;margin:4px 0 8px">${by[k].map(t=>esc(t.title)).join(' · ')}</div>
-      <a href="https://www.discogs.com/search/?q=${q}&type=release" target="_blank">Search Discogs</a></div>`;}).join('');
-  $('#v-vinyl').innerHTML=h;
-}
-/* ---------------- data ---------------- */
+
+/* ---------------- settings, where Data lives now ---------------- */
 let MUSIC=null;
-async function drawData(){
-  $('#ctl').innerHTML='';
-  const el=$('#v-data');
-  el.innerHTML=`<h2>Data</h2><p class="note">Everything that used to be a command.
-    Long jobs run in the background and stream their log here.</p>
+function openSettings(){
+  $('#ovl').classList.add('on');
+  $('#ovlbox').innerHTML=`<h2>Data</h2><p class="note" style="margin:0 0 14px">Everything that used to be a
+      command. Long jobs run in the background and keep running if you close this.</p>
     <div class="box" id="jobbox" style="display:none"><b id="jobname"></b>
       <span id="jobstate" style="color:var(--dim)"></span><pre id="joblog"></pre></div>
     <div class="box"><b>Playlists already imported</b> (${SLUGS.length})
@@ -409,33 +834,47 @@ async function drawData(){
         <select id="slug">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select>
         <button id="doMatch">Match against iTunes</button>
         <button id="doVerify">Verify Bandcamp durations</button>
-        <button id="doRebuild">Rebuild state</button>
-      </div></div>
+        <button id="doRebuild">Rebuild state</button></div></div>
     <div class="box"><b>The iPod</b>
       <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">
         ${ALL.filter(t=>t.device).length} tracks on the device ·
         ${ALL.filter(t=>t.device&&t.tier==='skipped').length} marked to remove ·
         ${ALL.filter(t=>t.lossless).length} have a lossless original</div>
       <button id="doDevice">Re-read the device</button></div>
-    <div class="box"><b>Import from Music.app</b>
-      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">Reads your Music library
-        and pulls a playlist in. Matching is separate and slower.</div>
+    <div class="box"><b>Discogs</b>
+      <div style="color:var(--dim);font-size:12px;margin:6px 0 0;line-height:1.6">
+        ${['wantlist','collection'].map(k=>{const f=(DISCOGS.files||{})[k]||{};
+          return `${k}: ${f.modified?`<b style="color:var(--ink)">${f.rows}</b> releases, exported ${f.modified}`:'<span class="warn">not found</span>'}`;}).join('<br>')}<br>
+        Export both from Discogs and drop them at <code>${esc(DISCOGS.dir||'data/discogs')}/wantlist.csv</code> and
+        <code>${esc(DISCOGS.dir||'data/discogs')}/collection.csv</code>. They are read on every load; nothing is fetched.</div></div>
+    <div class="box"><b>Apple Music</b>
+      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px;line-height:1.6">
+        ${AMREAD?`<b style="color:var(--ink)">${AMP.length}</b> playlists and <b style="color:var(--ink)">${AMLIB}</b> library tracks, read ${esc(AMREAD)}`:'<span class="warn">not read yet</span>'}<br>
+        Music.app has no creation date for a playlist, so the dates are derived: the
+        earliest and latest a track in it was added. The list is ordered by the latest,
+        which is when you last worked on it.</div>
+      <button id="doAM">Read Apple Music</button></div>
+    <div class="box"><b>Import a playlist by name</b>
+      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">The left pane lists them all;
+        this is the long way round.</div>
       <button id="loadMusic">List my playlists</button>
-      <div id="musiclist" style="margin-top:10px"></div></div>`;
-  const dd=$('#doDevice'); if(dd)dd.onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
+      <div id="musiclist" style="margin-top:10px"></div></div>
+    <button id="ovlclose">Close</button>`;
+  $('#ovlclose').onclick=closeSettings;
+  $('#doDevice').onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
   $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
+  $('#doAM').onclick=()=>startJob({action:'am_index'});
   $('#doMatch').onclick=()=>startJob({action:'match',slugs:[$('#slug').value]});
   $('#doVerify').onclick=()=>startJob({action:'verify',slugs:[$('#slug').value]});
   $('#loadMusic').onclick=async()=>{
     $('#musiclist').innerHTML='<span style="color:var(--dim)">reading Music.app…</span>';
     const r=await fetch('/api/music').then(r=>r.json());
-    MUSIC=r.playlists||[];
-    const have=new Set(r.have||[]);
+    MUSIC=r.playlists||[]; const have=new Set(r.have||[]);
     const rows=MUSIC.filter(p=>p.tracks>0).sort((a,b)=>a.name.localeCompare(b.name));
     $('#musiclist').innerHTML=`<input type="search" id="mq" placeholder="filter" style="margin-bottom:8px;width:200px">
       <div id="mrows" style="max-height:300px;overflow:auto">`+rows.map(p=>{
         const slug=p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-        return `<div class="row" style="grid-template-columns:1fr auto auto;gap:10px" data-name="${esc(p.name)}">
+        return `<div class="row" draggable="false" style="grid-template-columns:minmax(0,1fr) auto auto;gap:10px" data-name="${esc(p.name)}">
           <div class="t"><div class="n">${esc(p.name)}</div></div>
           <span class="tag">${p.tracks}</span>
           ${have.has(slug)?'<span class="tag ok">imported</span>':`<button data-imp="${esc(p.name)}">import</button>`}</div>`;}).join('')+'</div>';
@@ -443,85 +882,116 @@ async function drawData(){
       $('#mrows').querySelectorAll('.row').forEach(r=>r.style.display=r.dataset.name.toLowerCase().includes(v)?'':'none');};
     $('#mrows').querySelectorAll('[data-imp]').forEach(b=>b.onclick=()=>startJob({action:'export',names:[b.dataset.imp]}));
   };
-  if(job)pollJob();
+  paintJob(lastJob);
+}
+function closeSettings(){$('#ovl').classList.remove('on');}
+$('#gear').onclick=openSettings;
+$('#ovl').onclick=e=>{if(e.target===$('#ovl'))closeSettings();};
+
+// A job keeps being polled whether or not the overlay is open; the overlay, when
+// it is open, just shows the latest. Closing the panel used to stop the poll,
+// which meant a finished job never reloaded the page.
+let lastJob=null;
+function paintJob(r){
+  const box=$('#jobbox'); if(!box||!r)return;
+  box.style.display='';
+  $('#jobname').textContent=r.name||job||'';
+  $('#jobstate').textContent=` — ${r.state}${r.seconds?` · ${r.seconds}s`:''}`;
+  $('#joblog').textContent=(r.log||[]).join('\n');
+  $('#joblog').scrollTop=1e6;
 }
 async function startJob(body){
   const r=await post('/api/action',body);
   if(!r.ok)return toast(r.error||'failed');
-  if(r.job){job=r.job;pollJob();}else{await load();toast('done');}
+  if(r.job){job=r.job;$('#gear').classList.add('busy');pollJob();}else{await load();toast('done');}
 }
 async function pollJob(){
   if(!job)return;
-  const r=await fetch('/api/job?id='+job).then(r=>r.json());
-  const box=$('#jobbox'); if(!box)return;
-  box.style.display='';
-  $('#jobname').textContent=r.name||job;
-  $('#jobstate').textContent=` — ${r.state}${r.seconds?` · ${r.seconds}s`:''}`;
-  $('#joblog').textContent=(r.log||[]).join('\n');
-  $('#joblog').scrollTop=1e6;
-  if(r.state==='running'){setTimeout(pollJob,1200);}
-  else{job=null;await load();toast(r.state==='done'?'finished':'job failed — see log');}
+  const r=await fetch('/api/job?id='+job).then(r=>r.json()).catch(()=>null);
+  if(!r){setTimeout(pollJob,2000);return;}
+  lastJob=r; paintJob(r);
+  if(r.state==='running'){setTimeout(pollJob,1200);return;}
+  job=null; $('#gear').classList.remove('busy');
+  await load(); toast(r.state==='done'?'finished':'job failed — see the log');
 }
-/* ---------------- dialog ---------------- */
+
+/* ---------------- the collection dialog ---------------- */
 const dlg=$('#dlg'), dlgin=$('#dlgin');
 let dlgMode=null;
-function openDlg(mode,heading,note){
+function openDlg(mode){
   dlgMode=mode;
-  $('#dlgh').textContent=heading||'Collection';
-  $('#dlgp').textContent=note||'Type a name and press Enter. An existing name toggles it off.';
-  dlgin.value = mode==='__rename__' ? (colPick||'') : '';
-  $('#dlgex').innerHTML = mode ? '' :
-    COLS.map(c=>`<span data-c="${esc(c)}">${esc(c)}${view[sel]&&view[sel].collections.includes(c)?' ✓':''}</span>`).join('');
+  const t=view[sel];
+  const cfg={
+    null:        {h:'Collection', p:t?`Put “${t.artist} — ${t.title}” in a collection. Type a new name, or pick one; picking one it is already in takes it out.`:'Select a track first.', input:true, list:true},
+    __new__:     {h:'New collection', p:'Name it. It becomes a playlist on the iPod once something is in it.', input:true, list:false},
+    __rename__:  {h:'Rename collection', p:`Rename “${colPick}”. Its order is kept.`, input:true, list:false},
+    __delete__:  {h:'Delete collection', p:`Remove “${colPick}” from every track and take it off the iPod on the next sync. The tracks themselves stay.`, input:false, list:false},
+  }[mode];
+  $('#dlgh').textContent=cfg.h; $('#dlgp').textContent=cfg.p;
+  dlgin.style.display=cfg.input?'':'none';
+  dlgin.value = mode==='__rename__' ? colPick : '';
+  $('#dlgex').innerHTML = cfg.list && t
+    ? [...new Set([...COLS,...PENDING])].sort().map(c=>`<span data-c="${esc(c)}">${esc(c)}${t.collections.includes(c)?' ✓':''}</span>`).join('')
+    : '';
   $('#dlgex').querySelectorAll('[data-c]').forEach(s=>s.onclick=()=>{decide({collection:s.dataset.c});closeDlg();});
-  dlg.classList.add('on'); dlgin.focus();
+  $('#dlgbtn').innerHTML = mode==='__delete__' ? '<button class="go" id="dlgok">Delete</button>' : '';
+  const ok=$('#dlgok'); if(ok)ok.onclick=submitDlg;
+  dlg.classList.add('on'); if(cfg.input)dlgin.focus();
 }
 function closeDlg(){dlg.classList.remove('on');dlgin.blur();dlgMode=null;}
-dlgin.onkeydown=async e=>{
-  e.stopPropagation();
-  if(e.key==='Escape')return closeDlg();
-  if(e.key!=='Enter')return;
+async function submitDlg(){
   const val=dlgin.value.trim();
+  if(dlgMode==='__delete__'){
+    const name=colPick;
+    await post('/api/decide',{rename_collection:name,to:''});
+    PENDING.delete(name); colPick=null; closeDlg(); await load(); toast('deleted '+name); return;
+  }
   if(dlgMode==='__rename__'){
+    if(!val||val===colPick)return closeDlg();
     await post('/api/decide',{rename_collection:colPick,to:val});
-    colPick=val||null; closeDlg(); await load(); return;
+    if(PENDING.has(colPick)){PENDING.delete(colPick);PENDING.add(val);}
+    colPick=val; closeDlg(); await load(); return;
   }
   if(!val)return;
-  if(dlgMode===null&&tab==='collections'){colPick=val;COLS.push(val);closeDlg();draw();return;}
+  if(dlgMode==='__new__'){
+    if(!COLS.includes(val))PENDING.add(val);
+    colPick=val; sel=0; closeDlg(); draw(); return;
+  }
   await decide({collection:val}); closeDlg();
-};
+}
+dlgin.onkeydown=e=>{ e.stopPropagation(); if(e.key==='Escape')closeDlg(); else if(e.key==='Enter')submitDlg(); };
 dlg.onclick=e=>{if(e.target===dlg)closeDlg();};
-/* ---------------- keys / nav ---------------- */
-document.querySelectorAll('nav b').forEach(b=>b.onclick=()=>{tab=b.dataset.v;draw();});
-const FILTERS=['all','undecided','shortlisted','maybe','vinyl','on iPod','remove'];
+
+/* ---------------- keys ---------------- */
+const FILTERS=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove'];
+const qi=$('#q');
+qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawMid();drawFoot();paintPlaying();};
+qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.blur();draw();} if(e.key==='Enter')qi.blur();};
 document.addEventListener('keydown',e=>{
   if(dlg.classList.contains('on'))return;
+  if($('#ovl').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
   const k=e.key;
-  if(k>='1'&&k<='5'){tab=['curate','collections','buy','vinyl','data'][+k-1];draw();return;}
-  if(tab==='collections'&&colPick){
-    const n=(ORDER[colPick]||[]).length;
-    if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault(); if(csel<n-1)moveIn(colPick,csel,csel+1);}
-    else if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault(); if(csel>0)moveIn(colPick,csel,csel-1);}
-    else if(k==='j'||k==='ArrowDown'){e.preventDefault();csel=Math.min(n-1,csel+1);markC();}
-    else if(k==='k'||k==='ArrowUp'){e.preventDefault();csel=Math.max(0,csel-1);markC();}
-    else if(k===' '){e.preventDefault();playC();}
-    else if(k==='x'){const key=(ORDER[colPick]||[])[csel]; if(key)decide({collection:colPick,mode:'remove'},[key]);}
-    return;
-  }
-  if(tab!=='curate')return;
-  if(k==='/'){e.preventDefault();const qi=$('#q');if(qi)qi.focus();return;}
+  if(k==='/'){e.preventDefault();qi.focus();return;}
+  if(k==='['){e.preventDefault();fold('L');return;}
+  if(k===']'){e.preventDefault();fold('R');return;}
+  if(k==='Escape'){ if(q){q='';qi.value='';draw();} else if(colPick){colPick=null;sel=0;draw();} return; }
+  if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
+  if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
   else if(k==='k'||k==='ArrowUp'){e.preventDefault();sel=Math.max(0,sel-1);mark();}
   else if(k===' '){e.preventDefault();play();}
   else if(k==='b'){decide({tier:'shortlisted'},null,true);}
   else if(k==='m'){decide({tier:'maybe'},null,true);}
-  else if(k==='x'){decide({tier:'skipped'},null,true);}
+  else if(k==='x'){
+    // inside a collection, x takes the track out of it; it is not a verdict on the track
+    if(colPick){const t=view[sel]; if(t)decide({collection:colPick,mode:'remove'},[t.key]);}
+    else decide({tier:'skipped'},null,true);}
   else if(k==='u'){decide({tier:'seen'});}
   else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl});}
-  else if(k==='c'){e.preventDefault();openDlg();}
+  else if(k==='c'){e.preventDefault();openDlg(null);}
   else if(k==='f'){filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
 });
-au.onended=()=>document.querySelectorAll('.row').forEach(r=>r.classList.remove('playing'));
 load();
 </script></body></html>

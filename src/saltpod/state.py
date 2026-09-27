@@ -193,6 +193,18 @@ def rebuild(verbose=True):
             seen_now.add(k)
             rec = tracks.setdefault(k, blank(artist, title))
             rec.pop('orphan', None)
+            # Where it lives in Apple Music. `owned` comes from cloudStatus in
+            # the export: purchased, uploaded or matched, as against a
+            # subscription rental, which is a .movpkg and will never play on a
+            # Classic. Only ~110 of 4,876 library tracks are genuinely owned,
+            # which is the whole reason the buy list exists. A record is owned
+            # if ANY export says so -- one playlist knowing is enough.
+            if t.get('owned'):
+                rec['am_owned'] = True
+            rec.setdefault('am_owned', False)
+            cs = t.get('cloud_status')
+            if cs and cs != 'subscription':
+                rec['am_status'] = cs        # 'no longer available' -- the rental is gone
             if slug not in rec['playlists']:
                 rec['playlists'].append(slug)
                 rec['playlists'].sort()

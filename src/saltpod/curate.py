@@ -22,6 +22,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -99,6 +100,53 @@ def playlist_slugs():
                   for p in glob.glob(os.path.join(ROOT, 'data/exports/*.json')))
 
 
+AM_INDEX = os.path.join(ROOT, 'data/exports/_apple_music.json')
+
+
+def am_index():
+    """The cached read of Apple Music: its playlists, and every track in it.
+
+    Music.app has no creation date for a playlist -- its whole property list is
+    id, index, name, persistentID, duration, size, time, visible, specialKind,
+    loved, hated, smart, shared, genius -- so `created` is the earliest a track
+    in it was added, which for a monthly is the month it was made.
+
+    Cached because it reads the entire library; refresh it from the gear.
+    """
+    if not os.path.exists(AM_INDEX):
+        return {'playlists': [], 'keys': [], 'read_at': None}
+    try:
+        return json.load(open(AM_INDEX))
+    except Exception:
+        return {'playlists': [], 'keys': [], 'read_at': None}
+
+
+def refresh_am_index():
+    out = subprocess.run(['osascript', '-l', 'JavaScript',
+                          os.path.join(ROOT, 'bin/export_playlists.js'), '--index'],
+                         capture_output=True, text=True, timeout=600, cwd=ROOT)
+    if out.returncode != 0:
+        raise RuntimeError((out.stderr or 'osascript failed').strip()[:400])
+    d = json.loads(out.stdout)
+    lib = []
+    for row in d.get('library', []):
+        if not (row.get('artist') or row.get('title')):
+            continue
+        row['key'] = S.key_for(row.get('artist'), row.get('title'))
+        lib.append(row)
+    keys = sorted({r['key'] for r in lib})
+    doc = {'playlists': d.get('playlists', []), 'keys': keys, 'library': lib,
+           'read_at': datetime.now().strftime('%Y-%m-%d %H:%M')}
+    os.makedirs(os.path.dirname(AM_INDEX), exist_ok=True)
+    tmp = AM_INDEX + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(doc, f)
+    os.replace(tmp, AM_INDEX)
+    print('%d playlists, %d tracks in the Apple Music library'
+          % (len(doc['playlists']), len(lib)))
+    return doc
+
+
 def music_playlists():
     """Names and track counts straight out of Music.app."""
     try:
@@ -114,6 +162,7 @@ def music_playlists():
 
 def tracks_payload(scope=''):
     st = S.load()
+    am_keys = set(am_index().get('keys') or [])
     out = []
     for k, r in st['tracks'].items():
         if scope and not any(p.startswith(scope) for p in r['playlists']):
@@ -121,10 +170,19 @@ def tracks_payload(scope=''):
         it = r.get('itunes') or {}
         art = (it.get('art') or '').replace('100x100bb', '300x300bb')
         dev = r.get('device') or {}
+        # Which libraries hold this, and which one a click would play from.
+        # `t7` is a file we own; `device` is a copy on the iPod; `am` is that it
+        # came out of an Apple Music playlist at all. audio_source() prefers the
+        # T7 original, so play_from says the same thing rather than guessing.
+        t7 = bool(dev.get('origin'))
         out.append({
             'device': bool(dev), 'dev_album': dev.get('album'),
             'dev_seconds': dev.get('seconds'), 'origin_ext': dev.get('origin_ext'),
             'lossless': dev.get('lossless'),
+            't7': t7, 'am': bool(r['playlists']) or k in am_keys,
+            'am_owned': bool(r.get('am_owned')),
+            'am_status': r.get('am_status'),
+            'play_from': 't7' if t7 else ('ipod' if dev.get('location') else None),
             'audio': bool(dev.get('origin') or dev.get('location')),
             'key': k, 'artist': r['artist'], 'title': r['title'],
             'playlists': r['playlists'], 'tier': r['tier'], 'vinyl': r['vinyl'],
@@ -144,12 +202,27 @@ def tracks_payload(scope=''):
     st_cols = sorted(st.get('collections', []))
     order = {c: S.order_for(st, c) for c in st_cols}
     return {'tracks': out, 'collections': st_cols, 'order': order,
+            'synced': st.get('synced_playlists') or [],
             'slugs': playlist_slugs(), 'updated': st.get('updated')}
+
+
+def adopt(st, body):
+    """Give a track its first record.
+
+    Everything in Apple Music is browsable, but only what you decide on earns a
+    row in state -- otherwise the curation queue would be the whole library and
+    mean nothing. The first b / v / c on a library track creates it here.
+    """
+    for a in body.get('adopt') or []:
+        k = a.get('key')
+        if k and k not in st['tracks']:
+            st['tracks'][k] = S.blank(a.get('artist') or '', a.get('title') or '')
 
 
 def apply_decision(body):
     with LOCK:
         st = S.load()
+        adopt(st, body)
         keys = body.get('keys') or ([body['key']] if body.get('key') else [])
         touched = []
         for k in keys:
@@ -258,6 +331,33 @@ class Handler(BaseHTTPRequestHandler):
                               'text/html; charset=utf-8')
         if u.path == '/api/tracks':
             return self._send(200, json.dumps(tracks_payload((q.get('scope') or [''])[0])))
+        if u.path == '/api/playlists':
+            d = am_index()
+            have = set(playlist_slugs())
+            for p in d.get('playlists', []):
+                p['slug'] = re.sub(r'^-|-$', '', re.sub(r'[^a-z0-9]+', '-', p['name'].lower()))
+                p['imported'] = p['slug'] in have
+            return self._send(200, json.dumps({'playlists': d.get('playlists', []),
+                                               'read_at': d.get('read_at'),
+                                               'library': len(d.get('keys', []))}))
+        if u.path == '/api/library':
+            return self._send(200, json.dumps({'tracks': am_index().get('library') or []}))
+        if u.path == '/api/peek':
+            name = (parse_qs(u.query).get('name') or [''])[0]
+            try:
+                r = subprocess.run(['osascript', '-l', 'JavaScript',
+                                    os.path.join(ROOT, 'bin/export_playlists.js'),
+                                    '--peek', name],
+                                   capture_output=True, text=True, timeout=180, cwd=ROOT)
+                d = json.loads(r.stdout or '{}')
+            except Exception as e:
+                d = {'error': str(e)[:200]}
+            for row in d.get('tracks', []):
+                row['key'] = S.key_for(row.get('artist'), row.get('title'))
+            return self._send(200, json.dumps(d))
+        if u.path == '/api/discogs':
+            from . import discogs
+            return self._send(200, json.dumps(discogs.payload()))
         if u.path == '/api/job':
             with JOBS_LOCK:
                 j = JOBS.get((q.get('id') or [''])[0])
@@ -363,6 +463,11 @@ class Handler(BaseHTTPRequestHandler):
         if a == 'device':
             S.import_device(verbose=False)
             return {'ok': True}
+        if a == 'am_index':
+            return {'ok': True, 'job': run_job('read Apple Music', [
+                ('read playlists and library', [py, '-c',
+                 'import sys; sys.path.insert(0, "src"); '
+                 'from saltpod.curate import refresh_am_index; refresh_am_index()'])]).id}
         if a == 'reports':
             import io
             import contextlib

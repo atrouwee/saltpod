@@ -74,14 +74,105 @@ function run(argv) {
                   'Top 25 Most Played', 'My Top Rated'];
 
   if (argv.indexOf('--list') !== -1) {
+    // Music.app does NOT expose when a playlist was created -- a playlist's
+    // whole property list is id, index, name, persistentID, duration, size,
+    // time, visible, specialKind, loved, hated, smart, shared, genius. So it
+    // is derived: the earliest date a track in it was added is when the
+    // playlist was built, which for a monthly is exactly right. `last` is the
+    // most recent, so a playlist still being added to is visible as such.
+    // dateAdded comes back a whole column at a time, like every other read
+    // here; per-track would cost one Apple event each and time out.
     const names = M.userPlaylists.name();
-    const counts = [];
     const pls = M.userPlaylists();
-    for (const p of pls) { try { counts.push(p.tracks().length); } catch (e) { counts.push(0); } }
-    const rows = names.map((nm, i) => ({ name: String(nm), tracks: counts[i] }))
-      .filter((r) => SYSTEM.indexOf(r.name) === -1 && r.tracks > 0)
-      .sort((a, b) => b.tracks - a.tracks);
+    const rows = [];
+    for (let i = 0; i < pls.length; i++) {
+      const name = String(names[i]);
+      if (SYSTEM.indexOf(name) !== -1) continue;
+      let count = 0, created = null, last = null;
+      try { count = pls[i].tracks().length; } catch (e) { count = 0; }
+      if (!count) continue;
+      try {
+        const ds = pls[i].tracks.dateAdded();
+        for (const d of ds) {
+          if (!d) continue;
+          const t = new Date(d).getTime();
+          if (isNaN(t)) continue;
+          if (created === null || t < created) created = t;
+          if (last === null || t > last) last = t;
+        }
+      } catch (e) { /* a playlist that will not give up its dates still lists */ }
+      rows.push({ name: name, tracks: count,
+                  created: created === null ? null : new Date(created).toISOString(),
+                  last: last === null ? null : new Date(last).toISOString() });
+    }
+    rows.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
     return JSON.stringify(rows, null, 1);
+  }
+
+  if (argv.indexOf('--index') !== -1) {
+    // Everything the page needs to know about Apple Music, in one pass:
+    // which playlists exist and when they were made, and every track in the
+    // library so a record can be marked as living there whether or not its
+    // playlist was ever exported. Columns, never per-track.
+    const names = M.userPlaylists.name();
+    const pls = M.userPlaylists();
+    const playlists = [];
+    for (let i = 0; i < pls.length; i++) {
+      const name = String(names[i]);
+      if (SYSTEM.indexOf(name) !== -1) continue;
+      let count = 0, created = null, last = null;
+      try { count = pls[i].tracks().length; } catch (e) { count = 0; }
+      if (!count) continue;
+      try {
+        const ds = pls[i].tracks.dateAdded();
+        for (const d of ds) {
+          if (!d) continue;
+          const t = new Date(d).getTime();
+          if (isNaN(t)) continue;
+          if (created === null || t < created) created = t;
+          if (last === null || t > last) last = t;
+        }
+      } catch (e) { /* a playlist that will not give up its dates still lists */ }
+      playlists.push({ name: name, tracks: count,
+                       created: created === null ? null : new Date(created).toISOString(),
+                       last: last === null ? null : new Date(last).toISOString() });
+    }
+    playlists.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+    let library = [];
+    try {
+      const lib = M.libraryPlaylists[0];
+      const ns = lib.tracks.name(), as = lib.tracks.artist(),
+            al = lib.tracks.album(), du = lib.tracks.duration(),
+            cs = lib.tracks.cloudStatus();
+      for (let i = 0; i < ns.length; i++) {
+        library.push({ artist: String(as[i] || ''), title: String(ns[i] || ''),
+                       album: String(al[i] || ''), secs: Math.round(du[i] || 0),
+                       cloud: String(cs[i] || '') });
+      }
+    } catch (e) { library = []; }
+    return JSON.stringify({ playlists: playlists, library: library });
+  }
+
+  if (argv.indexOf('--peek') !== -1) {
+    // One playlist's tracks, for looking at. Nothing is written; this is the
+    // inspiration path, as against --all which imports.
+    const want = argv[argv.indexOf('--peek') + 1];
+    let pl = null;
+    try { pl = M.userPlaylists.whose({ name: want })[0]; } catch (e) { pl = null; }
+    if (!pl) return JSON.stringify({ error: 'no playlist named ' + want });
+    const cols = {};
+    for (const c of ['name', 'artist', 'album', 'duration', 'cloudStatus']) {
+      try { cols[c] = pl.tracks[c](); } catch (e) { cols[c] = null; }
+    }
+    const n = (cols.name || []).length;
+    const rows = [];
+    for (let i = 0; i < n; i++) {
+      const g = (c) => (cols[c] && cols[c][i] !== undefined ? cols[c][i] : null);
+      rows.push({ artist: String(g('artist') || ''), title: String(g('name') || ''),
+                  album: String(g('album') || ''), secs: Math.round(g('duration') || 0),
+                  cloud: String(g('cloudStatus') || '') });
+    }
+    return JSON.stringify({ name: want, tracks: rows });
   }
 
   let targets = argv.filter((a) => a.indexOf('--') !== 0);

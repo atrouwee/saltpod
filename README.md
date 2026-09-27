@@ -54,7 +54,52 @@ saltpod sync       # backup, convert, copy, write, verify on device, eject
 `saltpod --help` lists the rest: `device` pulls in what is already on the iPod,
 `read` prints a database, `verify` checks one, `reconcile` maps device tracks
 back to your originals, `index` walks the music you own, `state` rebuilds or
-reports the curation state.
+reports the curation state, `applemusic` reads your Music.app library, and
+`discogs` reports on your Discogs exports.
+
+Every one of them is a plain local script. Nothing here calls a model, a
+remote service, or anything but Music.app on your own machine and two public
+HTTP endpoints you can see in the source.
+
+## The two libraries it reads
+
+**Apple Music**, over AppleScript, on your machine:
+
+```
+saltpod applemusic read              # playlists, their dates, and every library track
+saltpod applemusic playlists         # what exists, and what you have imported
+saltpod applemusic peek "Jazz Party" # look inside one without importing it
+```
+
+The read is cached at `data/exports/_apple_music.json`, so the page opens
+instantly and you refresh when you want to. Music.app has **no creation date
+for a playlist** — its whole property list is id, index, name, persistentID,
+duration, size, time, visible, specialKind, loved, hated, smart, shared,
+genius — so the date shown is derived: the earliest a track in it was added.
+That is exact for a playlist built in one go and wrong for one assembled from
+back catalogue, which will read as the age of its oldest track.
+
+Everything in the library is browsable, but a track earns a record only when
+you decide on it. Otherwise the curation queue would be your whole library and
+would mean nothing.
+
+**Discogs**, from its own exports. Download both CSVs from your Discogs
+account and drop them in:
+
+```
+data/discogs/wantlist.csv
+data/discogs/collection.csv
+saltpod discogs status               # what they hold, and what is flagged but on neither
+```
+
+They are read on every request; nothing is fetched and no account is
+connected. A track meets a release on artist + album, lowercased, with
+bracketed suffixes like `(2)` and `(Remastered)` stripped. The match is strict
+on purpose — a wrong "you own this" is worse than a missing one.
+
+One gotcha the wantlist export will cost you otherwise: it carries a trailing
+`Date Added` column its header does not name, so pad headers rather than
+trusting them.
 
 ## The page
 
@@ -67,9 +112,19 @@ One file, no build step, nothing fetched from anywhere. Keyboard first.
   hear it. The order you arrange is the order the iPod plays. That is the
   product; sync never sorts.
 - **Buy** lists only what you chose, with a lossless source where the running
-  time was confirmed. **Vinyl** groups the want-list by release. **Data** runs
-  the slow jobs — importing playlists from Music.app, matching, verifying — and
-  streams their log into the page.
+  time was confirmed. **Vinyl** shows the pipeline in its one direction —
+  flagged here, wanted on Discogs, owned — so the first group is the to-do.
+- **Where a track lives**, on every row, in a fixed order: `AM T7 POD LP`.
+  Apple Music, the drive you keep your files on, the iPod, a record you own.
+  The places are peers; no claim is made about which came first, because a
+  track can be in all four and the order is unknowable. Owned shows in full
+  ink and rented stays dim, and a row still to be synced is dimmed. The
+  subtitle separately names what a click would play.
+- **Two libraries, one switcher.** The left pane is either your iPod —
+  collections, the only thing you edit, and what sync writes — or Apple Music,
+  which is there to take from and never edited.
+- The gear runs the slow jobs — reading Apple Music, importing a playlist,
+  matching, verifying — and streams their log into the page.
 
 ## How it writes
 

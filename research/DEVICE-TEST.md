@@ -70,3 +70,49 @@ position mhods · new `mhit` by template cloning · new file placement · master
 playlist append · dropped positional indexes · `Play Counts` deletion · ALAC
 conversion · hash58 · zeroed hash72. Not yet exercised on the device: track
 removal, playlist deletion (both pass on copies).
+
+---
+
+# Third write — playlist update (re-sequence) — 2026-09-27 15:32
+
+**Result: accepted.** Via `saltpod sync`, `set_tracks` on a playlist already on
+the device — the first edit to change an existing device playlist rather than
+add one.
+
+`Saltgate Test` re-sequenced from state, written as position mhods 1..3 to
+**both** stored copies, re-signed, verified on device, ejected:
+
+```
+backup: backups/ipod-2026-09-27-153248
+  playlist Saltgate Test                  3 tracks
+database written and verified on device: 864532 bytes, hash58 OK
+```
+
+Read back off stock firmware after unplug and reboot
+(`device-test3-order.jpg`), in exactly the order state held:
+
+1. The Beatles — *Her Majesty*
+2. 2 Pac — *I Don't Give a Fuck*
+3. 28th Street Crew — *I Need A Rhythm*
+
+**Why this one matters more than it looks.** The other writes proved the
+database can be edited and the firmware will accept it. This proves the
+*product* claim: **sequence is the product**, and the order a person arranges
+in the page is the order the device plays. `state.collection_order` went to
+position mhods unsorted, through two stored copies, past the checksum, and came
+back unchanged on a 2007-era screen. Nothing in the chain reordered it.
+
+Also worth recording: this was a pure update — `0 new, 0 added, 0 removed`. The
+sync touched one playlist's membership and nothing else, which is the behaviour
+the "never wipes unmentioned tracks" rule promises.
+
+## Proven on hardware now
+
+rename playlist · create playlist (both sections) · **update an existing device
+playlist (re-sequence)** · playlist membership with position mhods · new `mhit`
+by template cloning · new file placement · master playlist append · dropped
+positional indexes · `Play Counts` deletion · ALAC conversion · hash58 · zeroed
+hash72.
+
+Still not exercised on the device: **track removal**, **playlist deletion**
+(both pass on copies).

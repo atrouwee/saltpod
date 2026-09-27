@@ -53,6 +53,13 @@ def main(argv=None):
     p = sub.add_parser("state", help="the curation state: rebuild it, or print its counts")
     p.add_argument("what", choices=["rebuild", "stats", "buylist", "vinyl", "collections"], nargs="?", default="stats")
 
+    p = sub.add_parser("applemusic", help="read Apple Music: its playlists, their dates, and every track in the library")
+    p.add_argument("what", choices=["read", "playlists", "peek"], nargs="?", default="read")
+    p.add_argument("name", nargs="?", help="for peek: the playlist to look inside, without importing it")
+
+    p = sub.add_parser("discogs", help="what the Discogs exports hold, and what is flagged but not yet on either list")
+    p.add_argument("what", choices=["status", "wantlist", "collection"], nargs="?", default="status")
+
     sub.add_parser("version", help="print the version and exit")
 
     a = parser.parse_args(argv)
@@ -97,6 +104,73 @@ def main(argv=None):
         if not roots[0]:
             fail("no library root", "pass folders, or set library_root in data/device.json")
         return local_index.main(roots)
+    if a.cmd == "applemusic":
+        from . import curate as C
+        if a.what == "read":
+            step("reading Music.app")
+            d = C.refresh_am_index()
+            receipt("playlists", str(len(d["playlists"])))
+            receipt("library tracks", str(len(d.get("library") or [])))
+            receipt("cached", os.path.relpath(C.AM_INDEX, os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+            return 0
+        if a.what == "playlists":
+            d = C.am_index()
+            if not d["playlists"]:
+                fail("nothing read yet", "run: saltpod applemusic read")
+            have = set(C.playlist_slugs())
+            import re as _re
+            for p in d["playlists"]:
+                slug = _re.sub(r"^-|-$", "", _re.sub(r"[^a-z0-9]+", "-", p["name"].lower()))
+                print("%-38s %5d  created %s  last %s  %s"
+                      % (p["name"][:38], p["tracks"], (p["created"] or "?")[:10],
+                         (p["last"] or "?")[:10], "imported" if slug in have else ""))
+            note("%d playlists; created is the earliest a track in it was added, "
+                 "because Music.app has no creation date" % len(d["playlists"]))
+            return 0
+        if not a.name:
+            fail("peek needs a playlist name", 'try: saltpod applemusic peek "Jazz Party"')
+        import subprocess as _sp
+        r = _sp.run(["osascript", "-l", "JavaScript", "bin/export_playlists.js", "--peek", a.name],
+                    capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        import json as _json
+        d = _json.loads(r.stdout or "{}")
+        if d.get("error"):
+            fail(d["error"], "saltpod applemusic playlists lists the names")
+        for t in d.get("tracks", []):
+            print("%-30s %-34s %s" % (t["artist"][:30], t["title"][:34], t["cloud"]))
+        note("%d tracks; nothing was imported" % len(d.get("tracks", [])))
+        return 0
+    if a.cmd == "discogs":
+        from . import discogs, state as _state
+        d = discogs.payload()
+        if a.what == "status":
+            for k in ("wantlist", "collection"):
+                f = d["files"][k]
+                receipt(k, ("%d releases, exported %s" % (f["rows"], f["modified"]))
+                        if f["modified"] else "not found at " + f["path"],
+                        tone="good" if f["modified"] else "bad")
+            own = {x["key"] for x in d["collection"]}
+            want = {x["key"] for x in d["wantlist"]}
+            st = _state.load()
+            flagged = {}
+            for r in st["tracks"].values():
+                if not r["vinyl"]:
+                    continue
+                alb = (r.get("itunes") or {}).get("album") or (r.get("device") or {}).get("album") or ""
+                flagged[discogs.norm(r["artist"]) + "|" + discogs.norm(alb)] = \
+                    "%s - %s" % (r["artist"], alb or "(unknown release)")
+            todo = [v for k, v in sorted(flagged.items()) if k not in own and k not in want]
+            receipt("flagged for vinyl", "%d releases" % len(flagged))
+            receipt("to add on Discogs", "%d" % len(todo), tone="good" if not todo else None)
+            for v in todo:
+                print("   " + v)
+            note("drop fresh exports at %s/{wantlist,collection}.csv" % d["dir"])
+            return 0
+        for x in d[a.what]:
+            print("%-28s %-38s %s" % (x["artist"][:28], x["title"][:38],
+                                      " · ".join(y for y in (x["label"], x["format"], x["year"]) if y and y != "0")))
+        note("%d releases" % len(d[a.what]))
+        return 0
     if a.cmd == "state":
         from . import state
         {"rebuild": state.rebuild, "stats": state.stats, "buylist": state.buylist,
