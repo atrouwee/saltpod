@@ -63,6 +63,7 @@ def main(argv=None):
         return curate.main(["--port", str(a.port)] + (["--no-open"] if a.no_open else []))
     if a.cmd in ("plan", "sync"):
         from . import apply
+        apply._cfg()
         mount = a.mount or apply.MOUNT
         if not os.path.exists(os.path.join(mount, apply.DB_REL)):
             fail(f"no iPod at {mount}", "plug it in and put it in Disk Mode (hold Select+Menu, then Select+Play)")

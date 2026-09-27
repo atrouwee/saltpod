@@ -39,9 +39,19 @@ from . import ipod_edit as E        # noqa: E402
 from . import hash58                # noqa: E402
 
 from . import config
-CFG = config.load()
-MOUNT = CFG['mount']
-GUID = CFG['firewire_guid']
+
+# Device settings are read when a command runs, not when the module is
+# imported -- a fresh clone with no data/device.json must still print help.
+MOUNT = '/Volumes/IPOD'
+GUID = None
+
+
+def _cfg():
+    global MOUNT, GUID
+    if GUID is None:
+        c = config.load()
+        MOUNT, GUID = c['mount'], c['firewire_guid']
+    return MOUNT, GUID
 DB_REL = 'iPod_Control/iTunes/iTunesDB'
 AS_IS = {'.mp3', '.m4a', '.aac'}
 CONVERT = {'.flac', '.wav', '.aiff', '.aif', '.alac', '.ogg'}
@@ -94,7 +104,9 @@ def new_location(mount, ext):
 
 # ----------------------------------------------------------------- plan
 
-def plan(mount):
+def plan(mount=None):
+    _cfg()
+    mount = mount or MOUNT
     st = S.load()
     dbp = os.path.join(mount, DB_REL)
     root = W.parse(open(dbp, 'rb').read())
@@ -183,7 +195,9 @@ def backup(mount):
     return d
 
 
-def sync(mount, eject=True):
+def sync(mount=None, eject=True):
+    _cfg()
+    mount = mount or MOUNT
     p = plan(mount)
     print_plan(p)
     if not (p['adds'] or p['removes'] or p['new_playlists'] or p['update_playlists'] or p['delete_playlists']):
@@ -262,9 +276,11 @@ def sync(mount, eject=True):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('cmd', choices=['plan', 'sync'])
-    ap.add_argument('--mount', default=MOUNT)
+    ap.add_argument('--mount', default=None)
     ap.add_argument('--no-eject', action='store_true')
     a = ap.parse_args()
+    _cfg()
+    a.mount = a.mount or MOUNT
     if not os.path.exists(os.path.join(a.mount, DB_REL)):
         sys.exit('iPod not mounted at %s' % a.mount)
     if a.cmd == 'plan':
