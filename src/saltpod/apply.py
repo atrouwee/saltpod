@@ -157,19 +157,40 @@ def plan(mount=None):
             removes.append((k, r, dev_by_key[k]))
 
     existing = {E.pl_name(p) for p in E.playlists(root, E.playlist_sections(root)[0])}
-    # Only playlists THIS tool created are candidates for deletion. Anything
-    # iTunes or the user made on the device is never removed by a state change.
+    # What each playlist on the device holds right now, in order, so a
+    # collection that already matches is reported as such and not rewritten.
+    # Every non-smart playlist is a collection since import_device adopts them,
+    # so without this the panel would say "15 to update" forever.
+    from . import itunesdb as I
+    dev_seq = {}
+    for pl in I.read(dbp).get('playlists') or []:
+        if not pl.get('master') and not pl.get('smart'):
+            dev_seq[pl['name']] = [it for it in (pl.get('items') or []) if isinstance(it, int)]
+    unchanged = []
+    for c, members in cols.items():
+        if c not in existing:
+            continue
+        if any(k not in dev_by_key for k, r in members):
+            continue                      # something in it still has to be copied across
+        if [dev_by_key[k] for k, r in members] == dev_seq.get(c):
+            unchanged.append(c)
+    # A collection is deletable if this tool wrote it OR adopted it from the
+    # device -- both put it in synced_playlists. Smart playlists are never there.
     ours = set(st.get('synced_playlists', []))
     return {'root': root, 'state': st, 'dev_by_key': dev_by_key, 'collections': cols,
             'adds': adds, 'no_source': no_source, 'removes': removes,
+            'unchanged': unchanged,
             'new_playlists': [c for c in cols if c not in existing],
-            'update_playlists': [c for c in cols if c in existing],
+            'update_playlists': [c for c in cols if c in existing and c not in unchanged],
             'delete_playlists': sorted(n for n in ours if n in existing and n not in cols)}
 
 
 def print_plan(p):
-    print('collections -> playlists: %d new, %d updated' % (len(p['new_playlists']), len(p['update_playlists'])))
+    print('collections -> playlists: %d new, %d updated, %d unchanged'
+          % (len(p['new_playlists']), len(p['update_playlists']), len(p.get('unchanged', []))))
     for c in p['collections']:
+        if c in p.get('unchanged', ()):
+            continue
         tag = 'new' if c in p['new_playlists'] else 'update'
         print('   %-8s %-30s %d tracks' % (tag, c[:30], len(p['collections'][c])))
     if p['delete_playlists']:
@@ -253,6 +274,8 @@ def sync(mount=None, eject=True):
         print('  playlist %-30s deleted' % c[:30])
     print('## playlists')
     for c, members in p['collections'].items():
+        if c in p.get('unchanged', ()):
+            continue                      # already exactly this on the device
         ids = [p['dev_by_key'][k] for k, r in members if k in p['dev_by_key']]
         if c in p['new_playlists']:
             E.playlist_create(root, c)

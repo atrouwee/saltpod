@@ -122,11 +122,58 @@ def import_device(mount=None, verbose=True):
             r['device']['origin'] = o['origin']
             r['device']['origin_ext'] = o['ext']
             r['device']['lossless'] = o['lossless']
+    adopted = adopt_device_playlists(st, db)
     save(st)
     if verbose:
         print('%d device tracks: %d new, %d merged with playlist records'
               % (len(db['tracks']), added, merged))
+        if adopted:
+            print('%d playlists on the device became collections: %s'
+                  % (len(adopted), ', '.join(adopted)))
     return st
+
+
+def adopt_device_playlists(st, db):
+    """Every non-smart playlist the iPod carries is a collection.
+
+    The owner's rule: no difference between what this tool made and what was
+    already there -- the only exception is a smart playlist, which the
+    firmware owns. So each one is adopted into state under its own name, in
+    the device's order, and into synced_playlists, so that deleting it in the
+    page deletes it on the next sync exactly as for any other collection.
+
+    A name already in synced_playlists is skipped even if it is not a
+    collection: that is a deletion waiting to be synced, not a playlist to
+    resurrect.
+    """
+    by_id = {t['id']: key_for(t.get('artist'), t.get('title')) for t in db['tracks']}
+    cols = set(st.get('collections', []))
+    synced = set(st.get('synced_playlists', []))
+    order = st.setdefault('collection_order', {})
+    adopted = []
+    for p in db.get('playlists') or []:
+        name = p.get('name') or ''
+        if not name or p.get('master') or p.get('smart'):
+            continue
+        if name in cols or name in synced:
+            continue
+        keys = []
+        for it in p.get('items') or []:
+            k = by_id.get(it if isinstance(it, int) else None)
+            if k and k in st['tracks'] and k not in keys:
+                keys.append(k)
+        for k in keys:
+            rec = st['tracks'][k]
+            if name not in rec['collections']:
+                rec['collections'].append(name)
+                rec['collections'].sort()
+        order[name] = keys
+        cols.add(name)
+        synced.add(name)
+        adopted.append(name)
+    st['collections'] = sorted(cols)
+    st['synced_playlists'] = sorted(synced)
+    return adopted
 
 
 def order_for(st, name):

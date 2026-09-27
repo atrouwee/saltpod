@@ -317,6 +317,7 @@ def plan_summary(mount=None):
             'add_bytes': add_bytes, 'free_bytes': free_bytes,
             'ok': True, 'mount': m,
             'new': p['new_playlists'], 'update': p['update_playlists'],
+            'unchanged': p.get('unchanged', []),
             'delete': p['delete_playlists'],
             'adds': [{'artist': r['artist'], 'title': r['title'],
                       'convert': os.path.splitext(src)[1].lower() in A.CONVERT}

@@ -547,7 +547,7 @@ function libRow(r){
           am_status:(r.cloud==='subscription'||AM_OWNED.includes(r.cloud))?null:r.cloud,
           play_from:null, audio:false, preview:null, art:null, lean:true};
 }
-function rowHTML(t,i,pos){
+function rowHTML(t,i,pos,ro){
   const dur=mmss(t.seconds||t.dev_seconds);
   return `<div class="row ${t.tier==='skipped'?'skip':''} ${t.device?'':'pending'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}"
       ${pos!=null?'style="grid-template-columns:24px 44px minmax(0,1fr) auto auto"':''}>
@@ -557,7 +557,7 @@ function rowHTML(t,i,pos){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null?'<span class="grab">⋮⋮</span>':''}</div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}</div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -592,7 +592,7 @@ function drawMid(){
     $('#midstat').innerHTML=`<s>${all.length}</s> tracks · on the iPod · ${dp.smart?'a smart playlist, never written':'not a collection yet'}`;
     acts.innerHTML = dp.smart ? '' : `<span class="act" id="takeover" title="a collection of the same name and order; from then on it is yours to edit and sync">make it a collection</span>`;
     const tk=$('#takeover'); if(tk)tk.onclick=()=>takeOver(dp);
-    h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1)).join('')
+    h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1,true)).join('')
       : all.length ? '<p class="note">Nothing in here matches.</p>'
       : '<p class="note">Empty on the device.</p>';
   } else if(colPick){
@@ -753,7 +753,8 @@ function drawCols(){
   // then everything else the iPod carries -- iTunes-made, hand-made, smart
   const others=DEV.playlists.filter(p=>!p.ours);
   if(others.length){
-    h+=`<div class="month" title="${DEV.mounted?'read from the device':'read from '+esc(DEV.source||'the last backup')+' — the iPod is not connected'}">on the iPod${DEV.mounted?'':' · last seen'}</div>`;
+    const allSmart=others.every(p=>p.smart);
+    h+=`<div class="month" title="${allSmart?'the firmware\'s own lists: shown, never written':''}${DEV.mounted?'':' — read from '+esc(DEV.source||'the last backup')}">${allSmart?'smart · read-only':'on the iPod'}${DEV.mounted?'':' · last seen'}</div>`;
     h+=others.map(p=>`<div class="col dim ${p.name===devPick?'on':''}" data-dev="${esc(p.name)}"
         title="${esc(p.name)} — ${p.n} tracks${p.smart?', a smart playlist: shown, never written':', made by iTunes or by hand; not a collection yet'}">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
@@ -1151,8 +1152,10 @@ function openDlg(mode,why,plan){
       const n=plan.new.length+plan.update.length+plan.delete.length+plan.adds.length+plan.removes.length;
       const gb=b=>b==null?'?':(b>=1e9?(b/1e9).toFixed(1)+' GB':Math.round(b/1e6)+' MB');
       const fits = plan.add_bytes==null||plan.free_bytes==null||plan.add_bytes<=plan.free_bytes;
+      const same=(plan.unchanged||[]).length;
       $('#dlgp').innerHTML = n
         ? 'A dated backup is taken first, and tracks the collections do not mention are left alone.'
+          + (same?` ${same} playlist${same>1?'s':''} already match${same>1?'':'es'} the device and will not be touched.`:'')
           + (plan.adds.length?` Adds about <b style="color:var(--ink)">${gb(plan.add_bytes)}</b> after conversion, of ${gb(plan.free_bytes)} free${fits?'':' — <span style="color:var(--orange)">that will not fit</span>'}.`:'')
         : 'Nothing to do — the iPod already matches.';
       const line=(label,items)=>items.length?`<div class="dsec">${label} · ${items.length}</div>`

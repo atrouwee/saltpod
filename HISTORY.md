@@ -205,8 +205,9 @@ Each of these has a reason above. Do not relitigate them without reading it.
 
 - Never regenerate the database; edit in place.
 - Never invent a structure; clone one the firmware already accepted.
-- Sync never wipes a track it was not told about; it deletes only playlists it
-  created.
+- Sync never wipes a track it was not told about. Every non-smart playlist on
+  the device is a collection — adopted on read, the owner's to edit and
+  delete, whoever made it. Smart playlists are shown and never written.
 - Back up before every write.
 - Sequence is the product. Never sort.
 - No Rockbox.
