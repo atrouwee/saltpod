@@ -292,9 +292,11 @@ p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 
          transition: transform .18s ease; will-change: transform; }
 #lsheet { left: 0; width: var(--lw); border-right: 1px solid var(--faint);
           box-shadow: 14px 0 28px rgba(0,0,0,.35); transform: translateX(-105%); }
-/* Data sits on top of everything, so it covers everything: the whole page,
-   still arriving from the right. */
-#rsheet { left: 0; right: 0; border-left: 0; transform: translateX(102%); }
+/* Data is a fixed sheet, not a pane: it covers the right half of the screen,
+   header and footer included, and leaves the left half lit. Never narrower
+   than 480px, so a small window gets more than half. */
+#rsheet { position: fixed; top: 0; bottom: 0; right: 0; left: auto; width: max(50%, 480px); z-index: 30;
+          border-left: 1px solid var(--faint); box-shadow: -14px 0 28px rgba(0,0,0,.35); transform: translateX(102%); }
 #rsheet .pbody { max-width: 760px; }
 /* id + class, because the off-canvas transform above is on an id and would
    otherwise outrank a class alone */
@@ -1154,7 +1156,8 @@ function openSettings(){
   paintJob(lastJob);
 }
 function closeSettings(){$('#rsheet').classList.remove('on');}
-$('#gear').onclick=openSettings;
+// the gear opens Data, and closes it again: one control, both directions
+$('#gear').onclick=()=>{ if($('#rsheet').classList.contains('on'))closeSettings(); else openSettings(); };
 // Sync is never one click. It asks the device what it actually holds, shows
 // the diff, and only then writes -- the same plan / sync pair the terminal has.
 $('#dosync').onclick=async()=>{
