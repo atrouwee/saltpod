@@ -1,0 +1,491 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>ipod-playlists</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#0e0f12;--fg:#e8e6e3;--dim:#8b8f98;--line:#23252b;--card:#16181d;
+      --buy:#4ade80;--maybe:#fbbf24;--skip:#5b5f68;--vinyl:#c084fc;--info:#7dd3fc}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+     font:14px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif}
+a{color:var(--info)}
+header{position:sticky;top:0;z-index:5;background:rgba(14,15,18,.94);
+       backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:9px 16px;
+       display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:13px;margin:0;font-weight:600;letter-spacing:.03em;color:var(--dim)}
+nav{display:flex;gap:4px}
+nav b{font-weight:500;font-size:12.5px;padding:4px 11px;border-radius:7px;cursor:pointer;color:var(--dim)}
+nav b:hover{color:var(--fg)}
+nav b.on{background:var(--card);color:var(--fg)}
+.counts{color:var(--dim);font-size:12px;display:flex;gap:10px;flex-wrap:wrap}
+.counts s{text-decoration:none;color:var(--fg);font-weight:600}
+.pill{padding:2px 8px;border:1px solid var(--line);border-radius:99px;font-size:11px;
+      color:var(--dim);cursor:pointer;user-select:none}
+.pill.on{color:var(--bg);background:var(--fg);border-color:var(--fg)}
+input,select,button,textarea{font:inherit}
+input[type=text],input[type=search],select{background:var(--card);border:1px solid var(--line);
+  color:var(--fg);border-radius:6px;padding:5px 9px;font-size:12px}
+button{background:var(--card);border:1px solid var(--line);color:var(--fg);
+       border-radius:7px;padding:6px 12px;font-size:12px;cursor:pointer}
+button:hover{border-color:#4a505c}button:disabled{opacity:.45;cursor:default}
+button.go{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+main{max-width:1040px;margin:0 auto;padding:10px 16px 120px}
+.view{display:none}.view.on{display:block}
+.month{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.09em;
+       margin:22px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;
+     padding:7px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.row:hover{background:var(--card)}
+.row.sel{background:var(--card);border-color:#3a3f4a}
+.row.playing .art{outline:2px solid var(--buy);outline-offset:1px}
+.art{width:44px;height:44px;border-radius:5px;background:#1c1f26;object-fit:cover;flex:none}
+.t{min-width:0}
+.t .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.t .s{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;
+      text-overflow:ellipsis;margin-top:1px}
+.tags{display:flex;gap:5px;align-items:center;flex:none}
+.tag{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);
+     color:var(--dim);letter-spacing:.03em;white-space:nowrap}
+.tag.buy{color:var(--buy);border-color:#1e5136}.tag.maybe{color:var(--maybe);border-color:#5c4415}
+.tag.skip{color:var(--skip)}.tag.vinyl{color:var(--vinyl);border-color:#4c3168}
+.tag.col{color:var(--info);border-color:#1e4457}.tag.ok{color:var(--buy)}
+.row.skip .t{opacity:.42}
+h2{font-size:13px;margin:26px 0 10px;font-weight:600}
+h2:first-child{margin-top:10px}
+p.note{color:var(--dim);font-size:12.5px;margin:0 0 14px;max-width:70ch}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 14px}
+.grid{display:grid;gap:8px}
+.cols{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.colchip{padding:5px 12px;border:1px solid var(--line);border-radius:99px;cursor:pointer;font-size:12px;color:var(--dim)}
+.colchip.on{border-color:var(--info);color:var(--info)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+td,th{text-align:left;padding:6px 10px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+pre{background:#0a0b0d;border:1px solid var(--line);border-radius:8px;padding:11px;
+    font:11.5px/1.5 ui-monospace,SFMono-Regular,monospace;overflow:auto;max-height:320px;margin:10px 0 0}
+footer{position:fixed;bottom:0;left:0;right:0;background:rgba(14,15,18,.96);
+        backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:8px 16px;
+        color:var(--dim);font-size:11.5px;display:flex;gap:15px;flex-wrap:wrap}
+kbd{background:var(--card);border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:4px;padding:1px 5px;color:var(--fg);font:11px ui-monospace,monospace}
+#dlg{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:20}
+#dlg.on{display:flex}
+#dlgbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(420px,92vw)}
+#dlgbox h3{margin:0 0 4px;font-size:13px}#dlgbox p{margin:0 0 12px;color:var(--dim);font-size:12px}
+#dlgbox input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:9px}
+.exist{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.exist span{font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:99px;cursor:pointer;color:var(--dim)}
+.exist span:hover{color:var(--fg);border-color:var(--fg)}
+#toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:var(--card);
+       border:1px solid var(--line);border-radius:8px;padding:7px 14px;font-size:12px;
+       opacity:0;transition:opacity .18s;pointer-events:none;z-index:30}
+#toast.on{opacity:1}
+.warn{color:var(--maybe)}
+.row.csel{background:var(--card);border-color:#3a3f4a}
+.row.dragging{opacity:.35}
+.row.over{border-top:2px solid var(--info)}
+.pos{color:var(--dim);font:11px ui-monospace,monospace;width:28px;text-align:right}
+.grab{cursor:grab;color:var(--dim);padding:0 6px}
+</style></head><body>
+<header>
+  <h1>ipod-playlists</h1>
+  <nav>
+    <b data-v="curate" class="on">Curate</b><b data-v="collections">Collections</b>
+    <b data-v="buy">Buy</b><b data-v="vinyl">Vinyl</b><b data-v="data">Data</b>
+  </nav>
+  <div class="counts" id="counts"></div>
+  <div style="flex:1"></div>
+  <span id="ctl"></span>
+</header>
+<main>
+  <div class="view on" id="v-curate"><div id="list"></div></div>
+  <div class="view" id="v-collections"></div>
+  <div class="view" id="v-buy"></div>
+  <div class="view" id="v-vinyl"></div>
+  <div class="view" id="v-data"></div>
+</main>
+<audio id="au"></audio><div id="toast"></div>
+<div id="dlg"><div id="dlgbox">
+  <h3 id="dlgh">Collection</h3><p id="dlgp">Type a name and press Enter. An existing name toggles it off.</p>
+  <input id="dlgin" placeholder="Late Night"><div class="exist" id="dlgex"></div>
+</div></div>
+<footer id="foot"></footer>
+<script>
+const MONTH = s => s.replace(/^(\d{4})-/,'$1 ').replace(/\b\w/g,c=>c.toUpperCase());
+const esc = s => (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mmss = s => s?`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`:'';
+let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', tab='curate', job=null;
+let csel=0;   // selected row in the Collections view
+const $=s=>document.querySelector(s), au=$('#au');
+
+async function load(){
+  const r=await fetch('/api/tracks').then(r=>r.json());
+  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs; draw();
+}
+function counts(){
+  const c={seen:0,shortlisted:0,maybe:0,skipped:0,vinyl:0,bought:0};
+  ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
+  $('#counts').innerHTML=`<span><s>${ALL.length}</s> tracks</span>
+    <span style="color:var(--buy)"><s>${c.shortlisted}</s> buy</span>
+    <span style="color:var(--maybe)"><s>${c.maybe}</s> maybe</span>
+    <span><s>${c.seen}</s> undecided</span>
+    <span style="color:var(--vinyl)"><s>${c.vinyl}</s> vinyl</span>`;
+  return c;
+}
+function pass(t){
+  if(q){const h=(t.artist+' '+t.title+' '+(t.album||'')).toLowerCase(); if(!h.includes(q))return false;}
+  if(filter==='undecided')return t.tier==='seen';
+  if(filter==='vinyl')return t.vinyl;
+  if(filter==='on iPod')return t.device;
+  if(filter==='remove')return t.device&&t.tier==='skipped';
+  if(filter==='all')return true;
+  return t.tier===filter;
+}
+function tagsFor(t){
+  const g=[];
+  if(t.tier==='shortlisted')g.push('<span class="tag buy">buy</span>');
+  if(t.tier==='maybe')g.push('<span class="tag maybe">maybe</span>');
+  if(t.tier==='skipped')g.push('<span class="tag skip">skip</span>');
+  if(t.bought)g.push('<span class="tag ok">owned</span>');
+  if(t.vinyl)g.push('<span class="tag vinyl">vinyl</span>');
+  t.collections.forEach(c=>g.push(`<span class="tag col">${esc(c)}</span>`));
+  if(t.device)g.push('<span class="tag" style="color:var(--info);border-color:#1e4457">on iPod</span>');
+  if(t.lossless)g.push('<span class="tag ok">lossless src</span>');
+  if(t.bc_verdict==='confirmed')g.push('<span class="tag">FLAC</span>');
+  return g.join('');
+}
+function rowHTML(t,i){
+  const dur=mmss(t.seconds||t.dev_seconds);
+  return `<div class="row ${t.tier==='skipped'?'skip':''}" data-i="${i}">
+    ${t.art?`<img class="art" src="${t.art}" loading="lazy">`:'<div class="art"></div>'}
+    <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
+      <div class="s">${esc(t.album||t.dev_album||'')}${dur?' · '+dur:''}${t.price?' · €'+t.price.toFixed(2):''}${t.audio?' · <span style="color:var(--buy)">full track</span>':(t.preview?'':' · <span class="warn">nothing to play</span>')}</div></div>
+    <div class="tags">${tagsFor(t)}</div></div>`;
+}
+function draw(){
+  counts();
+  document.querySelectorAll('nav b').forEach(b=>b.classList.toggle('on',b.dataset.v===tab));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+tab));
+  ({curate:drawCurate,collections:drawCols,buy:drawBuy,vinyl:drawVinyl,data:drawData}[tab])();
+  drawFoot();
+}
+function drawFoot(){
+  $('#foot').innerHTML = tab==='curate'
+    ? `<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> preview</span>
+       <span><kbd>b</kbd> buy</span><span><kbd>m</kbd> maybe</span><span><kbd>x</kbd> skip</span>
+       <span><kbd>u</kbd> undecide</span><span><kbd>v</kbd> vinyl</span><span><kbd>c</kbd> collection</span>
+       <span><kbd>f</kbd> filter</span><span><kbd>/</kbd> search</span>
+       <span id="saved" style="margin-left:auto"></span>`
+    : tab==='collections'
+    ? `<span><kbd>j</kbd><kbd>k</kbd> select</span><span><kbd>J</kbd><kbd>K</kbd> move</span><span><kbd>space</kbd> play</span>
+       <span><kbd>x</kbd> remove</span><span>drag rows to reorder</span><span id="saved" style="margin-left:auto"></span>`
+    : `<span>decisions save the moment you make them — data/state.json</span>`;
+}
+function drawCurate(){
+  $('#ctl').innerHTML=`${['all','undecided','shortlisted','maybe','vinyl','on iPod','remove']
+    .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join(' ')}
+    <input type="search" id="q" placeholder="search  /" value="${esc(q)}" style="width:170px;margin-left:8px">`;
+  $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{filter=p.dataset.f;sel=0;draw();});
+  const qi=$('#q');
+  qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawCurate();};
+  qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';draw();}};
+  view=ALL.filter(pass);
+  let h='',last='';
+  view.forEach((t,i)=>{
+    const m=t.playlists[0]||(t.device?'__device':'__other');
+    if(m!==last){h+=`<div class="month">${m==='__device'?'Already on the iPod':m==='__other'?'Other':MONTH(m)}</div>`;last=m;}
+    h+=rowHTML(t,i);
+  });
+  $('#list').innerHTML=h||'<p class="note" style="padding:30px 0">Nothing matches.</p>';
+  const L=$('#list');
+  L.onclick=e=>{const r=e.target.closest('.row'); if(r){sel=+r.dataset.i;mark();}};
+  L.ondblclick=e=>{const r=e.target.closest('.row'); if(r){sel=+r.dataset.i;play();}};
+  if(sel>=view.length)sel=Math.max(0,view.length-1);
+  mark();
+}
+function mark(){
+  document.querySelectorAll('.row').forEach(r=>r.classList.remove('sel'));
+  const r=document.querySelector(`.row[data-i="${sel}"]`);
+  if(r){r.classList.add('sel');r.scrollIntoView({block:'nearest'});}
+}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),1400);}
+async function post(url,body){
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({ok:false}));
+}
+async function decide(patch,keys,advance){
+  const ks = keys || (view[sel]?[view[sel].key]:[]);
+  if(!ks.length)return;
+  const r=await post('/api/decide',{keys:ks,...patch});
+  if(!r.ok){toast('NOT SAVED — check the terminal');return;}
+  const s=$('#saved'); if(s)s.textContent='saved '+new Date().toLocaleTimeString();
+  // On an unfiltered list the row stays put, so step on; on a filtered list the
+  // row leaves and `sel` already points at the next one. Getting this wrong means
+  // every decision needs a following keypress, which ruins the rhythm.
+  if(advance&&filter==='all')sel=Math.min(sel+1,Math.max(0,view.length-1));
+  await load();
+}
+function srcFor(t){
+  // A real file beats a 30s preview every time. Tracks already on the device
+  // have no iTunes match at all, so this is the only way to hear them.
+  if(t.audio) return {url:'/api/audio?key='+encodeURIComponent(t.key), full:true};
+  if(t.preview) return {url:t.preview, full:false};
+  return null;
+}
+function play(){
+  const t=view[sel]; if(!t)return;
+  const s=srcFor(t);
+  if(!s){toast('nothing to play for this one');return;}
+  document.querySelectorAll('.row').forEach(r=>r.classList.remove('playing'));
+  if(au.dataset.key===t.key&&!au.paused){au.pause();return;}
+  au.dataset.key=t.key; au.src=s.url;
+  au.play().catch(()=>toast(s.full?'could not play the file':'preview failed'));
+  const r=document.querySelector(`.row[data-i="${sel}"]`); if(r)r.classList.add('playing');
+  if(s.full)toast('playing the full track');
+}
+/* ---------------- collections ---------------- */
+let colPick=null;
+function drawCols(){
+  $('#ctl').innerHTML='';
+  const byCol={}; COLS.forEach(c=>byCol[c]=[]);
+  ALL.forEach(t=>t.collections.forEach(c=>(byCol[c]=byCol[c]||[]).push(t)));
+  const names=Object.keys(byCol).sort();
+  if(!colPick&&names.length)colPick=names[0];
+  let h=`<h2>Collections</h2><p class="note">These are what reach the iPod. Monthly playlists
+    are only where a track came from. Build one by shortlisting first, then adding here in bulk.</p>`;
+  h+=`<div class="cols">${names.map(c=>`<span class="colchip ${c===colPick?'on':''}" data-c="${esc(c)}">${esc(c)} · ${byCol[c].length}</span>`).join('')}
+    <span class="colchip" id="newcol">+ new</span></div>`;
+  if(colPick&&byCol[colPick]){
+    const rs=byCol[colPick];
+    const owned=rs.filter(t=>t.bought).length;
+    const secs=rs.reduce((a,t)=>a+(t.seconds||0),0);
+    h+=`<div class="box"><b>${esc(colPick)}</b> — ${rs.length} tracks, ${owned} owned,
+      ${rs.length-owned} still to buy · ${Math.round(secs/60)} min
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="addshort">Add all shortlisted (${ALL.filter(t=>t.tier==='shortlisted').length})</button>
+        <button id="renamecol">Rename</button></div></div>`;
+    const seq=(ORDER[colPick]||[]).map(k=>rs.find(t=>t.key===k)).filter(Boolean);
+    const mins=Math.round(seq.reduce((a,t)=>a+(t.seconds||t.dev_seconds||0),0)/60);
+    h+=`<p class="note">Drag to reorder, or select a row and use <kbd>J</kbd>/<kbd>K</kbd> (shift) to move it.
+      <kbd>space</kbd> plays so you can sequence by ear. <kbd>x</kbd> removes. This order is what the iPod plays.</p>`;
+    h+=seq.map((t,i)=>`<div class="row ${i===csel?'csel':''}" draggable="true" data-k="${t.key}" data-i="${i}"
+        style="grid-template-columns:28px 44px 1fr auto">
+        <span class="pos">${i+1}</span>
+        ${t.art?`<img class="art" src="${t.art}" loading="lazy">`:'<div class="art"></div>'}
+        <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
+        <div class="s">${esc(t.album||t.dev_album||'')} · ${mmss(t.seconds||t.dev_seconds)}${t.audio?' · <span style="color:var(--buy)">full track</span>':''}</div></div>
+        <div class="tags">${tagsFor(t)}<span class="tag" data-rm="${t.key}" style="cursor:pointer">remove</span><span class="grab">⋮⋮</span></div></div>`).join('');
+  } else if(!names.length){
+    h+=`<p class="note">None yet. Shortlist some tracks, then come back — or press <kbd>c</kbd> while curating.</p>`;
+  }
+  $('#v-collections').innerHTML=h;
+  $('#v-collections').querySelectorAll('.colchip[data-c]').forEach(c=>c.onclick=()=>{colPick=c.dataset.c;draw();});
+  const nc=$('#newcol'); if(nc)nc.onclick=()=>openDlg(null,'New collection','Name it.');
+  const ad=$('#addshort'); if(ad)ad.onclick=async()=>{
+    const ks=ALL.filter(t=>t.tier==='shortlisted').map(t=>t.key);
+    if(!ks.length)return toast('nothing shortlisted yet');
+    await decide({collection:colPick,mode:'add'},ks); toast(`added ${ks.length}`);};
+  const rn=$('#renamecol'); if(rn)rn.onclick=()=>openDlg('__rename__','Rename collection','New name. Empty removes it from every track.');
+  $('#v-collections').querySelectorAll('[data-rm]').forEach(x=>x.onclick=async e=>{
+    e.stopPropagation(); await decide({collection:colPick,mode:'remove'},[x.dataset.rm]);});
+  // selection + drag-and-drop on the ordered rows
+  const rows=[...$('#v-collections').querySelectorAll('.row[data-i]')];
+  rows.forEach(r=>{
+    r.onclick=()=>{csel=+r.dataset.i; markC();};
+    r.ondblclick=()=>{csel=+r.dataset.i; markC(); playC();};
+    r.ondragstart=e=>{e.dataTransfer.setData('text/plain',r.dataset.i); r.classList.add('dragging');};
+    r.ondragend=()=>r.classList.remove('dragging');
+    r.ondragover=e=>{e.preventDefault(); r.classList.add('over');};
+    r.ondragleave=()=>r.classList.remove('over');
+    r.ondrop=async e=>{e.preventDefault(); r.classList.remove('over');
+      const from=+e.dataTransfer.getData('text/plain'), to=+r.dataset.i;
+      if(from===to)return; await moveIn(colPick,from,to);};
+  });
+  if(csel>=rows.length)csel=Math.max(0,rows.length-1);
+}
+function markC(){
+  document.querySelectorAll('#v-collections .row[data-i]').forEach(r=>r.classList.toggle('csel',+r.dataset.i===csel));
+  const r=document.querySelector(`#v-collections .row[data-i="${csel}"]`); if(r)r.scrollIntoView({block:'nearest'});
+}
+async function moveIn(col,from,to){
+  const keys=(ORDER[col]||[]).slice();
+  const [k]=keys.splice(from,1); keys.splice(to,0,k);
+  ORDER[col]=keys; csel=to;
+  const r=await post('/api/decide',{reorder:{collection:col,keys}});
+  if(!r.ok)toast('NOT SAVED'); else {const sv=$('#saved'); if(sv)sv.textContent='saved '+new Date().toLocaleTimeString();}
+  draw();
+}
+function playC(){
+  const keys=ORDER[colPick]||[]; const t=ALL.find(x=>x.key===keys[csel]); if(!t)return;
+  const s=srcFor(t); if(!s){toast('nothing to play');return;}
+  if(au.dataset.key===t.key&&!au.paused){au.pause();return;}
+  au.dataset.key=t.key; au.src=s.url; au.play().catch(()=>toast('could not play'));
+  toast(s.full?'playing the full track':'30s preview');
+}
+/* ---------------- buy ---------------- */
+function drawBuy(){
+  $('#ctl').innerHTML='';
+  const sel2=ALL.filter(t=>t.tier==='shortlisted');
+  const todo=sel2.filter(t=>!t.bought), done=sel2.filter(t=>t.bought);
+  const eur=todo.reduce((a,t)=>a+(t.price||0),0);
+  const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
+  let h=`<h2>Buy list</h2><p class="note">Only what you chose. Prices are the iTunes AAC 256
+    equivalent — buy the FLAC where one is confirmed and convert to ALAC for the iPod.</p>
+    <div class="box"><b>${todo.length}</b> to buy · <b>€${eur.toFixed(2)}</b> at iTunes prices ·
+    <b>${flac}</b> confirmed lossless on Bandcamp · ${done.length} already owned</div>`;
+  if(!todo.length)h+=`<p class="note">Nothing outstanding.</p>`;
+  h+=`<table><tr><th></th><th>track</th><th>where</th><th></th></tr>`+
+    todo.map(t=>`<tr><td>${t.art?`<img class="art" style="width:34px;height:34px" src="${t.art}">`:''}</td>
+      <td><b>${esc(t.artist)}</b> — ${esc(t.title)}<br><span style="color:var(--dim)">${esc(t.album||'')} · ${mmss(t.seconds)} · ${t.playlists.map(MONTH).join(', ')}</span></td>
+      <td>${t.bandcamp?`<a href="${t.bandcamp}" target="_blank">Bandcamp${t.bc_verdict==='confirmed'?' FLAC':' (check length)'}</a><br>`:''}
+          ${t.url?`<a href="${t.url}" target="_blank">iTunes €${(t.price||0).toFixed(2)}</a>`:'<span class="warn">no source</span>'}</td>
+      <td><button data-bought="${t.key}">bought</button></td></tr>`).join('')+`</table>`;
+  $('#v-buy').innerHTML=h;
+  $('#v-buy').querySelectorAll('[data-bought]').forEach(b=>b.onclick=()=>decide({bought:true},[b.dataset.bought]));
+}
+/* ---------------- vinyl ---------------- */
+function drawVinyl(){
+  $('#ctl').innerHTML='';
+  const v=ALL.filter(t=>t.vinyl);
+  const by={};
+  v.forEach(t=>{const k=t.artist+' — '+(t.album||'(unknown release)');(by[k]=by[k]||[]).push(t);});
+  let h=`<h2>Vinyl want-list</h2><p class="note">Grouped by release, because Discogs sells
+    records, not tracks.</p>`;
+  if(!v.length)h+=`<p class="note">Nothing flagged. Press <kbd>v</kbd> while curating.</p>`;
+  h+=Object.keys(by).sort().map(k=>{
+    const q=encodeURIComponent(k.replace(' — ',' '));
+    return `<div class="box"><b>${esc(k)}</b> — ${by[k].length} track${by[k].length>1?'s':''}
+      <div style="color:var(--dim);font-size:12px;margin:4px 0 8px">${by[k].map(t=>esc(t.title)).join(' · ')}</div>
+      <a href="https://www.discogs.com/search/?q=${q}&type=release" target="_blank">Search Discogs</a></div>`;}).join('');
+  $('#v-vinyl').innerHTML=h;
+}
+/* ---------------- data ---------------- */
+let MUSIC=null;
+async function drawData(){
+  $('#ctl').innerHTML='';
+  const el=$('#v-data');
+  el.innerHTML=`<h2>Data</h2><p class="note">Everything that used to be a command.
+    Long jobs run in the background and stream their log here.</p>
+    <div class="box" id="jobbox" style="display:none"><b id="jobname"></b>
+      <span id="jobstate" style="color:var(--dim)"></span><pre id="joblog"></pre></div>
+    <div class="box"><b>Playlists already imported</b> (${SLUGS.length})
+      <div style="color:var(--dim);font-size:12px;margin-top:6px">${SLUGS.join(' · ')}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <select id="slug">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select>
+        <button id="doMatch">Match against iTunes</button>
+        <button id="doVerify">Verify Bandcamp durations</button>
+        <button id="doRebuild">Rebuild state</button>
+      </div></div>
+    <div class="box"><b>The iPod</b>
+      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">
+        ${ALL.filter(t=>t.device).length} tracks on the device ·
+        ${ALL.filter(t=>t.device&&t.tier==='skipped').length} marked to remove ·
+        ${ALL.filter(t=>t.lossless).length} have a lossless original</div>
+      <button id="doDevice">Re-read the device</button></div>
+    <div class="box"><b>Import from Music.app</b>
+      <div style="color:var(--dim);font-size:12px;margin:6px 0 10px">Reads your Music library
+        and pulls a playlist in. Matching is separate and slower.</div>
+      <button id="loadMusic">List my playlists</button>
+      <div id="musiclist" style="margin-top:10px"></div></div>`;
+  const dd=$('#doDevice'); if(dd)dd.onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
+  $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
+  $('#doMatch').onclick=()=>startJob({action:'match',slugs:[$('#slug').value]});
+  $('#doVerify').onclick=()=>startJob({action:'verify',slugs:[$('#slug').value]});
+  $('#loadMusic').onclick=async()=>{
+    $('#musiclist').innerHTML='<span style="color:var(--dim)">reading Music.app…</span>';
+    const r=await fetch('/api/music').then(r=>r.json());
+    MUSIC=r.playlists||[];
+    const have=new Set(r.have||[]);
+    const rows=MUSIC.filter(p=>p.tracks>0).sort((a,b)=>a.name.localeCompare(b.name));
+    $('#musiclist').innerHTML=`<input type="search" id="mq" placeholder="filter" style="margin-bottom:8px;width:200px">
+      <div id="mrows" style="max-height:300px;overflow:auto">`+rows.map(p=>{
+        const slug=p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+        return `<div class="row" style="grid-template-columns:1fr auto auto;gap:10px" data-name="${esc(p.name)}">
+          <div class="t"><div class="n">${esc(p.name)}</div></div>
+          <span class="tag">${p.tracks}</span>
+          ${have.has(slug)?'<span class="tag ok">imported</span>':`<button data-imp="${esc(p.name)}">import</button>`}</div>`;}).join('')+'</div>';
+    $('#mq').oninput=e=>{const v=e.target.value.toLowerCase();
+      $('#mrows').querySelectorAll('.row').forEach(r=>r.style.display=r.dataset.name.toLowerCase().includes(v)?'':'none');};
+    $('#mrows').querySelectorAll('[data-imp]').forEach(b=>b.onclick=()=>startJob({action:'export',names:[b.dataset.imp]}));
+  };
+  if(job)pollJob();
+}
+async function startJob(body){
+  const r=await post('/api/action',body);
+  if(!r.ok)return toast(r.error||'failed');
+  if(r.job){job=r.job;pollJob();}else{await load();toast('done');}
+}
+async function pollJob(){
+  if(!job)return;
+  const r=await fetch('/api/job?id='+job).then(r=>r.json());
+  const box=$('#jobbox'); if(!box)return;
+  box.style.display='';
+  $('#jobname').textContent=r.name||job;
+  $('#jobstate').textContent=` — ${r.state}${r.seconds?` · ${r.seconds}s`:''}`;
+  $('#joblog').textContent=(r.log||[]).join('\n');
+  $('#joblog').scrollTop=1e6;
+  if(r.state==='running'){setTimeout(pollJob,1200);}
+  else{job=null;await load();toast(r.state==='done'?'finished':'job failed — see log');}
+}
+/* ---------------- dialog ---------------- */
+const dlg=$('#dlg'), dlgin=$('#dlgin');
+let dlgMode=null;
+function openDlg(mode,heading,note){
+  dlgMode=mode;
+  $('#dlgh').textContent=heading||'Collection';
+  $('#dlgp').textContent=note||'Type a name and press Enter. An existing name toggles it off.';
+  dlgin.value = mode==='__rename__' ? (colPick||'') : '';
+  $('#dlgex').innerHTML = mode ? '' :
+    COLS.map(c=>`<span data-c="${esc(c)}">${esc(c)}${view[sel]&&view[sel].collections.includes(c)?' ✓':''}</span>`).join('');
+  $('#dlgex').querySelectorAll('[data-c]').forEach(s=>s.onclick=()=>{decide({collection:s.dataset.c});closeDlg();});
+  dlg.classList.add('on'); dlgin.focus();
+}
+function closeDlg(){dlg.classList.remove('on');dlgin.blur();dlgMode=null;}
+dlgin.onkeydown=async e=>{
+  e.stopPropagation();
+  if(e.key==='Escape')return closeDlg();
+  if(e.key!=='Enter')return;
+  const val=dlgin.value.trim();
+  if(dlgMode==='__rename__'){
+    await post('/api/decide',{rename_collection:colPick,to:val});
+    colPick=val||null; closeDlg(); await load(); return;
+  }
+  if(!val)return;
+  if(dlgMode===null&&tab==='collections'){colPick=val;COLS.push(val);closeDlg();draw();return;}
+  await decide({collection:val}); closeDlg();
+};
+dlg.onclick=e=>{if(e.target===dlg)closeDlg();};
+/* ---------------- keys / nav ---------------- */
+document.querySelectorAll('nav b').forEach(b=>b.onclick=()=>{tab=b.dataset.v;draw();});
+const FILTERS=['all','undecided','shortlisted','maybe','vinyl','on iPod','remove'];
+document.addEventListener('keydown',e=>{
+  if(dlg.classList.contains('on'))return;
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+  const k=e.key;
+  if(k>='1'&&k<='5'){tab=['curate','collections','buy','vinyl','data'][+k-1];draw();return;}
+  if(tab==='collections'&&colPick){
+    const n=(ORDER[colPick]||[]).length;
+    if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault(); if(csel<n-1)moveIn(colPick,csel,csel+1);}
+    else if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault(); if(csel>0)moveIn(colPick,csel,csel-1);}
+    else if(k==='j'||k==='ArrowDown'){e.preventDefault();csel=Math.min(n-1,csel+1);markC();}
+    else if(k==='k'||k==='ArrowUp'){e.preventDefault();csel=Math.max(0,csel-1);markC();}
+    else if(k===' '){e.preventDefault();playC();}
+    else if(k==='x'){const key=(ORDER[colPick]||[])[csel]; if(key)decide({collection:colPick,mode:'remove'},[key]);}
+    return;
+  }
+  if(tab!=='curate')return;
+  if(k==='/'){e.preventDefault();const qi=$('#q');if(qi)qi.focus();return;}
+  if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
+  else if(k==='k'||k==='ArrowUp'){e.preventDefault();sel=Math.max(0,sel-1);mark();}
+  else if(k===' '){e.preventDefault();play();}
+  else if(k==='b'){decide({tier:'shortlisted'},null,true);}
+  else if(k==='m'){decide({tier:'maybe'},null,true);}
+  else if(k==='x'){decide({tier:'skipped'},null,true);}
+  else if(k==='u'){decide({tier:'seen'});}
+  else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl});}
+  else if(k==='c'){e.preventDefault();openDlg();}
+  else if(k==='f'){filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
+});
+au.onended=()=>document.querySelectorAll('.row').forEach(r=>r.classList.remove('playing'));
+load();
+</script></body></html>

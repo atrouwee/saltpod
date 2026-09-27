@@ -1,0 +1,7 @@
+data/
+!data/device.example.json
+reports/
+backups/
+__pycache__/
+*.pyc
+.DS_Store
