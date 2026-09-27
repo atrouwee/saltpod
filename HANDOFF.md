@@ -11,15 +11,18 @@ What is true right now, for anyone picking this up.
   played. Playlist re-sequence, read back off the device in exactly the order
   arranged. Playlist deletion. See `research/DEVICE-TEST.md`.
 
-## Not yet proven on hardware
+## All six edit operations are proven on hardware
 
-**Track removal** -- the last of the six edit operations. It passes every check
-on copies: structure, checksum, lossless re-parse, an independent reader. It is
-one `saltpod sync` away, with the iPod in front of you.
+create playlist, rename, delete (both a saltpod-made playlist and an adopted
+iTunes-made one), re-sequence, add a track, and -- as of 2026-09-27 21:08 --
+**remove a track**. Each one is recorded in `research/DEVICE-TEST.md` with the
+before/after device counts it was verified against.
 
-Also never performed by hand: a drag between panes. CDP cannot fire HTML5 drag
-events, so every drop in this codebase has been exercised through the click
-path (`...` -> Add to playlist) instead.
+## Not yet proven
+
+**A drag between panes, by a human hand.** CDP cannot fire HTML5 drag events,
+so every drop has been exercised through the click path (`...` -> Add to
+playlist). The drag handlers themselves have never been used by a person.
 
 ## What to run
 

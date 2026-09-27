@@ -218,3 +218,40 @@ append · dropped positional indexes · `Play Counts` deletion · ALAC conversio
 Still not exercised on the device: **track removal**. It remains queued —
 `plan` lists *Monte Booker — interstellar house mix* (id 439) under removes,
 with `2019 Feb` going 1 → 0 and `B - Exp 2` going 6 → 5. One sync away.
+
+---
+
+# Seventh write — a track removed — 2026-09-27 21:08
+
+**Result: accepted. This was the last of the six edit operations.**
+
+Verified by parsing the 21:08:55 backup against the live database:
+
+|  | before 21:08 | now |
+|---|---|---|
+| tracks in the library | 482 | **481** |
+| `interstellar house mix` (id 439) | present | **gone** |
+| `2019 Feb` | 1 item | **0** |
+| `B - Exp 2` | 6 items | **5** |
+
+Removal is the hardest of the six because it touches three places at once: the
+`mhit` record in the track section, every `mhip` that references it in any
+playlist, and the master playlist. A miss in any one of them leaves a dangling
+reference, which is what produced the 38 broken references across 14 playlists
+that started this project. The counts above are that check: one track gone from
+the library, and exactly the two playlists that referenced it shrinking by one.
+
+## All six proven on hardware
+
+create playlist · rename playlist · delete playlist (both a saltpod-made one
+and an adopted iTunes-made one) · re-sequence a playlist · add a track ·
+**remove a track**.
+
+Underneath them: playlist membership with position mhods · new `mhit` by
+template cloning · new file placement · master playlist append and removal ·
+dropped positional indexes · `Play Counts` deletion · ALAC conversion ·
+hash58 · zeroed hash72.
+
+**Still never done by hand: a drag between panes.** CDP cannot fire HTML5 drag
+events, so every drop has been exercised through the click path
+(`⋯` → Add to playlist). The drag handlers are unproven by a human hand.
