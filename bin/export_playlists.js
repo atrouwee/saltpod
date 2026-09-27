@@ -14,10 +14,20 @@
 //
 ObjC.import('Foundation');
 
-const OUT_DIR = $.NSString.alloc.initWithUTF8String(
-  '~/Documents/GitHub/ipod-playlists/data/exports').stringByExpandingTildeInPath.js;
+const OUT = (function () {
+  // Where the exports go. Passed as --out by every caller in this repo;
+  // otherwise the working directory, which is the repo root when run from it.
+  // It used to be a hardcoded path to this repo under its old name -- after
+  // the rename that folder was gone, and every export reported success and
+  // wrote nothing, because writeFile swallowed the error.
+  const i = $.NSProcessInfo.processInfo.arguments.js.map((a) => a.js).indexOf('--out');
+  if (i !== -1) return $.NSProcessInfo.processInfo.arguments.js[i + 1].js;
+  return $.NSFileManager.defaultManager.currentDirectoryPath.js + '/data/exports';
+})();
 
 function writeFile(path, text) {
+  $.NSFileManager.defaultManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(
+    $(path).stringByDeletingLastPathComponent, true, $(), null);
   $.NSString.alloc.initWithUTF8String(text)
     .writeToFileAtomicallyEncodingError(path, true, $.NSUTF8StringEncoding, null);
 }
@@ -188,7 +198,7 @@ function run(argv) {
     catch (e) { done.push({ playlist: name, error: 'not found' }); continue; }
     const data = exportPlaylist(pl);
     if (!data.track_count) { done.push({ playlist: name, error: 'empty' }); continue; }
-    const path = OUT_DIR + '/' + slug(name) + '.json';
+    const path = OUT + '/' + slug(name) + '.json';
     writeFile(path, JSON.stringify(data, null, 1));
     done.push({ playlist: name, tracks: data.track_count, owned: data.owned_count, file: path });
   }

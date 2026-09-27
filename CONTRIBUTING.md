@@ -35,6 +35,9 @@ needs a model.
 - **One file, no build, nothing fetched** for the page. It is served from disk
   on every request, so an edit is a refresh away.
 - **Python changes need the server restarted**; HTML does not.
+- **Paths are relative to the repo, never to a home directory.** The leak gate
+  catches `/Users/<name>` but not `~/...`, and a hardcoded `~` path once made
+  every import silently write nothing after the repo was renamed.
 - **Never write to the device from a test.** `bin/device_test.sh rehearse`
   writes a backup back and proves the round trip; `write` is the only path
   that changes the iPod, and `restore` undoes it.

@@ -684,7 +684,8 @@ class Handler(BaseHTTPRequestHandler):
         if a == 'export':
             names = body.get('names') or []
             steps = [('export %s' % nm,
-                      ['osascript', '-l', 'JavaScript', 'bin/export_playlists.js', nm])
+                      ['osascript', '-l', 'JavaScript', 'bin/export_playlists.js',
+                       '--out', os.path.join(ROOT, 'data', 'exports'), nm])
                      for nm in names]
             if not steps:
                 return {'ok': False, 'error': 'no playlists named'}
