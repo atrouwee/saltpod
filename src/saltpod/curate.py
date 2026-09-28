@@ -468,37 +468,81 @@ def plan_summary(mount=None):
 LOSSLESS_EXT = {'.flac', '.wav', '.aif', '.aiff', '.alac'}
 
 
-def kbps_of(dev, key):
-    """Bitrate, worked out from size and duration rather than read.
+def quality_of(dev, key):
+    """The one figure that actually discriminates, for this file's format.
 
-    The iTunesDB field is not trustworthy: it reports 60928 for every MP3 on
-    this device and 160 for AIFFs that are really nearer 850. Six distinct
-    values across 467 tracks is a misparse, not data. Size x 8 / seconds is
-    arithmetic, and it agrees with what the files actually are.
+    Bitrate is the quality knob for a LOSSY file -- 128 against 320 is
+    audible. For a LOSSLESS one it is a side-effect of how dense the music
+    is: this library's own lossless tracks run 807 to 1122 kbps and are all
+    the same fidelity. There, depth and sample rate are the answer.
+
+    So: `320k` for lossy, `16/44.1` for lossless. Depth and rate come from
+    the drive index, so a lossless file reads as plain kbps until the drive
+    has been re-indexed -- honest, and it corrects itself.
     """
-    secs = (dev or {}).get('seconds')
-    size = (dev or {}).get('size')
+    # THE ORIGINAL ON DISK, not the copy on the iPod. The device holds a
+    # CONVERTED file -- a WAV original arrives as ALAC at roughly half the
+    # size -- so reading the device would report the transfer rather than the
+    # music you own. The drive index is preferred wherever it has the track;
+    # the device is only the fallback for something whose source has gone.
+    e = _original(dev, key)
+    ext = e.get('ext') or (dev or {}).get('origin_ext')
+    lossless = (ext or '').lower() in LOSSLESS_EXT
+    depth, rate = e.get('bit_depth'), e.get('sample_rate')
+    if lossless and rate:
+        khz = ('%g' % round(rate / 1000.0, 1))
+        return '%s/%s' % (depth or '?', khz)
+    k = kbps_of(dev, key)
+    return ('%dk' % k) if k else None
+
+
+def kbps_of(dev, key):
+    """Bitrate of the ORIGINAL, worked out from size and duration.
+
+    Two things this deliberately does not do. It does not read the iTunesDB
+    bitrate field, which is not trustworthy -- 60928 for every MP3 on this
+    device, 160 for AIFFs that are really nearer 850, six distinct values
+    across 467 tracks. And it does not prefer the device copy, which is the
+    converted file rather than the music you own.
+    """
+    e = _original(dev, key)
+    if e.get('duration_sec') and e.get('size'):
+        return round(e['size'] * 8 / e['duration_sec'] / 1000)
+    secs, size = (dev or {}).get('seconds'), (dev or {}).get('size')
     if secs and size:
         return round(size * 8 / secs / 1000)
-    e = _local_by_key().get(key)
-    if e and e.get('duration_sec') and e.get('size'):
-        return round(e['size'] * 8 / e['duration_sec'] / 1000)
     return None
 
 
-_LOCBYKEY = {'built': None, 'map': {}}
+_LOCBYKEY = {'built': None, 'key': {}, 'path': {}}
 
 
-def _local_by_key():
+def _local_maps():
+    """The drive index, by track key AND by absolute path.
+
+    Path is the better join for anything already on the iPod: the device
+    record carries `origin`, the exact file it was made from, so it finds the
+    original even when the tags are too poor for a key to match -- and 581 of
+    this drive's files carry no tags at all.
+    """
     idx = os.path.join(ROOT, 'data', 'local', 'index.json')
     stamp = os.path.getmtime(idx) if os.path.exists(idx) else 0
     if _LOCBYKEY['built'] == stamp:
-        return _LOCBYKEY['map']
-    m = {}
+        return _LOCBYKEY
+    bykey, bypath = {}, {}
     for e in (local_index_raw() or {}).get('tracks') or []:
-        m[S.key_for(e.get('artist'), e.get('title'))] = e
-    _LOCBYKEY['built'], _LOCBYKEY['map'] = stamp, m
-    return m
+        bykey.setdefault(S.key_for(e.get('artist'), e.get('title')), e)
+        if e.get('path'):
+            bypath[e['path']] = e
+    _LOCBYKEY.update({'built': stamp, 'key': bykey, 'path': bypath})
+    return _LOCBYKEY
+
+
+def _original(dev, key):
+    """The index entry for the file this track was made from, if we have it."""
+    m = _local_maps()
+    o = (dev or {}).get('origin')
+    return (o and m['path'].get(o)) or m['key'].get(key) or {}
 
 # ------------------------------------------------- lookup, when it is needed
 #
@@ -735,7 +779,7 @@ def tracks_payload(scope=''):
             'bought': r['bought'], 'on_ipod': r['on_ipod'],
             'collections': r['collections'], 'note': r.get('note', ''),
             'orphan': bool(r.get('orphan')),
-            'kbps': kbps_of(dev, k), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
+            'quality': quality_of(dev, k), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
             'album': it.get('album'), 'genre': it.get('genre'),
             'released': it.get('released'), 'price': it.get('price'),
             'seconds': it.get('seconds'), 'url': it.get('url'),

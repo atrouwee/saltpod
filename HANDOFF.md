@@ -265,6 +265,29 @@ It sits beside the chevron rather than in the source strip, because *is this
 on the thing* is the highest-priority fact in the row and it must never move:
 in the strip it slid left and right as tags appeared.
 
+**The pill shows the figure that actually discriminates for the format.**
+Bitrate is the quality knob for a lossy file -- 128 against 320 is audible.
+For a lossless one it is a side-effect of how dense the music is: this
+library's own lossless tracks run 807 to 1122 kbps and are all the same
+fidelity. So it is `320k` for lossy and `16/44.1` for lossless. Depth and
+sample rate come from the drive index, which now captures them via
+`-show_streams`; until the drive is re-indexed a lossless file reads as plain
+kbps, which is honest and self-correcting.
+
+**It is the ORIGINAL on disk, never the copy on the iPod.** The device holds
+a converted file -- a WAV original arrives as ALAC at about half the size --
+so reading the device would report the transfer rather than the music you
+own. The join is by **path**, not by artist and title: the device record
+carries `origin`, the exact file it was made from, and that matched **465 of
+465** device tracks where a key join matched almost none, because 581 of the
+drive's files have no tags to build a key from.
+
+*Open:* the Classic's own ALAC ceiling means a high-resolution original is
+downsampled on the way across. That belongs in the sync panel, at the moment
+of conversion, rather than on the row -- the row should say what you own. The
+exact ceiling should be confirmed against the device before it is stated in
+the interface.
+
 **The bitrate took the pill that used to say "owned".** A number is the
 better claim: it proves you hold the file *and* says what it is, where the
 word only repeated what the ink already said. Nothing shows for a track you

@@ -32,13 +32,19 @@ NEEDS_CONVERT = {".flac", ".ogg"}
 def probe(path):
     try:
         out = subprocess.run(
+            # -show_streams as well as -show_format: bitrate is the quality
+            # number for a lossy file and says nothing about a lossless one,
+            # where depth and sample rate are what discriminate. Both cost
+            # the same single ffprobe call.
             ["ffprobe", "-v", "quiet", "-print_format", "json",
-             "-show_format", path],
+             "-show_format", "-show_streams", "-select_streams", "a:0", path],
             capture_output=True, text=True, timeout=30,
         )
         if out.returncode != 0:
             return None
-        fmt = json.loads(out.stdout).get("format", {})
+        parsed = json.loads(out.stdout)
+        fmt = parsed.get("format", {})
+        st = (parsed.get("streams") or [{}])[0]
     except Exception:  # noqa: BLE001 - a bad file should not stop the walk
         return None
     tags = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}
@@ -59,6 +65,10 @@ def probe(path):
         # the stored bitrate in an iTunesDB is not trustworthy, and arithmetic
         # on size and duration is
         "size": (os.path.getsize(path) if os.path.exists(path) else None),
+        "codec": st.get("codec_name"),
+        "sample_rate": (int(st["sample_rate"]) if str(st.get("sample_rate") or "").isdigit() else None),
+        "bit_depth": (int(st.get("bits_per_raw_sample") or st.get("bits_per_sample") or 0) or None),
+        "channels": st.get("channels"),
         "ipod_ready": ext in IPOD_NATIVE,
         "needs_convert": ext in NEEDS_CONVERT,
         "untagged": not (tags.get("title") and tags.get("artist")),

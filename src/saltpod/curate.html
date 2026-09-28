@@ -196,7 +196,7 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
    do not own -- until it is bought there is no format to report.
    The SLOT keeps its width when empty, because collapsing it would start the
    iPod mark sliding again, which is what moving the mark here fixed. */
-.br { width: 44px; display: flex; justify-content: flex-end; flex: none; }   /* .tags gap is 6px */
+.br { width: 58px; display: flex; justify-content: flex-end; flex: none; }   /* .tags gap is 6px */
 .br b { font-family: var(--mono); font-size: 9px; font-weight: 400; letter-spacing: .06em;
         font-variant-numeric: tabular-nums; color: var(--ink);
         padding: 2px 7px; border-radius: 99px; border: 1px solid var(--faint); }
@@ -784,7 +784,7 @@ function rowHTML(t,i,pos,ro){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.kbps?`<b>${t.kbps}</b>`:''}</span><span class="pod${t.device?' on':''}" title="${t.device?'on the iPod':'not on the iPod'}">${IPOD_SVG}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod${t.device?' on':''}" title="${t.device?'on the iPod':'not on the iPod'}">${IPOD_SVG}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
