@@ -111,14 +111,19 @@ aside.srcpane   { grid-column: 2; border-right: 1px solid var(--faint); }
 section.mid { grid-column: 3; }
 aside.right { grid-column: 4; border-left: 1px solid var(--faint); }
 body.nl { --lw: 24px; }  body.ns { --sw: 24px; }  body.nr { --rw: 24px; }
-body.nl aside.left .pbody, body.nl aside.left .act, body.nl aside.left .pstat,
-body.ns aside.srcpane .pbody,  body.ns aside.srcpane .act,  body.ns aside.srcpane .pstat,
+/* A folded pane is a 24px rail carrying its name and nothing else. The
+   marks and the plus belong to a pane you can see: left in, they overlapped
+   the turned title and offered to switch a view that is not on screen. */
+body.nl aside.left .pbody, body.nl aside.left .act, body.nl aside.left .pstat, body.nl aside.left .modes,
+body.ns aside.srcpane .pbody,  body.ns aside.srcpane .act,  body.ns aside.srcpane .pstat, body.ns aside.srcpane .modes,
 body.nr aside.right .pbody, body.nr aside.right .pstat { display: none; }
 /* A folded pane names every list behind it -- one pill would not say what
    else is there. The same reason BUY VINYL both survive on the right. */
 body.nl aside.left .plabel, body.ns aside.srcpane .plabel, body.nr aside.right .plabel {
   writing-mode: vertical-rl; flex: 1 1 auto; flex-wrap: nowrap; justify-content: flex-start; align-items: center;
-  gap: 12px; padding: 14px 0; cursor: pointer; }
+  gap: 12px; padding: 14px 0; cursor: pointer;
+  /* the strip is a fixed 46px when the pane is open; a rail runs the height */
+  height: auto; overflow: visible; }
 body.nl aside.left .plabel .name { flex: 0 0 auto; min-width: 0; }
 body.ns #stabs { flex: 0 0 auto; }
 body.nr #rtabs .pill { border-bottom-color: transparent; }

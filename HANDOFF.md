@@ -133,7 +133,11 @@ opacity and lands in Buy. That is the gap the tool exists to close.
 
 **Folds.** The `<` / `>` left of each pane's title folds it; a folded pane is
 a 24px rail with the title turned vertical and the chevron pointing the way
-back, and the whole rail is the click. Each pane is pinned to its own grid
+back, and the whole rail is the click. **A rail carries its name and nothing
+else** -- the view marks and the plus are hidden with the body, since they
+overlapped the turned title and offered to switch a view that is not on
+screen. The strip is a fixed 46px when the pane is open and `height: auto`
+when it is a rail, or the turned title would be clipped to 46px. Each pane is pinned to its own grid
 track, so folding one never moves another. `[` and `]` still fold the outer
 two. Apple Music folds by itself under 1100px, the outer two under 860px.
 
