@@ -201,11 +201,15 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
         font-variant-numeric: tabular-nums; color: var(--ink);
         padding: 2px 7px; border-radius: 99px; border: 1px solid var(--faint); }
 .row.sel .br b { color: #fff; border-color: rgba(255,255,255,.55); }
-.pod { display: inline-flex; align-items: center; color: var(--faint); flex: none; }
-.pod.on { color: var(--ink); }
+/* DRAWN ONLY WHEN IT IS TRUE. A faint iPod still looks like an iPod: on a
+   dim row the title sits at 45% while this sat at full strength, so the
+   placeholder was brighter than the track name and read as "this is on the
+   device". The slot keeps its width so nothing shifts; the mark itself is
+   either there or it is not. */
+.pod { display: inline-flex; align-items: center; justify-content: center;
+       width: 8px; flex: none; color: var(--ink); }
 .row.sel .br { color: rgba(255,255,255,.7); }
-.row.sel .pod { color: rgba(255,255,255,.45); }
-.row.sel .pod.on { color: #fff; }
+.row.sel .pod { color: #fff; }
 .row.sel .src, .row.sel .src b { color: #fff; }
 .tags { display: flex; gap: 6px; align-items: center; flex: none; }
 .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
@@ -786,7 +790,7 @@ function rowHTML(t,i,pos,ro){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod${t.device?' on':''}" title="${t.device?'on the iPod':'not on the iPod'}">${IPOD_SVG}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */

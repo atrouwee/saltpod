@@ -260,7 +260,13 @@ not change when the drive is unplugged: `local` is read from the index, not
 from the volume, so the list does not go dark when you pull the T7.
 
 **The iPod has its own mark, at the end of the row.** A drawn Classic --
-body, screen, click wheel -- at 8x13, lit when the track is on the device.
+body, screen, click wheel -- at 8x13, **drawn only when the track is
+actually on the device.** It was first built as an always-present mark that
+went faint when absent, which was wrong twice over: a faint iPod still looks
+like an iPod, and because the dim rule only dims `.t` and `.art`, the
+placeholder rendered at full strength beside a title at 45% -- the phantom
+was *brighter than the track name*. The slot keeps its width so nothing
+shifts; the mark is either there or it is not.
 It sits beside the chevron rather than in the source strip, because *is this
 on the thing* is the highest-priority fact in the row and it must never move:
 in the strip it slid left and right as tags appeared.
