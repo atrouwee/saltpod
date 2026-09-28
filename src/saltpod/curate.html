@@ -190,8 +190,13 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
    is this ON the thing -- so it sits closest to the chevron, and it is drawn
    rather than spelled. Both slots are always present and only change state;
    a tag appearing or vanishing to their left cannot shift them. */
-.br { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; color: var(--dim);
-      font-variant-numeric: tabular-nums; width: 3.4ch; text-align: right; flex: none; }
+/* The slot keeps its width even when empty -- that is the whole point of it.
+   Collapsing it on the tracks you do not own would start the iPod mark
+   sliding again, which is what moving it here fixed. It is narrow and tight
+   against the mark so the reserved space costs as little as possible. */
+.br { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; color: var(--dim);
+      font-variant-numeric: tabular-nums; width: 3ch; text-align: right; flex: none;
+      margin-right: -3px; }
 .pod { display: inline-flex; align-items: center; color: var(--faint); flex: none; }
 .pod.on { color: var(--ink); }
 .row.sel .br { color: rgba(255,255,255,.7); }
