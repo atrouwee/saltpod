@@ -32,8 +32,8 @@
   --sel-hi: #6aa9f4;
   --sel-lo: #1450b8;
   --hbtn:  32px; /* the header's controls: search's height, Sync's height, the gear's side */
-  --lw: 240px;   /* the side panes; a folded one is simply gone */
-  --sw: 230px;   /* the source pane: Apple Music or the drive, one at a time */
+  --lw: 250px;   /* the two left panes are one width: they do the same job */
+  --sw: 250px;   /* the source pane: Apple Music or the drive, one at a time */
   --rw: 320px;
 }
 * { box-sizing: border-box; }
@@ -124,11 +124,17 @@ body.ns #stabs { flex: 0 0 auto; }
 body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
 .plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
-          padding: 12px 18px 10px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+          padding: 12px 14px 10px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
           text-transform: uppercase; color: var(--dim); }
 .plabel .name { color: var(--ink); flex: 1 1 auto; min-width: 10ch; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; }
 .plabel .sp { display: none; }
+/* A SIDE pane's title is one line and the same height in all three, so their
+   bodies start level. The centre keeps wrapping -- it carries the list name,
+   its action, the filter toggle and a stat line, and forcing that onto one
+   line pushed it straight into the pane beside it. */
+aside.left .plabel, aside.srcpane .plabel { flex-wrap: nowrap; }
+aside .plabel { min-height: 43px; align-items: flex-end; padding-bottom: 8px; }
 .plabel .act { cursor: pointer; white-space: nowrap; }
 .plabel .act:hover { color: var(--ink); }
 .pstat { letter-spacing: .06em; }
@@ -145,7 +151,9 @@ section.mid.fx .filters { display: flex; }
 .fold { font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--dim); flex: none;
         cursor: pointer; user-select: none; writing-mode: horizontal-tb; padding: 0 2px; }
 .fold:hover { color: var(--ink); }
-#rtabs, #stabs { display: flex; gap: 14px; flex: 0 0 auto; min-width: 0; }
+#rtabs { display: flex; gap: 14px; flex: 0 0 auto; min-width: 0; }
+#stabs { display: flex; gap: 10px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+#stabs .pill { white-space: nowrap; }
 /* The right pane's title mirrors the left ones: text, then the chevron at the
    outer edge, everything pushed to the right. The stat takes its own line. */
 aside.right .plabel { justify-content: flex-end; }
@@ -295,8 +303,8 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
 .col.dim > span:first-child { color: var(--dim); }
 /* the two ways to read a pane, as marks rather than words: a stack of lines
    for lists, a square of four for albums */
-.modes { display: inline-flex; gap: 2px; flex: none; }
-.modes span { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 16px;
+.modes { display: inline-flex; gap: 2px; flex: none; margin-left: auto; }
+.modes span { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 16px;
               border-radius: 5px; color: var(--faint); cursor: pointer; }
 .modes span:hover { color: var(--dim); }
 .modes span.on { color: var(--ink); background: var(--panel); }
@@ -482,7 +490,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
   <aside class="srcpane" id="src">
-    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am">Apple Music</span><span class="pill" data-s="t7">Library</span></span><span class="sp"></span><span class="modes" id="smodes"></span><span class="pstat" id="srcstat"></span></div>
+    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Library</span></span><span class="modes" id="smodes"></span></div>
     <div class="pbody" id="srcbody"></div>
   </aside>
 
@@ -1152,7 +1160,6 @@ function drawSrc(){
   if(MODE.src==='album'){
     const rows = stab==='t7' ? (SRCTRACKS||[]).map(t7Row) : (LIB||[]).map(libRow);
     SRCALBUMS=albumsOf(rows);
-    $('#srcstat').innerHTML=SRCALBUMS.length?`<s>${SRCALBUMS.length}</s>`:'';
     $('#srcbody').innerHTML = rows.length ? albumRows(SRCALBUMS,'src')
       : `<p class="note">Loading…</p>`;
     wireAlbums($('#srcbody'),'src');
@@ -1166,7 +1173,6 @@ function drawSrc(){
   });
 }
 function drawAM(){
-  $('#srcstat').innerHTML = AMP.length ? `<s>${AMP.length}</s>` : '';
   const st=p=>p.slug===amPick?(active==='am'?'on':'was'):'';
   let h=`<div class="col ${amPick==='__all__'?(active==='am'?'on':'was'):''}" data-am="__all__">All in Apple Music
       <span class="cnt">${AMLIB||''}</span></div>`;
@@ -1247,7 +1253,6 @@ function albumRows(list,pane){
 
 /* the drive: what is already owned, filed the way the drive files it */
 function drawT7(){
-  $('#srcstat').innerHTML = T7.total ? `<s>${T7.total}</s>` : '';
   const st=n=>n===t7Pick?(active==='t7'?'on':'was'):'';
   let h = T7.folders.length ? `<div class="col ${t7Pick==='__all__'?(active==='t7'?'on':'was'):''}" data-t7="__all__">All in Library<span class="cnt">${T7.total||''}</span></div>` + T7.folders.map(f=>`<div class="col ${st(f.name)} ${f.lossless?'':'dim'}" data-t7="${esc(f.name)}" draggable="true"
         title="${esc(f.name)} — ${f.n} files${f.lossless?`, ${f.lossless} lossless`:', none lossless'} — drag onto a collection, or onto + new">

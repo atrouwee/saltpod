@@ -390,7 +390,16 @@ only falls back to state for the device path. Cold 136 ms, warm 8 ms.
 
 Each left pane reads two ways, switched by a mark rather than a word: a stack
 of lines for **lists** (collections, playlists, folders), a square of four for
-**albums**. The choice is remembered per pane.
+**albums**. The marks sit at the top right of every pane, in the same place,
+and the choice is remembered per pane.
+
+**The two left panes are one width** (`--lw` and `--sw`, both 250px) because
+they do the same job; the room comes from the centre, which has it to spare.
+Their titles never wrap -- `Apple Music` is the Apple glyph and one word so
+the tabs, the marks and the fold all fit one line, and the per-source count
+is gone because every row in the pane already carries its own. The right
+pane still wraps: its stat takes its own line, and forbidding that pushed
+BUY / VINYL clean out of the pane.
 
 **An album is not a thing this tool creates.** The Classic builds its Albums
 menu out of the tracks' own tags, so putting an album on the device means
