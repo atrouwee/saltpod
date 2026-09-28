@@ -123,8 +123,9 @@ body.nl aside.left .plabel .name { flex: 0 0 auto; min-width: 0; }
 body.ns #stabs { flex: 0 0 auto; }
 body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
-.plabel { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; flex: none;
-          padding: 12px 14px 10px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+.plabel { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; flex: none;
+          height: 46px; padding: 0 14px; overflow: hidden;
+          font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
           text-transform: uppercase; color: var(--dim); }
 .plabel .name { color: var(--ink); flex: 1 1 auto; min-width: 10ch; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; }
@@ -133,8 +134,11 @@ body.nr #rtabs .pill { border-bottom-color: transparent; }
    bodies start level. The centre keeps wrapping -- it carries the list name,
    its action, the filter toggle and a stat line, and forcing that onto one
    line pushed it straight into the pane beside it. */
-aside.left .plabel, aside.srcpane .plabel { flex-wrap: nowrap; }
-aside .plabel { min-height: 43px; align-items: flex-end; padding-bottom: 8px; }
+/* Anything a pane wants to say beyond its name goes BELOW the strip, so the
+   strip itself is the same 46px in all four columns. */
+.substat { flex: none; padding: 0 14px 8px; font-family: var(--mono); font-size: 9.5px;
+           letter-spacing: .06em; color: var(--dim); }
+.substat s { text-decoration: none; color: var(--ink); }
 .plabel .act { cursor: pointer; white-space: nowrap; }
 .plabel .act:hover { color: var(--ink); }
 .pstat { letter-spacing: .06em; }
@@ -148,8 +152,12 @@ section.mid.fx .filters { display: flex; }
 /* The fold is the < or > left of a pane's title: it points the way the pane
    goes. A folded pane is not gone -- it leaves a rail a few pixels wide with
    the title turned on its side and the chevron now pointing the way back. */
-.fold { font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--dim); flex: none;
-        cursor: pointer; user-select: none; writing-mode: horizontal-tb; padding: 0 2px; }
+/* A box, not a glyph on a baseline: the chevron and the title are different
+   sizes, so only giving the chevron its own centred box lines them up. */
+.fold { font-family: var(--mono); font-size: 12px; color: var(--dim); flex: none;
+        cursor: pointer; user-select: none; writing-mode: horizontal-tb;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px; line-height: 1; }
 .fold:hover { color: var(--ink); }
 #rtabs { display: flex; gap: 14px; flex: 0 0 auto; min-width: 0; }
 #stabs { display: flex; gap: 10px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
@@ -157,7 +165,7 @@ section.mid.fx .filters { display: flex; }
 /* The right pane's title mirrors the left ones: text, then the chevron at the
    outer edge, everything pushed to the right. The stat takes its own line. */
 aside.right .plabel { justify-content: flex-end; }
-aside.right .plabel .pstat { flex: 0 0 100%; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+aside.right .substat { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-first, like the others */
 
 /* ---------- rows ---------- */
@@ -308,6 +316,10 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
               border-radius: 5px; color: var(--faint); cursor: pointer; }
 .modes span:hover { color: var(--dim); }
 .modes span.on { color: var(--ink); background: var(--panel); }
+/* a filter that is ON but folded away still has to declare itself */
+.modes span.act { color: var(--orange); position: relative; }
+.modes span.act:after { content: ""; position: absolute; top: 1px; right: 1px; width: 4px; height: 4px;
+                        border-radius: 99px; background: var(--orange); }
 .albart { width: 28px; height: 28px; border-radius: 4px; background: var(--seam); flex: none; object-fit: cover; }
 .col.alb { align-items: center; }
 .col .cnt .act { cursor: pointer; }
@@ -497,13 +509,15 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
   <section class="mid" id="mid">
     <div class="plabel"><span class="name" id="midh">Library</span>
       <span id="midacts" style="display:flex;gap:12px"></span>
-      <span class="act" id="fltoggle">filter</span><span class="pstat" id="midstat"></span></div>
+      <span class="modes" id="flmodes"></span></div>
+    <div class="substat pstat" id="midstat"></div>
     <div class="filters" id="ctl"></div>
     <div class="pbody" id="list"></div>
   </section>
 
   <aside class="right" id="right">
-    <div class="plabel"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span><span class="pstat" id="rstat"></span></div>
+    <div class="plabel"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span></div>
+    <div class="substat pstat" id="rstat"></div>
     <div class="pbody" id="rbody"></div>
   </aside>
 
@@ -696,15 +710,20 @@ function fold(which){ setFold(which,!document.body.classList.contains(FOLD[which
 /* the filter section: open or shut, remembered; its toggle names the active filter */
 const MID=$('#mid');
 try{ if(localStorage['saltpod.filters']==='1')MID.classList.add('fx'); }catch(e){}
+// The filters fold away behind a mark, like the two views do. A mark cannot
+// say WHICH filter is on, so the funnel carries a dot when one is -- a
+// hidden filter that silently narrows the list would be the worst of both.
 function paintFilterToggle(){
-  const open=MID.classList.contains('fx');
-  $('#fltoggle').textContent=(filter==='all'?'filter':'filter · '+filter)+(open?' \u25B4':' \u25BE');
+  const open=MID.classList.contains('fx'), on=filter!=='all';
+  const el=$('#flmodes'); if(!el)return;
+  el.innerHTML=`<span class="${open||on?'on':''}${on?' act':''}" id="fltoggle"
+     title="${on?'filtered: '+filter:'filter'}">${ICON_FILTER}</span>`;
+  $('#fltoggle').onclick=()=>{
+    MID.classList.toggle('fx');
+    try{ localStorage['saltpod.filters']=MID.classList.contains('fx')?'1':'0'; }catch(e){}
+    paintFilterToggle();
+  };
 }
-$('#fltoggle').onclick=()=>{
-  MID.classList.toggle('fx');
-  try{ localStorage['saltpod.filters']=MID.classList.contains('fx')?'1':'0'; }catch(e){}
-  paintFilterToggle();
-};
 
 /* ---------------- loading, counting, filtering ---------------- */
 async function load(){
@@ -1215,6 +1234,8 @@ function albumKey(t){
 const ICON_LIST='<svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true">'
  +'<g fill="currentColor"><rect y="0" width="12" height="1.6" rx=".6"/><rect y="4.2" width="12" height="1.6" rx=".6"/>'
  +'<rect y="8.4" width="12" height="1.6" rx=".6"/></g></svg>';
+const ICON_FILTER='<svg width="12" height="11" viewBox="0 0 12 11" aria-hidden="true">'
+ +'<path d="M.8 1h10.4L7.2 5.6v4L4.8 10.6V5.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
 const ICON_ALBUM='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">'
  +'<g fill="currentColor"><rect width="5" height="5" rx="1"/><rect x="7" width="5" height="5" rx="1"/>'
  +'<rect y="7" width="5" height="5" rx="1"/><rect x="7" y="7" width="5" height="5" rx="1"/></g></svg>';

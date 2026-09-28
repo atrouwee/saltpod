@@ -423,3 +423,31 @@ performer -- **389 "albums" from 466 tracks**, nearly all holding one. Keyed
 on the name it is 241, the stations are whole again (Master Sounds 98.3, 29
 tracks), and an album whose performers differ is shown as **Various
 Artists**, which is what the device does too.
+
+## One title strip, in every column
+
+Each pane used to size its own title to its own contents -- different font
+sizes, pills carrying an underline, one pane wrapping while another did not
+-- so four titles that were each internally tidy sat at four different
+heights. Measuring a pane against itself hid it; the owner saw it at a
+glance: *"literally this is not aligned."*
+
+Every column now has a **fixed 46px strip** with its content centred, and
+anything a pane wants to say beyond its name goes **below** the strip as a
+`.substat`. Measured: all four title centres at the same pixel, all three
+fold chevrons with them, all four strips 46px.
+
+Two things that were quietly wrong and are worth remembering:
+
+- **`align-items: flex-end` aligns boxes, not glyphs.** The 12px fold chevron
+  and the 9.5px mono title had their bottoms lined up and still read as
+  misaligned, because their boxes are different heights. The chevron has its
+  own centred 14x14 box now.
+- **A pane's extra line belongs under the strip, not in it.** The right
+  pane's stat got its own row by wrapping, so forbidding wrap pushed
+  BUY / VINYL clean out of the pane.
+
+**The filters fold behind a mark**, like the two views do -- a funnel in the
+centre's strip. A mark cannot say *which* filter is on, so it carries an
+orange dot when one is: a hidden filter silently narrowing the list would be
+worse than no filter at all.
