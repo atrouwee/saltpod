@@ -32,7 +32,7 @@ import time
 import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -757,6 +757,8 @@ def tracks_payload(scope=''):
             continue
         it = r.get('itunes') or {}
         art = (it.get('art') or '').replace('100x100bb', '300x300bb')
+        if not art and (_original(r.get('device') or {}, k) or {}).get('has_art'):
+            art = '/api/art?key=' + quote(k)
         dev = r.get('device') or {}
         # Which libraries hold this, and which one a click would play from.
         # `t7` is a file we own; `device` is a copy on the iPod; `am` is that it
@@ -784,8 +786,10 @@ def tracks_payload(scope=''):
             'bought': r['bought'], 'on_ipod': r['on_ipod'],
             'collections': r['collections'], 'note': r.get('note', ''),
             'orphan': bool(r.get('orphan')),
-            'quality': quality_of(dev, k), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
-            'album': it.get('album'), 'genre': it.get('genre'),
+            'quality': quality_of(dev, k), 'wanted': bool(r.get('wanted')), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
+            'album': it.get('album') or dev.get('album') or (_original(dev, k) or {}).get('album'),
+            'album_artist': (_original(dev, k) or {}).get('album_artist'),
+            'genre': it.get('genre'),
             'released': it.get('released'), 'price': it.get('price'),
             'seconds': it.get('seconds'), 'url': it.get('url'),
             'preview': it.get('preview'), 'art': art,
@@ -833,7 +837,7 @@ def apply_decision(body):
                 rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
                 if body['tier'] == 'shortlisted':
                     shortlisted.append(k)
-            for f in ('vinyl', 'bought', 'on_ipod'):
+            for f in ('vinyl', 'bought', 'on_ipod', 'wanted'):
                 if f in body:
                     rec[f] = bool(body[f])
             if 'note' in body:
@@ -999,6 +1003,57 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps(health()))
         if u.path == '/api/plan':
             return self._send(200, json.dumps(plan_summary()))
+        if u.path == '/api/art':
+            # Your own cover art, out of your own file. Extracted once with
+            # ffmpeg and cached; no network, no API, no account -- and it
+            # covers the music iTunes has never heard of, which on this drive
+            # is most of it.
+            key = (parse_qs(u.query).get('key') or [''])[0]
+            # The T7 original first -- full quality, and the copy that
+            # reliably kept its art. Resolved from the cached index maps, NOT
+            # by loading state: a row of 200 covers would otherwise queue 200
+            # reads of a 1.9 MB state file behind one lock.
+            src = None
+            e = _local_maps()['key'].get(key) or {}
+            if e.get('path') and os.path.exists(e['path']) and e.get('has_art'):
+                src = e['path']
+            dev = {}
+            if not src:
+                with LOCK:
+                    dev = ((S.load()['tracks'] or {}).get(key) or {}).get('device') or {}
+                e2 = _original(dev, key)
+                if e2.get('path') and os.path.exists(e2['path']) and e2.get('has_art'):
+                    src = e2['path']
+            if not src and dev.get('location'):
+                from . import itunesdb as I, config as CFG
+                try:
+                    cand = I.ipod_path(dev['location'], CFG.load()['mount'])
+                    if os.path.exists(cand):
+                        src = cand
+                except Exception:
+                    src = None
+            if not src:
+                return self._send(404, b'', 'image/jpeg')
+            cache = os.path.join(ROOT, 'data', 'local', 'art')
+            os.makedirs(cache, exist_ok=True)
+            out = os.path.join(cache, re.sub(r'[^A-Za-z0-9]+', '_', key)[:120] + '.jpg')
+            if not os.path.exists(out):
+                try:
+                    subprocess.run(['ffmpeg', '-v', 'quiet', '-y', '-i', src,
+                                    '-an', '-vframes', '1', '-vf', 'scale=300:-1', out],
+                                   timeout=20, check=False)
+                except Exception:
+                    pass
+            if not os.path.exists(out) or not os.path.getsize(out):
+                return self._send(404, b'', 'image/jpeg')
+            body = open(out, 'rb').read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/jpeg')
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'max-age=86400')
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if u.path == '/api/local':
             d = local_index()
             want = (parse_qs(u.query).get('folder') or [None])[0]

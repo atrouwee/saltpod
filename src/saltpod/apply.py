@@ -147,8 +147,16 @@ def plan(mount=None):
                                   -os.path.getsize(e['path'])))
         return cands[0]['path'] if cands else None
 
+    # A track reaches the device two ways. Through a COLLECTION, which is a
+    # playlist and is written as one. Or on its own, flagged `wanted` -- which
+    # is how an album arrives: the Classic builds its Albums menu out of the
+    # tracks' own tags, so an album is not a thing you create, it is a thing
+    # that appears once the tracks are there. Copying them into a playlist
+    # named after the album would put it in the wrong menu twice.
+    loose = [(k, r) for k, r in st['tracks'].items()
+             if r.get('wanted') and not r['collections']]
     adds, no_source, removes = [], [], []
-    for c, members in cols.items():
+    for members in list(cols.values()) + [loose]:
         for k, r in members:
             if k in dev_by_key or any(k == a[0] for a in adds):
                 continue

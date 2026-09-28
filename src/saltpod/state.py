@@ -39,7 +39,8 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STATE = os.path.join(ROOT, 'data', 'state.json')
 
-DECISION_FIELDS = ('tier', 'vinyl', 'collections', 'bought', 'on_ipod', 'note', 'decided_at')
+DECISION_FIELDS = ('tier', 'vinyl', 'collections', 'bought', 'on_ipod', 'wanted',
+                   'note', 'decided_at')
 TIERS = ('seen', 'shortlisted', 'maybe', 'skipped')
 
 

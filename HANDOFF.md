@@ -356,3 +356,32 @@ and selection memory at risk: windowing changes the content height as rows
 mount and unmount, which is the one thing `scrollTop` restoration cannot
 survive. Not worth it. If a list ever appears that makes this wrong, the
 cheap move is raising `CAP`, not windowing.
+
+## Artwork comes from your own files, not only from iTunes
+
+A row's cover used to come solely from the iTunes match, so the 466 tracks on
+the device -- which arrive through `import_device` and are never looked up --
+showed **5 covers between them**. The owner, pointing at a case he knew:
+*"all the GTA SA albums have artwork, but don't show here."* They do: 250x250
+mjpeg, embedded, in every one.
+
+`local_index` now probes **all** streams rather than just `a:0`, so it knows
+which files carry a cover, and `/api/art?key=` extracts one with ffmpeg,
+scales it to 300px and caches it under `data/local/art/`. No network, no API,
+no account -- and it covers the music iTunes has never heard of, which on
+this drive is most of it.
+
+| | before | after |
+|---|---|---|
+| artwork in the curation state | 558 | **934** of 1,034 |
+| on the iPod | **5** | **381** of 466 |
+| files on the drive carrying a cover | | 1,562 of 4,048 |
+
+The source is preferred over the device: the T7 original is the full-quality
+file and the one that reliably kept its art, with the iPod's own copy as the
+fallback for anything whose source has gone.
+
+**Do not put a state load in that endpoint.** The first version did, under
+`LOCK`, and a screen of 200 covers then queued 200 reads of a 1.9 MB state
+file behind one lock. It resolves from the cached index maps instead, and
+only falls back to state for the device path. Cold 136 ms, warm 8 ms.

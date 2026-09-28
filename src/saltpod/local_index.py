@@ -36,15 +36,20 @@ def probe(path):
             # number for a lossy file and says nothing about a lossless one,
             # where depth and sample rate are what discriminate. Both cost
             # the same single ffprobe call.
+            # All streams, not just audio: a file's own cover art is a video
+            # stream, and knowing it is there is what lets the page show the
+            # artwork you already have instead of a grey square.
             ["ffprobe", "-v", "quiet", "-print_format", "json",
-             "-show_format", "-show_streams", "-select_streams", "a:0", path],
+             "-show_format", "-show_streams", path],
             capture_output=True, text=True, timeout=30,
         )
         if out.returncode != 0:
             return None
         parsed = json.loads(out.stdout)
         fmt = parsed.get("format", {})
-        st = (parsed.get("streams") or [{}])[0]
+        streams = parsed.get("streams") or []
+        st = next((x for x in streams if x.get("codec_type") == "audio"), {})
+        has_art = any(x.get("codec_type") == "video" for x in streams)
     except Exception:  # noqa: BLE001 - a bad file should not stop the walk
         return None
     tags = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}
@@ -69,6 +74,7 @@ def probe(path):
         "sample_rate": (int(st["sample_rate"]) if str(st.get("sample_rate") or "").isdigit() else None),
         "bit_depth": (int(st.get("bits_per_raw_sample") or st.get("bits_per_sample") or 0) or None),
         "channels": st.get("channels"),
+        "has_art": has_art,
         "ipod_ready": ext in IPOD_NATIVE,
         "needs_convert": ext in NEEDS_CONVERT,
         "untagged": not (tags.get("title") and tags.get("artist")),
