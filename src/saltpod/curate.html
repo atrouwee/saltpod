@@ -293,6 +293,15 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
 .col .cnt { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: nowrap; flex: none; }
 .col.pending .cnt { font-style: italic; }
 .col.dim > span:first-child { color: var(--dim); }
+/* the two ways to read a pane, as marks rather than words: a stack of lines
+   for lists, a square of four for albums */
+.modes { display: inline-flex; gap: 2px; flex: none; }
+.modes span { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 16px;
+              border-radius: 5px; color: var(--faint); cursor: pointer; }
+.modes span:hover { color: var(--dim); }
+.modes span.on { color: var(--ink); background: var(--panel); }
+.albart { width: 28px; height: 28px; border-radius: 4px; background: var(--seam); flex: none; object-fit: cover; }
+.col.alb { align-items: center; }
 .col .cnt .act { cursor: pointer; }
 .col .cnt .act:hover { color: var(--ink); }
 .col.drop, aside.right.drop .pbody { outline: 2px dashed var(--sel-hi); outline-offset: -3px; border-radius: 10px; }
@@ -461,7 +470,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 
 <div id="work">
   <aside class="left" id="left">
-    <div class="plabel"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="act" id="newcol">+ new</span></div>
+    <div class="plabel"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span><span class="act" id="newcol">+ new</span></div>
     <div class="pbody" id="colbody"></div>
   </aside>
   <!-- The library to take from, always beside the iPod. Nothing here is edited:
@@ -473,7 +482,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
   <aside class="srcpane" id="src">
-    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am">Apple Music</span><span class="pill" data-s="t7">Library</span></span><span class="sp"></span><span class="pstat" id="srcstat"></span></div>
+    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am">Apple Music</span><span class="pill" data-s="t7">Library</span></span><span class="sp"></span><span class="modes" id="smodes"></span><span class="pstat" id="srcstat"></span></div>
     <div class="pbody" id="srcbody"></div>
   </aside>
 
@@ -555,6 +564,17 @@ let AMP=[], AMREAD=null, AMLIB=0;
 // to take from. Everything in Apple Music is browsable, but a track earns a
 // record in state only when a decision is made about it. `active` says which
 // pane's pick the centre is showing: whichever playlist was clicked last.
+// Each left pane can be read two ways: as LISTS (playlists, collections,
+// folders) or as ALBUMS. An album is not a thing this tool creates -- the
+// Classic builds its Albums menu out of the tracks' own tags -- so album
+// view is a lens over the same tracks, never a second kind of container.
+let MODE={ipod:'list', src:'list'};
+try{ MODE={...MODE, ...JSON.parse(localStorage['saltpod.mode']||'{}')}; }catch(e){}
+function setMode(pane,m){ MODE[pane]=m; try{ localStorage['saltpod.mode']=JSON.stringify(MODE); }catch(e){}
+  if(pane==='ipod'){colPick=null;devPick=null;albPick=null;} else {amPick=null;t7Pick=null;albPick=null;}
+  activate(pane==='ipod'?'ipod':(stab==='t7'?'t7':'am')); sel=0; draw(); }
+let albPick=null;            // the album being shown, in either pane
+let PODALBUMS=[], SRCALBUMS=[];
 let stab='am';               // which source the shared pane is showing
 try{ stab=localStorage['saltpod.stab']||'am'; }catch(e){}
 let active='ipod';
@@ -575,7 +595,8 @@ const SCROLL={};
 // place you come back to is the same place you left -- the row you had
 // selected as well as how far down you were.
 function listKey(){
-  const pick = active==='ipod' ? (colPick||devPick||'__all') : active==='am' ? amPick : t7Pick;
+  const pick = albPick ? 'alb:'+albPick
+    : active==='ipod' ? (colPick||devPick||'__all') : active==='am' ? amPick : t7Pick;
   return 'list:'+active+':'+pick+':'+filter+':'+(q||'');
 }
 const SELMEM={};
@@ -822,6 +843,14 @@ function drawFoot(){
    differs -- which rows, and what is this called -- and everything after it
    is identical: same filters, same search, same cap, same numbering rule. */
 function currentList(){
+  if(albPick){
+    const pane = active==='ipod' ? 'ipod' : 'src';
+    const a=(pane==='ipod'?PODALBUMS:SRCALBUMS).find(x=>x.key===albPick);
+    if(a) return {rows:a.tracks, lib:pane==='ipod'?'on the iPod':(stab==='t7'?'library':'apple music'),
+      ordered:true, readonly:pane!=='ipod', foreign:pane!=='ipod', picked:true,
+      title:a.album||'—', note:esc(a.artist||''), album:a,
+      blank:'Empty album.'};
+  }
   if(active==='am'){
     const pl=amPick&&amPick!=='__all__'&&AMP.find(p=>p.slug===amPick);
     const src=amPick==='__all__'?LIB:(PEEK&&PEEK.name===(pl||{}).name?PEEK.tracks:[]);
@@ -986,7 +1015,18 @@ function nudge(dir){
 function drawCols(){
   $('#left').querySelector('.plabel').classList.toggle('off',active!=='ipod');
   $('#newcol').textContent='+ new';
+  paintModes('ipod',$('#lmodes'));
   drawSrc();
+  if(MODE.ipod==='album'){
+    // Albums on the iPod are what the device itself would show: derived from
+    // the tags of the tracks actually on it.
+    PODALBUMS=albumsOf(ALL.filter(t=>t.device));
+    $('#newcol').style.display='none';
+    $('#colbody').innerHTML=albumRows(PODALBUMS,'ipod');
+    wireAlbums($('#colbody'),'ipod');
+    return;
+  }
+  $('#newcol').style.display='';
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All on iPod<span class="cnt">${ALL.filter(t=>t.device).length}</span></div>`;
@@ -1015,11 +1055,11 @@ function drawCols(){
   }
   $('#colbody').innerHTML=h;
   const body=$('#colbody');
-  body.querySelectorAll('[data-dev]').forEach(el=>el.onclick=()=>{activate('ipod');devPick=el.dataset.dev;colPick=null;sel=recallSel();draw();});
-  body.querySelector('[data-all]').onclick=()=>{activate('ipod');colPick=null;devPick=null;sel=recallSel();draw();};
+  body.querySelectorAll('[data-dev]').forEach(el=>el.onclick=()=>{activate('ipod');devPick=el.dataset.dev;colPick=null;albPick=null;sel=recallSel();draw();});
+  body.querySelector('[data-all]').onclick=()=>{activate('ipod');colPick=null;devPick=null;albPick=null;sel=recallSel();draw();};
   body.querySelectorAll('[data-c]').forEach(el=>{
     const name=el.dataset.c;
-    el.onclick=()=>{activate('ipod');colPick=name;devPick=null;sel=recallSel();draw();};
+    el.onclick=()=>{activate('ipod');colPick=name;devPick=null;albPick=null;sel=recallSel();draw();};
     const mo=el.querySelector('.more');
     if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'col',name);};
     el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('drop');};
@@ -1027,6 +1067,8 @@ function drawCols(){
     el.ondrop=async e=>{
       e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
       const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+      if(key.startsWith('alb:')){ const a=SRCALBUMS.find(x=>x.key===key.slice(4));
+        if(a)await decide({collection:name,mode:'add'},a.tracks.map(t=>t.key)); return; }
       if(key.startsWith('pl:')){ await pourPlaylist(key.slice(3),name); return; }   // a whole playlist
       if(key.startsWith('t7:')){ await pourFolder(key.slice(3),name); return; }     // a whole folder
       const t=ALL.find(x=>x.key===key);
@@ -1050,6 +1092,7 @@ function drawCols(){
   pane.ondrop=async e=>{
     e.preventDefault(); pane.classList.remove('drop');
     const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+    if(key.startsWith('alb:')){ const a=SRCALBUMS.find(x=>x.key===key.slice(4)); if(a)await albumToIpod(a); return; }
     if(key.startsWith('pl:')) return pourPlaylist(key.slice(3),null);
     if(key.startsWith('t7:')) return pourFolder(key.slice(3),null);
   };
@@ -1105,6 +1148,17 @@ function drawSrc(){
   const pane=$('#src');
   pane.querySelector('.plabel').classList.toggle('off',active==='ipod');
   document.querySelectorAll('#stabs .pill').forEach(p=>p.classList.toggle('on',p.dataset.s===stab));
+  paintModes('src',$('#smodes'));
+  if(MODE.src==='album'){
+    const rows = stab==='t7' ? (SRCTRACKS||[]).map(t7Row) : (LIB||[]).map(libRow);
+    SRCALBUMS=albumsOf(rows);
+    $('#srcstat').innerHTML=SRCALBUMS.length?`<s>${SRCALBUMS.length}</s>`:'';
+    $('#srcbody').innerHTML = rows.length ? albumRows(SRCALBUMS,'src')
+      : `<p class="note">Loading…</p>`;
+    wireAlbums($('#srcbody'),'src');
+    if(!rows.length)ensureSrcAll();
+    return;
+  }
   if(stab==='t7')drawT7(); else drawAM();
   document.querySelectorAll('#stabs .pill').forEach(p=>p.onclick=()=>{
     if(stab===p.dataset.s)return;
@@ -1125,7 +1179,7 @@ function drawAM(){
   $('#srcbody').querySelectorAll('[data-am]').forEach(el=>{
     const slug=el.dataset.am, p=AMP.find(x=>x.slug===slug);
     el.onclick=async()=>{
-      activate('am'); setSrc('am'); amPick=slug; PEEK=null; sel=recallSel();
+      activate('am'); setSrc('am'); amPick=slug; albPick=null; PEEK=null; sel=recallSel();
       if(amPick==='__all__'){ await ensureLib(); }
       else { await peek(p&&p.name); }
       draw();
@@ -1138,6 +1192,59 @@ function drawAM(){
     }
   });
 }
+/* ---------------- albums, derived ----------------
+   Grouped on album artist where there is one and the track artist otherwise,
+   so a compilation does not shatter into one album per performer. The key is
+   normalised because the same record reaches us from three places -- the
+   device, the drive index and Apple Music -- spelled three ways. */
+// THE ALBUM NAME ALONE. Keying on artist+album looked safer and shattered
+// every compilation: only 904 of 4,048 files carry an album_artist tag, so
+// the GTA San Andreas radio stations came out as one album per performer --
+// 389 "albums" from 466 tracks, nearly all of them holding one. The device
+// groups by album too, and shows Various Artists when the performers differ,
+// which is what this now does.
+function albumKey(t){
+  return (t.album||'').toLowerCase().replace(/\s+/g,' ').trim();
+}
+const ICON_LIST='<svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true">'
+ +'<g fill="currentColor"><rect y="0" width="12" height="1.6" rx=".6"/><rect y="4.2" width="12" height="1.6" rx=".6"/>'
+ +'<rect y="8.4" width="12" height="1.6" rx=".6"/></g></svg>';
+const ICON_ALBUM='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">'
+ +'<g fill="currentColor"><rect width="5" height="5" rx="1"/><rect x="7" width="5" height="5" rx="1"/>'
+ +'<rect y="7" width="5" height="5" rx="1"/><rect x="7" y="7" width="5" height="5" rx="1"/></g></svg>';
+function paintModes(pane,el){
+  if(!el)return;
+  const m=MODE[pane];
+  el.innerHTML=`<span class="${m==='list'?'on':''}" data-m="list" title="playlists">${ICON_LIST}</span>`
+              +`<span class="${m==='album'?'on':''}" data-m="album" title="albums">${ICON_ALBUM}</span>`;
+  el.querySelectorAll('[data-m]').forEach(x=>x.onclick=e=>{e.stopPropagation();
+    if(MODE[pane]!==x.dataset.m)setMode(pane,x.dataset.m);});
+}
+function albumsOf(rows){
+  const by=new Map();
+  rows.forEach(t=>{
+    const k=albumKey(t); if(!k)return;
+    let a=by.get(k);
+    if(!a)by.set(k,a={key:k, album:t.album, artist:null, who:new Set(), tracks:[], art:null, onPod:0});
+    a.tracks.push(t); a.who.add(t.album_artist||t.artist||'');
+    if(!a.art&&t.art)a.art=t.art; if(t.device)a.onPod++;
+  });
+  by.forEach(a=>{ a.artist = a.who.size===1 ? [...a.who][0] : 'Various Artists'; });
+  return [...by.values()].sort((x,y)=>
+    (x.artist||'').localeCompare(y.artist||'')||(x.album||'').localeCompare(y.album||''));
+}
+function albumRows(list,pane){
+  if(!list.length)return `<p class="note">No albums here — these tracks carry no album tag.</p>`;
+  return list.map(a=>`<div class="col ${albPick===a.key?'on':''}" data-alb="${esc(a.key)}" draggable="${pane!=='ipod'}"
+      title="${esc(a.artist||'')} — ${esc(a.album||'')} · ${a.tracks.length} tracks${a.onPod?', '+a.onPod+' on the iPod':''}">
+    ${a.art?`<img class="albart" src="${a.art}" loading="lazy" draggable="false">`:'<span class="albart"></span>'}
+    <span style="min-width:0;overflow:hidden">
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.album||'—')}</span>
+      <span style="display:block;font-size:10.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.artist||'')}</span>
+    </span>
+    <span class="cnt">${a.tracks.length}</span><span class="more" title="more">&#8943;</span></div>`).join('');
+}
+
 /* the drive: what is already owned, filed the way the drive files it */
 function drawT7(){
   $('#srcstat').innerHTML = T7.total ? `<s>${T7.total}</s>` : '';
@@ -1150,13 +1257,28 @@ function drawT7(){
   $('#srcbody').innerHTML=h;
   $('#srcbody').querySelectorAll('[data-t7]').forEach(el=>{
     const name=el.dataset.t7;
-    el.onclick=async()=>{ activate('t7'); setSrc('t7'); t7Pick=name; T7TRACKS=null; sel=recallSel(); await t7Peek(name); draw(); };
+    el.onclick=async()=>{ activate('t7'); setSrc('t7'); t7Pick=name; albPick=null; T7TRACKS=null; sel=recallSel(); await t7Peek(name); draw(); };
     const mo=el.querySelector('.more');
     if(mo&&name!=='__all__')mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'t7f',T7.folders.find(f=>f.name===name));};
     if(name!=='__all__'){
       el.ondragstart=e=>{ DRAGKIND='t7'; e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
     } else el.draggable=false;
     el.ondragend=()=>{ DRAGKIND=null; el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
+  });
+}
+function wireAlbums(root,pane){
+  root.querySelectorAll('[data-alb]').forEach(el=>{
+    const k=el.dataset.alb;
+    el.onclick=()=>{ activate(pane==='ipod'?'ipod':(stab==='t7'?'t7':'am')); albPick=k; sel=recallSel(); draw(); };
+    const mo=el.querySelector('.more');
+    if(mo)mo.onclick=e=>{e.stopPropagation();
+      openMenu(mo,'album',(pane==='ipod'?PODALBUMS:SRCALBUMS).find(a=>a.key===k));};
+    if(pane!=='ipod'){
+      el.ondragstart=e=>{ DRAGKIND='alb'; e.dataTransfer.setData('text/plain','alb:'+k);
+        e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
+      el.ondragend=()=>{ DRAGKIND=null; el.classList.remove('dragging');
+        document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
+    }
   });
 }
 async function t7Peek(name){
@@ -1174,6 +1296,14 @@ function t7Row(r){
           device:false, t7:true, local:true, am:false, am_owned:false, am_status:null,
           lossless:r.lossless, origin_ext:r.ext,
           play_from:'t7', audio:false, preview:null, art:null, lean:true};
+}
+// Album view needs every track of that source, not one playlist's worth.
+let SRCTRACKS=null, srcAllFor=null;
+async function ensureSrcAll(){
+  if(stab==='am'){ await ensureLib(); drawCols(); return; }
+  if(srcAllFor==='t7'&&SRCTRACKS)return;
+  const r=await fetch('/api/local?folder=__all__').then(r=>r.json()).catch(()=>null);
+  SRCTRACKS=(r&&r.tracks)||[]; srcAllFor='t7'; drawCols();
 }
 async function ensureLib(){
   if(libLoaded)return;
@@ -1557,6 +1687,34 @@ function paintMenu(){
       await decide({collection:c,mode:'add'},ks); toast(`added ${ks.length} to ${c}`);};
     return;
   }
+  // AN ALBUM. It is not a container this tool owns: the Classic builds its
+  // Albums menu from the tracks' tags, so putting one on the device means
+  // moving its tracks and nothing else -- no playlist is made, or the record
+  // would show up twice in two different menus.
+  if(MENU.kind==='album'){
+    const a=MENU.payload; if(!a){closeMenu();return;}
+    const onPod=a.onPod, n=a.tracks.length;
+    h.innerHTML=esc(a.album||'—')+' · '+n;
+    b.innerHTML = (onPod<n ? menuRow('Put the album on the iPod',`${n-onPod} track${n-onPod>1?'s':''}`,false,'m-albadd') : '')
+      + (onPod ? menuRow('Delete the album from the iPod',`${onPod} track${onPod>1?'s':''}`,false,'m-albdel') : '')
+      + '<div class="sep"></div>' + menuRow('Add all to playlist &rsaquo;','',false,'m-albpl');
+    const ad=b.querySelector('.m-albadd'); if(ad)ad.onclick=()=>{closeMenu();albumToIpod(a);};
+    const dl=b.querySelector('.m-albdel'); if(dl)dl.onclick=()=>{closeMenu();albumOffIpod(a);};
+    b.querySelector('.m-albpl').onclick=()=>{MENU.kind='albpick';paintMenu();};
+    return;
+  }
+  if(MENU.kind==='albpick'){
+    const a=MENU.payload; if(!a){closeMenu();return;}
+    h.innerHTML=`<span class="back" title="back">&lsaquo;</span>Add all to playlist`;
+    h.querySelector('.back').onclick=()=>{MENU.kind='album';paintMenu();};
+    const cols=[...new Set([...COLS,...PENDING])].sort((x,y)=>x.localeCompare(y));
+    b.innerHTML=cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}"><span class="dn">${esc(c)}</span></div>`).join('')
+      :'<p class="note">No collections yet.</p>';
+    b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=async()=>{const c=x.dataset.pc;closeMenu();
+      await decide({collection:c,mode:'add'},a.tracks.map(t=>t.key));
+      toast(`${a.tracks.length} into ${c}`);});
+    return;
+  }
   // a folder on the drive
   if(MENU.kind==='t7f'){
     const f=MENU.payload; if(!f){closeMenu();return;}
@@ -1762,6 +1920,32 @@ async function pourPlaylist(name, into){
   const waiting=keys.filter(k=>!(BYKEY.get(k)||{}).local).length;
   toast(`${keys.length} into ${target}${into?'':' — new'}${waiting?` · ${waiting} not owned yet`:''}`);
 }
+// AN ALBUM ONTO THE IPOD. The tracks are flagged `wanted` and nothing else
+// happens: sync copies a wanted track that belongs to no collection, and the
+// device assembles the album itself out of the tags. Making a playlist named
+// after it would put the same record in two menus.
+async function albumToIpod(a){
+  const ks=a.tracks.filter(t=>!t.device).map(t=>t.key);
+  if(!ks.length){toast('all of it is already on the iPod');return;}
+  const newborn=a.tracks.filter(t=>!BYKEY.has(t.key)&&ks.includes(t.key))
+    .map(t=>({key:t.key,artist:t.artist,title:t.title}));
+  const r=await post('/api/decide',{keys:ks,...(newborn.length?{adopt:newborn}:{}),wanted:true});
+  if(!r.ok){toast('NOT SAVED — check the terminal');return;}
+  await load(); saved();
+  const waiting=ks.filter(k=>!(BYKEY.get(k)||{}).local).length;
+  toast(`${ks.length} track${ks.length>1?'s':''} queued for the iPod${waiting?` · ${waiting} not owned yet`:''}`);
+}
+// AND OFF IT. Skipped is what sync reads as "take this off the device", the
+// same verdict a single track gets; an album is just all of them at once.
+async function albumOffIpod(a){
+  const ks=a.tracks.filter(t=>t.device).map(t=>t.key);
+  if(!ks.length){toast('none of it is on the iPod');return;}
+  const r=await post('/api/decide',{keys:ks,tier:'skipped',wanted:false});
+  if(!r.ok){toast('NOT SAVED — check the terminal');return;}
+  await load(); saved();
+  toast(`${ks.length} track${ks.length>1?'s':''} off the iPod on the next sync`);
+}
+
 // the new-collection sheet's seed list is the same pour, by name
 async function seedFrom(name){ await pourPlaylist(name, null); }
 

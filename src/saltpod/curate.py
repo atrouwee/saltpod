@@ -283,7 +283,7 @@ def run_job(name, steps, fingerprint=False):
                 p = subprocess.Popen(step, cwd=ROOT, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, bufsize=1,
                                      env={**os.environ,
-                                          'DEVELOPER_DIR': '/Library/Developer/CommandLineTools'})
+                                          'DEVELOPER_DIR': DEV_DIR})
                 for ln in p.stdout:
                     job.line(ln)
                 if p.wait() != 0:
@@ -469,6 +469,12 @@ def plan_summary(mount=None):
     except Exception as e:
         return {'ok': False, 'reason': str(e)[:300]}
 
+
+# A fallback, never an override: an unaccepted Xcode licence makes the shelled
+# tools refuse to run, and the Command Line Tools sidestep it without sudo. A
+# machine whose licence is accepted, or one with a deliberate DEVELOPER_DIR,
+# keeps its own.
+DEV_DIR = os.environ.get('DEVELOPER_DIR') or '/Library/Developer/CommandLineTools'
 
 LOSSLESS_EXT = {'.flac', '.wav', '.aif', '.aiff', '.alac'}
 

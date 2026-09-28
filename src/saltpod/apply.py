@@ -55,7 +55,10 @@ def _cfg():
 DB_REL = 'iPod_Control/iTunes/iTunesDB'
 AS_IS = {'.mp3', '.m4a', '.aac'}
 CONVERT = {'.flac', '.wav', '.aiff', '.aif', '.alac', '.ogg'}
-FF_ENV = {**os.environ, 'DEVELOPER_DIR': '/Library/Developer/CommandLineTools'}
+# a fallback, never an override -- see DEV_DIR in curate.py
+FF_ENV = {**os.environ,
+          'DEVELOPER_DIR': os.environ.get('DEVELOPER_DIR')
+                           or '/Library/Developer/CommandLineTools'}
 
 
 # ------------------------------------------------------------- metadata

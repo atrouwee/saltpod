@@ -11,7 +11,11 @@
 # plug in, Disk Mode, `restore`. Nothing here is unrecoverable while the backup
 # in backups/ matches its SHA256SUMS.
 set -euo pipefail
-export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+# Only a fallback. An unaccepted Xcode licence makes /usr/bin/git and
+# friends refuse to run; pointing at the Command Line Tools sidesteps it
+# without asking anyone for sudo. A machine with the licence accepted --
+# or a deliberate DEVELOPER_DIR -- keeps its own.
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
 cd "$(dirname "$0")/.."
 MOUNT=/Volumes/IPOD
 DEV="$MOUNT/iPod_Control/iTunes/iTunesDB"

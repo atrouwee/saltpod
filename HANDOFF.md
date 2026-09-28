@@ -385,3 +385,32 @@ fallback for anything whose source has gone.
 `LOCK`, and a screen of 200 covers then queued 200 reads of a 1.9 MB state
 file behind one lock. It resolves from the cached index maps instead, and
 only falls back to state for the device path. Cold 136 ms, warm 8 ms.
+
+## Albums are a lens, not a container
+
+Each left pane reads two ways, switched by a mark rather than a word: a stack
+of lines for **lists** (collections, playlists, folders), a square of four for
+**albums**. The choice is remembered per pane.
+
+**An album is not a thing this tool creates.** The Classic builds its Albums
+menu out of the tracks' own tags, so putting an album on the device means
+moving its tracks and nothing else. Writing a playlist named after it would
+put the same record in two different menus.
+
+That needed a change in `apply.plan`, which until now only ever copied tracks
+belonging to a collection -- a track in no playlist was never written. It now
+also copies tracks flagged **`wanted`** that belong to no collection. That
+flag is the whole mechanism: drop an album on the iPod pane, or use its
+`...`, and its tracks are marked `wanted`; sync copies them; the device
+assembles the album itself.
+
+Off the device is the same verdict a single track gets: **skipped** on every
+track of the album, which sync reads as "take this off".
+
+**Group on the album name alone.** Keying on artist+album looked safer and
+shattered every compilation: only 904 of 4,048 files carry an `album_artist`
+tag, so the GTA San Andreas radio stations came out as one album per
+performer -- **389 "albums" from 466 tracks**, nearly all holding one. Keyed
+on the name it is 241, the stations are whole again (Master Sounds 98.3, 29
+tracks), and an album whose performers differ is shown as **Various
+Artists**, which is what the device does too.
