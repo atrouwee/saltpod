@@ -183,6 +183,12 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
        font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--dim); }
 .src b { font-weight: 400; color: var(--ink); }
 .src .gone { text-decoration: line-through; }
+/* the iPod sits in the strip as a fixed slot like the others: always drawn,
+   lit when the track is actually on the device */
+.src .pod { display: inline-flex; align-items: center; color: var(--faint); }
+.src .pod.on { color: var(--ink); }
+.row.sel .src .pod { color: rgba(255,255,255,.5); }
+.row.sel .src .pod.on { color: #fff; }
 .row.sel .src, .row.sel .src b { color: #fff; }
 .tags { display: flex; gap: 6px; align-items: center; flex: none; }
 .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
@@ -192,9 +198,15 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .tag.maybe { color: var(--ink); border-style: dashed; }
 .tag.skip { opacity: .5; }
 .tag.vinyl { color: var(--ink); background: var(--panel); }
-/* One meaning for each: dim is "not on the iPod yet", struck through is "on
-   its way off it". Two directions, two signals, never the same ink. */
-.row.pending .t, .row.pending .art { opacity: .45; }
+/* FULL INK MEANS YOU COULD PUT IT ON THE IPOD TODAY -- a file exists, either
+   already on the device or on a drive sync can read. Dim means you cannot:
+   not bought, or bought and not yet indexed. That is the gap this tool exists
+   to close, so it is the thing the eye should catch first while scanning.
+   (It used to mean "not on the iPod yet", which dimmed tracks you already
+   owned and were simply waiting to sync -- a fact about the copy, not about
+   whether you have the music.)
+   Struck through is the other direction: on its way off the device. */
+.row.unowned .t, .row.unowned .art { opacity: .45; }
 .row.skip .t .n { text-decoration: line-through; }
 .col.pend .cnt { color: var(--orange); }
 .row.dragging { opacity: .35; }
@@ -699,12 +711,21 @@ function heard(t){
   return '<span class="warn">nothing to play</span>';
 }
 // every place that holds it, in a fixed order -- never a claim about which came first
+// a Classic, at 11px: body, screen, click wheel
+const IPOD_SVG='<svg viewBox="0 0 12 19" width="8" height="13" aria-hidden="true">'
+  +'<rect x=".6" y=".6" width="10.8" height="17.8" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.1"/>'
+  +'<rect x="2.5" y="2.7" width="7" height="5.2" rx=".7" fill="currentColor" opacity=".55"/>'
+  +'<circle cx="6" cy="13.4" r="3" fill="none" stroke="currentColor" stroke-width="1.1"/>'
+  +'<circle cx="6" cy="13.4" r=".85" fill="currentColor"/></svg>';
 function srcStrip(t){
   const g=[];
   if(t.am)      g.push(t.am_status ? `<span class="gone" title="in Apple Music, ${esc(t.am_status)}">AM</span>`
                                    : (t.am_owned?'<b title="owned in Apple Music">AM</b>':'<span title="in Apple Music, rented">AM</span>'));
   if(t.t7)      g.push(`<b title="stored on the T7${t.lossless?', lossless':''}">T7</b>`);
-  if(t.device)  g.push('<b title="stored on the iPod">POD</b>');
+  // The iPod gets its own mark rather than three letters: it is the one
+  // place in this list that is a physical object, and at 11px it reads
+  // faster than "POD" ever did.
+  g.push(`<span class="pod${t.device?' on':''}" title="${t.device?'stored on the iPod':'not on the iPod'}">${IPOD_SVG}</span>`);
   if(owned(t))  g.push('<b title="you own the record">LP</b>');
   else if(wanted(t)) g.push('<span title="on the Discogs wantlist">lp</span>');
   return g.join('');
@@ -734,7 +755,8 @@ function libRow(r){
 }
 function rowHTML(t,i,pos,ro){
   const dur=mmss(t.seconds||t.dev_seconds);
-  return `<div class="row ${t.tier==='skipped'?'skip':''} ${t.device?'':'pending'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}"
+  const have = t.device || t.local;      // on the iPod, or a file sync can reach
+  return `<div class="row ${t.tier==='skipped'?'skip':''} ${have?'':'unowned'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}"
       ${pos!=null?'style="grid-template-columns:24px 44px minmax(0,1fr) auto auto"':''}>
     ${pos!=null?`<span class="pos">${pos}</span>`:''}
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}

@@ -163,7 +163,7 @@ the owner actually works, in several passes, each one his call:
 
 ## Phase 6 — Where a track lives (27 September, evening)
 
-**Every row carries `AM T7 POD LP`** — Apple Music, the drive, the iPod, a
+**Every row carries `AM · T7 · ⌷ · LP`** — Apple Music, the drive, the iPod, a
 record — in plain mono with no border, because where a track lives is a fact
 about the world and the bordered pills are decisions. Owned shows in full ink,
 rented stays dim. The owner set the rule: *"there should not be a difference

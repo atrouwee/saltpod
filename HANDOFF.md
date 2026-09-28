@@ -241,3 +241,26 @@ it.
 And one that was not about tabs: an empty list still being fetched used to
 clamp `sel` to 0 and then save that, wiping the remembered row before the
 rows arrived. The clamp now only runs on a list that has rows.
+
+## What the dim rows mean
+
+**Full ink means you could put it on the iPod today** -- a file exists,
+either already on the device or on a drive sync can read. **Dim means you
+cannot**: not bought, or bought and not yet indexed.
+
+It used to mean "not on the iPod yet", which dimmed tracks you already owned
+and were merely waiting to copy -- a fact about the transfer rather than
+about whether you have the music. The owner's intent was always the second
+one: *"only the tracks that can go onto the iPod are fully bright white
+because they're available, they're purchased."* Availability is the gap this
+tool exists to close, so it is what the eye should catch while scanning.
+
+The row class is `unowned`, set from `t.device || t.local`. Note that it does
+not change when the drive is unplugged: `local` is read from the index, not
+from the volume, so the list does not go dark when you pull the T7.
+
+**The iPod has its own mark.** The `POD` slot in the source strip is now a
+drawn Classic -- body, screen, click wheel -- at 8x13, lit when the track is
+on the device and faint when it is not. It is a fixed slot like the other
+three, so nothing shifts; it reads faster than three letters did, and it is
+the one place in that strip that names a physical object.
