@@ -265,6 +265,11 @@ It sits beside the chevron rather than in the source strip, because *is this
 on the thing* is the highest-priority fact in the row and it must never move:
 in the strip it slid left and right as tags appeared.
 
+**The bitrate took the pill that used to say "owned".** A number is the
+better claim: it proves you hold the file *and* says what it is, where the
+word only repeated what the ink already said. Nothing shows for a track you
+do not own -- until it is bought there is no format to report.
+
 **Two fixed slots close the row: bitrate, then the iPod.** Both are always
 drawn and only change state, so a tag appearing to their left cannot shift
 them -- verified: the mark sits at the same x on every row.

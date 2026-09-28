@@ -190,13 +190,17 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
    is this ON the thing -- so it sits closest to the chevron, and it is drawn
    rather than spelled. Both slots are always present and only change state;
    a tag appearing or vanishing to their left cannot shift them. */
-/* The slot keeps its width even when empty -- that is the whole point of it.
-   Collapsing it on the tracks you do not own would start the iPod mark
-   sliding again, which is what moving it here fixed. It is narrow and tight
-   against the mark so the reserved space costs as little as possible. */
-.br { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; color: var(--dim);
-      font-variant-numeric: tabular-nums; width: 3ch; text-align: right; flex: none;
-      margin-right: -3px; }
+/* The bitrate took the pill that used to say "owned". A number is the better
+   claim: it proves you hold the file AND says what it is, where the word only
+   ever repeated what the ink already said. Nothing is shown for a track you
+   do not own -- until it is bought there is no format to report.
+   The SLOT keeps its width when empty, because collapsing it would start the
+   iPod mark sliding again, which is what moving the mark here fixed. */
+.br { width: 44px; display: flex; justify-content: flex-end; flex: none; }   /* .tags gap is 6px */
+.br b { font-family: var(--mono); font-size: 9px; font-weight: 400; letter-spacing: .06em;
+        font-variant-numeric: tabular-nums; color: var(--ink);
+        padding: 2px 7px; border-radius: 99px; border: 1px solid var(--faint); }
+.row.sel .br b { color: #fff; border-color: rgba(255,255,255,.55); }
 .pod { display: inline-flex; align-items: center; color: var(--faint); flex: none; }
 .pod.on { color: var(--ink); }
 .row.sel .br { color: rgba(255,255,255,.7); }
@@ -751,7 +755,7 @@ function tagsFor(t){
   if(t.tier==='shortlisted')g.push('<span class="tag buy">buy</span>');
   if(t.tier==='maybe')g.push('<span class="tag maybe">maybe</span>');
   if(t.tier==='skipped')g.push('<span class="tag skip">skip</span>');
-  if(t.bought)g.push('<span class="tag ok">owned</span>');
+
   if(t.vinyl)g.push('<span class="tag vinyl">vinyl</span>');
   if(!colPick)t.collections.forEach(c=>g.push(`<span class="tag">${esc(c)}</span>`));
   if(t.bc_verdict==='confirmed')g.push('<span class="tag">FLAC</span>');
@@ -780,7 +784,7 @@ function rowHTML(t,i,pos,ro){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.kbps?t.kbps:''}</span><span class="pod${t.device?' on':''}" title="${t.device?'on the iPod':'not on the iPod'}">${IPOD_SVG}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.kbps?`<b>${t.kbps}</b>`:''}</span><span class="pod${t.device?' on':''}" title="${t.device?'on the iPod':'not on the iPod'}">${IPOD_SVG}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
