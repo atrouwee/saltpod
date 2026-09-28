@@ -61,7 +61,14 @@ header { background: var(--ground); padding: 12px 24px 0; display: flex; flex-di
 /* the seam is the header's last line, with nothing under it: the pane lines
    below start exactly where it ends */
 header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 4px -24px 0; }
-.brandline { display: grid; grid-template-columns: 1fr minmax(220px, 400px) 1fr; align-items: center; gap: 16px; }
+.brandline { display: grid; grid-template-columns: 1fr minmax(180px, 400px) 1fr; align-items: center; gap: 16px; }
+/* A GRID ITEM KEEPS min-width:auto, so its min-content becomes a floor the
+   whole grid -- and therefore the document -- cannot go under. The body is a
+   grid and the footer is one of its items, so the keyboard hints, which are
+   nowrap by design, were holding the entire page at 975px and making it
+   scroll sideways on anything narrower. Both places need the same release. */
+body > * { min-width: 0; }
+.brandline > * { min-width: 0; }
 /* One number drives both, because aspect-ratio loses to a button's intrinsic
    width and the gear came out 13px wide against Sync's 31. */
 .hright { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-width: 0; }
@@ -108,7 +115,10 @@ aside, section.mid { display: flex; flex-direction: column; min-height: 0; min-w
    middle would otherwise auto-place into the 0px track it left behind. */
 aside.left  { grid-column: 1; border-right: 1px solid var(--faint); }
 aside.srcpane   { grid-column: 2; border-right: 1px solid var(--faint); }
-section.mid { grid-column: 3; }
+section.mid { grid-column: 3; container-type: inline-size; }
+/* a narrow centre drops the source strip before it crushes the title */
+@container (max-width: 420px) { .row .src { display: none; } }
+@container (max-width: 330px) { .row .tags .tag { display: none; } }
 aside.right { grid-column: 4; border-left: 1px solid var(--faint); }
 body.nl { --lw: 24px; }  body.ns { --sw: 24px; }  body.nr { --rw: 24px; }
 /* A folded pane is a 24px rail carrying its name and nothing else. The
@@ -490,6 +500,15 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 .warn { color: var(--dim); }
 
 @media (max-width: 1000px) { :root { --lw: 200px; --rw: 260px; } }
+
+/* ---------- narrow windows, last so they win on source order ----------
+   A media query adds no specificity: these sat near the top and lost to the
+   .counts and #keys rules defined further down, which is why they appeared
+   to do nothing. Degrade on purpose rather than by clipping -- a counts
+   strip sliced to 45px is not a smaller reading of the numbers, and half
+   the keyboard hints read as all of them. */
+@media (max-width: 1100px) { .counts { display: none; } }
+@media (max-width: 900px)  { #keys  { display: none; } }
 </style></head><body>
 
 <header>
@@ -712,7 +731,9 @@ function fold(which){ setFold(which,!document.body.classList.contains(FOLD[which
   try{ l=localStorage['saltpod.foldL']; a=localStorage['saltpod.foldS']; r=localStorage['saltpod.foldR']; }catch(e){}
   // No stored preference: fold from the outside in. Four panes fit a laptop,
   // so only a genuinely narrow window starts folded.
-  const narrow=window.innerWidth<860, tight=window.innerWidth<1040;
+  // measured, not guessed: with all four panes open the centre is 280px at
+  // 1100, which is not a list you can read. The source pane folds first.
+  const narrow=window.innerWidth<860, tight=window.innerWidth<1240;
   setFold('L', l==null ? narrow : l==='1');
   setFold('S', a==null ? tight : a==='1');
   setFold('R', r==null ? narrow : r==='1');
@@ -778,8 +799,7 @@ function counts(){
   sb.title = pend ? `${offs} to take off the iPod, ${ons} to put on — nothing has changed on the device yet` : 'write the collections to the iPod';
   $('#counts').innerHTML=`<span><s>${ALL.length}</s> tracks</span>
     <span><s>${todo.length}</s> to buy</span>
-    <span><s>&euro;${eur.toFixed(2)}</s> final</span>
-    <span><s>${c.seen}</s> undecided</span>`;
+    <span><s>&euro;${eur.toFixed(2)}</s> final</span>`;
 }
 function pass(t){
   if(q){const h=(t.artist+' '+t.title+' '+(t.album||'')).toLowerCase(); if(!h.includes(q))return false;}

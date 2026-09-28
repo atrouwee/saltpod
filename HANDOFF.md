@@ -486,3 +486,40 @@ So a collection of yours shows handles; the same collection with a filter on
 does not, because moving a row past neighbours you cannot see would be a lie;
 and an Apple Music playlist or a drive folder never does, because their order
 is not yours to set.
+
+## What the responsive audit found
+
+Swept 1680 -> 600px in an iframe (the page lays out to the frame, and its own
+`innerWidth` fold logic responds), checking for sideways scroll, panes
+spilling their bounds, clipped title strips and crushed columns. Four real
+faults, all now fixed; the sweep is clean at every width.
+
+**1. The page scrolled sideways below 975px.** The worst of the four, and the
+cause is worth remembering: **a grid item keeps `min-width: auto`**, so its
+min-content becomes a floor the whole grid -- and therefore the document --
+cannot go under. `body` is a grid and `footer` is one of its items, so the
+keyboard hints, which are `nowrap` by design, held the entire page at 975px.
+The header's `.brandline` had the same fault in miniature. Both released with
+`min-width: 0`. Bisected by hiding each region in turn: hiding the footer took
+the document from 975 to 700; hiding the header changed nothing.
+
+**2. At ~1100 the track title collapsed to 23px.** All four panes stayed open
+until 1040, leaving a 280px centre, and the row's grid is
+`44px minmax(0,1fr) auto auto` -- the source strip and tags are `auto` and do
+not yield, so the title absorbed every loss. The source pane folds at 1240
+now, and a `@container` query drops the source strip below a 420px centre and
+the decision tags below 330px, before either can crush the title.
+
+**3. The header counts were clipped from 1280 down** -- on this very laptop.
+They are hidden under 1100 instead: a strip sliced to 45px is not a smaller
+reading of the numbers. The keyboard hints go under 900 for the same reason
+-- half a list of shortcuts reads as the whole list.
+
+**4. Those two media queries did nothing at first**, because **a media query
+adds no specificity**: they sat near the top of the sheet and lost on source
+order to the `.counts` and `#keys` rules defined further down. They are the
+last thing in the stylesheet now.
+
+**Supported range: 600px and up.** Below about 800 all three side panes are
+rails and the window is the list, which is usable but not the point of the
+tool.
