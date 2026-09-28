@@ -825,8 +825,8 @@ function currentList(){
   if(active==='am'){
     const pl=amPick&&amPick!=='__all__'&&AMP.find(p=>p.slug===amPick);
     const src=amPick==='__all__'?LIB:(PEEK&&PEEK.name===(pl||{}).name?PEEK.tracks:[]);
-    return {rows:src.map(libRow), lib:'apple music', ordered:!!pl, readonly:true, foreign:true,
-      title: pl?pl.name:(amPick==='__all__'?'All of Apple Music':'Apple Music'),
+    return {rows:src.map(libRow), lib:pl?'apple music':'', ordered:!!pl, readonly:true, foreign:true,
+      title: pl?pl.name:(amPick==='__all__'?'All in Apple Music':'Apple Music'),
       note: pl?`created ${(pl.created||'?').slice(0,10)}`:'',
       loading: peeking, picked: !!amPick,
       pour: pl?()=>pourPlaylist(pl.name,null):null,
@@ -834,10 +834,10 @@ function currentList(){
         edited — this is the library to take from.`};
   }
   if(active==='t7'){
-    const f=T7.folders.find(x=>x.name===t7Pick);
+    const f=t7Pick&&t7Pick!=='__all__'&&T7.folders.find(x=>x.name===t7Pick);
     const src=(T7TRACKS&&T7TRACKS.name===t7Pick)?T7TRACKS.tracks:[];
-    return {rows:src.map(t7Row), lib:esc(T7.root||'T7'), ordered:!!f, readonly:true, foreign:true,
-      title: t7Pick?t7Pick:'The drive',
+    return {rows:src.map(t7Row), lib:f?esc(T7.root||'Library'):'', ordered:!!f, readonly:true, foreign:true,
+      title: t7Pick==='__all__'?'All in Library':(t7Pick||'Library'),
       note: f&&f.lossless?`${f.lossless} lossless`:'',
       loading: t7Loading, picked: !!t7Pick, pour: f?()=>pourFolder(f.name,null):null,
       blank:`Pick a folder on the left. This is the music you already own,
@@ -851,14 +851,26 @@ function currentList(){
   if(colPick) return {rows:(ORDER[colPick]||[]).map(k=>ALL.find(t=>t.key===k)).filter(Boolean),
     lib:'collection', ordered:true, readonly:false, title:colPick, picked:true, note:'',
     blank:'Empty. Drag tracks in from the library, or press <kbd>c</kbd> on a track.'};
-  return {rows:ALL, lib:'', ordered:false, readonly:true, title:'Library', picked:true,
-    note:'', months:true, blank:'Nothing here yet.'};
+  // The left pane is the iPod and nothing else, so its "All tracks" is the
+  // device's own Songs menu: everything actually on it, ordered the way the
+  // Classic orders it. This used to be the whole curation state -- a leftover
+  // from when the pane was a library switcher -- which put 565 rented tracks
+  // that are not on the device under a heading that says they are.
+  const on=ALL.filter(t=>t.device).sort((a,b)=>
+    (a.artist||'').localeCompare(b.artist||'')||(a.title||'').localeCompare(b.title||''));
+  return {rows:on, lib:'', ordered:false, readonly:true, title:'All on iPod',
+    picked:true, note:'', blank:'Nothing on the device yet.'};
 }
 
 function drawMid(){
   // the filters belong to the LIST, not to one source: always drawn, always applied
-  $('#ctl').innerHTML=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove']
-    .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
+  // `on iPod` says nothing inside the iPod pane, and `rented only` cannot be
+  // true of anything on the device. Offering a filter that can only ever
+  // return everything or nothing is a dead control.
+  const inPod = active==='ipod';
+  const fs = FILTERS.filter(f=>!(inPod&&(f==='on iPod'||f==='rented only')));
+  if(!fs.includes(filter))filter='all';
+  $('#ctl').innerHTML=fs.map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
   $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{captureScroll();filter=p.dataset.f;sel=recallSel();draw();});
   paintFilterToggle();
 
@@ -879,7 +891,7 @@ function drawMid(){
   $('#midstat').innerHTML = !L.picked ? ''
     : L.loading ? 'reading…'
     : [ filtered()? `<s>${shown.length}</s> of ${all.length}` : `<s>${all.length}</s> tracks`,
-        (!filtered()&&mins&&L.picked&&!L.months)?`${mins} min`:'',
+        (!filtered()&&mins&&L.picked)?`${mins} min`:'',
         (L.foreign&&known)?`${known} in curation`:'',
         L.note,
         (!L.readonly&&filtered())?'clear the filter to re-sequence':'',
@@ -889,14 +901,7 @@ function drawMid(){
   if(!L.picked)        h=`<p class="note">${L.blank}</p>`;
   else if(L.loading)   h=`<p class="note">Reading…</p>`;
   else if(!view.length)h=`<p class="note">${all.length?'Nothing in here matches.':L.blank}</p>`;
-  else if(L.months){
-    let last='';
-    view.forEach((t,i)=>{
-      const m=t.playlists[0]||(t.device?'__device':'__other');
-      if(m!==last){h+=`<div class="month">${m==='__device'?'Already on the iPod':m==='__other'?'Other':MONTH(m)}</div>`;last=m;}
-      h+=rowHTML(t,i);
-    });
-  } else {
+  else {
     // A picked list is a sequence, so it is numbered in its own order --
     // whether it came from the iPod, Apple Music or the drive. Only our own
     // collections can be re-sequenced; the rest are numbered but not grabbable.
@@ -984,7 +989,7 @@ function drawCols(){
   drawSrc();
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
-  let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All tracks<span class="cnt">${ALL.length}</span></div>`;
+  let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All on iPod<span class="cnt">${ALL.filter(t=>t.device).length}</span></div>`;
   h+=names.map(c=>{
       // what sync would still have to do: tracks in it that are not on the device,
       // plus the playlist itself if it has never been written
@@ -1109,7 +1114,7 @@ function drawSrc(){
 function drawAM(){
   $('#srcstat').innerHTML = AMP.length ? `<s>${AMP.length}</s>` : '';
   const st=p=>p.slug===amPick?(active==='am'?'on':'was'):'';
-  let h=`<div class="col ${amPick==='__all__'?(active==='am'?'on':'was'):''}" data-am="__all__">All of Apple Music
+  let h=`<div class="col ${amPick==='__all__'?(active==='am'?'on':'was'):''}" data-am="__all__">All in Apple Music
       <span class="cnt">${AMLIB||''}</span></div>`;
   h+= AMP.length ? AMP.map(p=>`<div class="col ${st(p)} ${p.imported?'':'dim'}" data-am="${esc(p.slug)}" draggable="true"
         title="${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''} — drag onto a collection, or onto + new">
@@ -1137,7 +1142,7 @@ function drawAM(){
 function drawT7(){
   $('#srcstat').innerHTML = T7.total ? `<s>${T7.total}</s>` : '';
   const st=n=>n===t7Pick?(active==='t7'?'on':'was'):'';
-  let h = T7.folders.length ? T7.folders.map(f=>`<div class="col ${st(f.name)} ${f.lossless?'':'dim'}" data-t7="${esc(f.name)}" draggable="true"
+  let h = T7.folders.length ? `<div class="col ${t7Pick==='__all__'?(active==='t7'?'on':'was'):''}" data-t7="__all__">All in Library<span class="cnt">${T7.total||''}</span></div>` + T7.folders.map(f=>`<div class="col ${st(f.name)} ${f.lossless?'':'dim'}" data-t7="${esc(f.name)}" draggable="true"
         title="${esc(f.name)} — ${f.n} files${f.lossless?`, ${f.lossless} lossless`:', none lossless'} — drag onto a collection, or onto + new">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
       <span class="cnt">${f.n}</span><span class="more" title="more">&#8943;</span></div>`).join('')
@@ -1147,8 +1152,10 @@ function drawT7(){
     const name=el.dataset.t7;
     el.onclick=async()=>{ activate('t7'); setSrc('t7'); t7Pick=name; T7TRACKS=null; sel=recallSel(); await t7Peek(name); draw(); };
     const mo=el.querySelector('.more');
-    if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'t7f',T7.folders.find(f=>f.name===name));};
-    el.ondragstart=e=>{ DRAGKIND='t7'; e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
+    if(mo&&name!=='__all__')mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'t7f',T7.folders.find(f=>f.name===name));};
+    if(name!=='__all__'){
+      el.ondragstart=e=>{ DRAGKIND='t7'; e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
+    } else el.draggable=false;
     el.ondragend=()=>{ DRAGKIND=null; el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
   });
 }

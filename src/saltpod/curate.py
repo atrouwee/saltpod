@@ -179,7 +179,12 @@ def device_fingerprint():
     -- and answering it used to mean parsing a backup by hand.
     """
     try:
-        from . import config, itunesdb
+        # `A` is imported locally in health(), not at module level -- this
+        # used A.DB_REL without importing it, so every fingerprint failed with
+        # a NameError and the sync history recorded the error instead of the
+        # diff. It failed silently because the fingerprint is deliberately
+        # wrapped: a broken audit line must never break a write.
+        from . import apply as A, config, itunesdb
         db = itunesdb.read(os.path.join(config.load()['mount'], A.DB_REL))
         return {'tracks': len(db['tracks']),
                 'playlists': {p['name']: len(p['items']) for p in db['playlists']}}
@@ -1005,9 +1010,14 @@ class Handler(BaseHTTPRequestHandler):
                     'built': d['built'], 'folders': folders,
                     'total': sum(f['n'] for f in folders)}
             if want is not None:
-                g = next((x for x in d['folders'] if x['name'] == want), None)
                 body['folder'] = want
-                body['tracks'] = (g or {}).get('tracks') or []
+                if want == '__all__':
+                    every = [t for g in d['folders'] for t in g['tracks']]
+                    every.sort(key=lambda t: ((t['artist'] or '').lower(), (t['title'] or '').lower()))
+                    body['tracks'] = every
+                else:
+                    g = next((x for x in d['folders'] if x['name'] == want), None)
+                    body['tracks'] = (g or {}).get('tracks') or []
             return self._send(200, json.dumps(body))
         if u.path == '/api/library':
             return self._send(200, json.dumps({'tracks': am_index().get('library') or []}))
@@ -1126,6 +1136,14 @@ class Handler(BaseHTTPRequestHandler):
         py = sys.executable
         if a == 'lookup':
             keys = body.get('keys') or []
+            if body.get('all_device'):
+                # Tracks on the iPod are yours by definition, so identifying
+                # them is not the speculative lookup the buy list avoids --
+                # it is what gives them artwork, genre and a release date.
+                with LOCK:
+                    st = S.load()
+                keys = [k for k, r in st['tracks'].items()
+                        if r.get('device') and not r.get('itunes')]
             if body.get('all_shortlisted'):
                 with LOCK:
                     st = S.load()
