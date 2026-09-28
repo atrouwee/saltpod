@@ -310,3 +310,43 @@ stop propagation, so a precise drop still wins; the pane only catches the
 misses. It lights only for a whole playlist or folder -- a lone track has no
 name to make a collection out of, so that still needs a real target. The
 source tab for the drive is called **Library**.
+
+## One list view, whatever is feeding it
+
+The centre used to be three renderers -- iPod, Apple Music, drive -- and they
+had drifted apart. The filters existed on one and were **silently dropped**
+on the other two: `filter` stayed set to `on iPod`, stopped applying the
+moment you switched source, and resumed when you switched back. The list
+meant different things in different panes without saying so.
+
+There is one renderer now. `currentList()` answers the only question that
+genuinely differs -- *which rows, and what is this called* -- and everything
+after it is identical: same filters, same search, same cap, same numbering.
+
+What still differs does so because the **list** differs, not the source:
+
+- **A picked list is numbered** in its own order, whether it came from the
+  iPod, Apple Music or the drive. The flat library is not.
+- **Only our own collections can be re-sequenced.** Everything else is
+  numbered but not grabbable.
+- **Month separators** appear only in the flat library, because only there
+  does a track belong to a month.
+
+## Why there is no lazy loading
+
+Measured rather than assumed, on this library:
+
+| rows | build | paint | total | DOM nodes |
+|---|---|---|---|---|
+| 1,034 (the whole curation state) | 15 ms | 33 ms | **47 ms** | 24,149 |
+| 4,716 (All of Apple Music) | 48 ms | 121 ms | **169 ms** | 109,721 |
+
+Linear, no cliff, 35 MB of heap. **`CAP` is 1,200** -- deliberately above the
+whole curation state, so the library is never truncated; the cap exists for
+All of Apple Music and nothing else.
+
+Virtualising would save 169 ms on exactly one list, and would put the scroll
+and selection memory at risk: windowing changes the content height as rows
+mount and unmount, which is the one thing `scrollTop` restoration cannot
+survive. Not worth it. If a list ever appears that makes this wrong, the
+cheap move is raising `CAP`, not windowing.

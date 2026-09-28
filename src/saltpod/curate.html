@@ -629,7 +629,9 @@ let T7={folders:[],root:null,built:null,total:0}, t7Pick=null, T7TRACKS=null, t7
 // The pane highlights only for the first kind: a lone track has no name to
 // make a collection out of, so it still needs an actual target.
 let DRAGKIND=null;
-const CAP=400;                       // rows drawn at once; search narrows the rest
+const CAP=1200;                      // rows drawn at once; search narrows the rest.
+                                     // Above the whole curation state (1,034) on purpose:
+                                     // the cap exists for All of Apple Music, not for this.
 
 /* ---------------- folding the side panes ---------------- */
 // L is the iPod, A is Apple Music, R is buy/vinyl. Each is pinned to its own
@@ -806,86 +808,98 @@ function drawFoot(){
     <span id="saved" style="margin-left:auto"></span>`;
 }
 
+/* ONE LIST VIEW, whatever is feeding it.
+   The centre used to be three renderers -- iPod, Apple Music, drive -- and
+   they had drifted: filters existed on one and were silently dropped on the
+   other two, so `filter` stayed set to "on iPod" and simply stopped applying
+   when you switched source, then resumed when you switched back. The list
+   meant different things in different panes without saying so.
+   Now one renderer. `currentList()` answers the only question that really
+   differs -- which rows, and what is this called -- and everything after it
+   is identical: same filters, same search, same cap, same numbering rule. */
+function currentList(){
+  if(active==='am'){
+    const pl=amPick&&amPick!=='__all__'&&AMP.find(p=>p.slug===amPick);
+    const src=amPick==='__all__'?LIB:(PEEK&&PEEK.name===(pl||{}).name?PEEK.tracks:[]);
+    return {rows:src.map(libRow), lib:'apple music', ordered:!!pl, readonly:true, foreign:true,
+      title: pl?pl.name:(amPick==='__all__'?'All of Apple Music':'Apple Music'),
+      note: pl?`created ${(pl.created||'?').slice(0,10)}`:'',
+      loading: peeking, picked: !!amPick,
+      pour: pl?()=>pourPlaylist(pl.name,null):null,
+      blank:`Pick a playlist on the left, or All of Apple Music. Nothing here is
+        edited — this is the library to take from.`};
+  }
+  if(active==='t7'){
+    const f=T7.folders.find(x=>x.name===t7Pick);
+    const src=(T7TRACKS&&T7TRACKS.name===t7Pick)?T7TRACKS.tracks:[];
+    return {rows:src.map(t7Row), lib:esc(T7.root||'T7'), ordered:!!f, readonly:true, foreign:true,
+      title: t7Pick?t7Pick:'The drive',
+      note: f&&f.lossless?`${f.lossless} lossless`:'',
+      loading: t7Loading, picked: !!t7Pick, pour: f?()=>pourFolder(f.name,null):null,
+      blank:`Pick a folder on the left. This is the music you already own,
+        indexed ${esc(T7.built||'never')}, grouped the way the drive groups it.`};
+  }
+  const dp=devPick&&DEV.playlists.find(p=>p.name===devPick);
+  if(dp) return {rows:dp.keys.map(k=>BYKEY.get(k)).filter(Boolean), lib:'on the iPod',
+    ordered:true, readonly:true, title:dp.name, picked:true,
+    note: dp.smart?'a smart playlist, never written':'not a collection yet',
+    takeover: dp.smart?null:dp, blank:'Empty on the device.'};
+  if(colPick) return {rows:(ORDER[colPick]||[]).map(k=>ALL.find(t=>t.key===k)).filter(Boolean),
+    lib:'collection', ordered:true, readonly:false, title:colPick, picked:true, note:'',
+    blank:'Empty. Drag tracks in from the library, or press <kbd>c</kbd> on a track.'};
+  return {rows:ALL, lib:'', ordered:false, readonly:true, title:'Library', picked:true,
+    note:'', months:true, blank:'Nothing here yet.'};
+}
+
 function drawMid(){
-  if(active==='am')return drawMidAM();
-  if(active==='t7')return drawMidT7();
+  // the filters belong to the LIST, not to one source: always drawn, always applied
   $('#ctl').innerHTML=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove']
     .map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
   $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{captureScroll();filter=p.dataset.f;sel=recallSel();draw();});
   paintFilterToggle();
 
-  const acts=$('#midacts');
+  const L=currentList();
+  const all=L.rows, shown=all.filter(pass);
+  view=shown.slice(0,CAP);
+
+  $('#midh').innerHTML=esc(L.title)+(L.lib?` <span style="color:var(--dim)">· ${L.lib}</span>`:'');
+
+  const acts=$('#midacts'); acts.innerHTML='';
+  if(L.takeover) acts.innerHTML=`<span class="act" id="takeover" title="a collection of the same name and order; from then on it is yours to edit and sync">make it a collection</span>`;
+  else if(L.pour) acts.innerHTML=`<span class="act" id="pourit" title="a collection of the same name and order">make it a collection</span>`;
+  const tk=$('#takeover'); if(tk)tk.onclick=()=>takeOver(L.takeover);
+  const po=$('#pourit');   if(po)po.onclick=()=>L.pour();
+
+  const mins=Math.round(all.reduce((a,t)=>a+(t.seconds||t.dev_seconds||0),0)/60);
+  const known=all.filter(t=>!t.lean).length;
+  $('#midstat').innerHTML = !L.picked ? ''
+    : L.loading ? 'reading…'
+    : [ filtered()? `<s>${shown.length}</s> of ${all.length}` : `<s>${all.length}</s> tracks`,
+        (!filtered()&&mins&&L.picked&&!L.months)?`${mins} min`:'',
+        (L.foreign&&known)?`${known} in curation`:'',
+        L.note,
+        (!L.readonly&&filtered())?'clear the filter to re-sequence':'',
+        (shown.length>CAP)?`${CAP} shown`:'' ].filter(Boolean).join(' · ');
+
   let h='';
-  const dp=devPick&&DEV.playlists.find(p=>p.name===devPick);
-  if(dp){
-    const all=dp.keys.map(k=>BYKEY.get(k)).filter(Boolean);
-    view=all.filter(pass);
-    $('#midh').textContent=dp.name;
-    $('#midstat').innerHTML=`<s>${all.length}</s> tracks · on the iPod · ${dp.smart?'a smart playlist, never written':'not a collection yet'}`;
-    acts.innerHTML = dp.smart ? '' : `<span class="act" id="takeover" title="a collection of the same name and order; from then on it is yours to edit and sync">make it a collection</span>`;
-    const tk=$('#takeover'); if(tk)tk.onclick=()=>takeOver(dp);
-    h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1,true)).join('')
-      : all.length ? '<p class="note">Nothing in here matches.</p>'
-      : '<p class="note">Empty on the device.</p>';
-  } else if(colPick){
-    // A collection is a sequence: drawn in its own order, never sorted. A filter
-    // or a search narrows what is SHOWN, and while one is on, re-sequencing is
-    // off -- moving a row past neighbours you cannot see would be a lie.
-    const all=(ORDER[colPick]||[]).map(k=>ALL.find(t=>t.key===k)).filter(Boolean);
-    view=all.filter(pass);
-    const mins=Math.round(all.reduce((a,t)=>a+(t.seconds||t.dev_seconds||0),0)/60);
-    $('#midh').textContent=colPick;
-    $('#midstat').innerHTML = filtered()
-      ? `<s>${view.length}</s> of ${all.length} shown · clear the filter to re-sequence`
-      : `<s>${all.length}</s> tracks · ${mins} min`;
-    acts.innerHTML='';
-    h = view.length ? view.map((t,i)=>rowHTML(t,i,all.indexOf(t)+1)).join('')
-      : all.length ? '<p class="note">Nothing in here matches.</p>'
-      : '<p class="note">Empty. Drag tracks in from the library, or press <kbd>c</kbd> on a track.</p>';
-  } else {
-    view=ALL.filter(pass);
-    $('#midh').textContent='Library';
-    $('#midstat').innerHTML=filtered()?`<s>${view.length}</s> of ${ALL.length}`:`<s>${ALL.length}</s> tracks`;
-    acts.innerHTML='';
+  if(!L.picked)        h=`<p class="note">${L.blank}</p>`;
+  else if(L.loading)   h=`<p class="note">Reading…</p>`;
+  else if(!view.length)h=`<p class="note">${all.length?'Nothing in here matches.':L.blank}</p>`;
+  else if(L.months){
     let last='';
     view.forEach((t,i)=>{
       const m=t.playlists[0]||(t.device?'__device':'__other');
       if(m!==last){h+=`<div class="month">${m==='__device'?'Already on the iPod':m==='__other'?'Other':MONTH(m)}</div>`;last=m;}
       h+=rowHTML(t,i);
     });
-    if(!view.length)h='<p class="note">Nothing matches.</p>';
+  } else {
+    // A picked list is a sequence, so it is numbered in its own order --
+    // whether it came from the iPod, Apple Music or the drive. Only our own
+    // collections can be re-sequenced; the rest are numbered but not grabbable.
+    h=view.map((t,i)=>rowHTML(t,i,L.ordered?all.indexOf(t)+1:null,L.readonly)).join('');
   }
-  $('#list').innerHTML=h;
-  wireRows();
-  if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
-  mark();
-}
-function drawMidAM(){
-  $('#ctl').innerHTML='';
-  const acts=$('#midacts');
-  const pl=amPick&&amPick!=='__all__'&&AMP.find(p=>p.slug===amPick);
-  const src = amPick==='__all__' ? LIB : (PEEK ? PEEK.tracks : []);
-  const rows = src.map(libRow).filter(t=>{
-    if(!q)return true;
-    return (t.artist+' '+t.title+' '+(t.album||'')).toLowerCase().includes(q);
-  });
-  view=rows.slice(0,CAP);
-  $('#midh').innerHTML = (pl ? esc(pl.name) : (amPick==='__all__' ? 'All of Apple Music' : 'Apple Music')) + ' <span style="color:var(--dim)">· apple music</span>';
-  acts.innerHTML = pl&&!pl.imported ? `<span class="act" id="impnow">import into curation</span>` : '';
-  if(pl&&!pl.imported)$('#impnow').onclick=()=>startJob({action:'export',names:[pl.name]});
-  const known=rows.filter(t=>!t.lean).length;
-  $('#midstat').innerHTML = !amPick ? ''
-    : peeking ? 'reading Music.app…'
-    : `<s>${rows.length}</s>${rows.length>CAP?' · '+CAP+' shown':''} · ${known} already in curation`
-      + (pl?` · created ${(pl.created||'?').slice(0,10)}`:'');
-  let h='';
-  if(!amPick) h=`<p class="note">Pick a playlist on the left, or All of Apple Music.
-      Nothing here is edited — this is the library to take from. Decide on a track
-      (<kbd>b</kbd>, <kbd>v</kbd>, <kbd>c</kbd>, or drag it) and it joins your curation.</p>`;
-  else if(peeking) h=`<p class="note">Reading Music.app…</p>`;
-  else if(!view.length) h=`<p class="note">Nothing here${q?' matches':''}.</p>`;
-  else h=view.map((t,i)=>rowHTML(t,i)).join('')
-       + (rows.length>CAP?`<p class="note">${rows.length-CAP} more — search to narrow.</p>`:'');
+  if(shown.length>CAP)h+=`<p class="note">${shown.length-CAP} more — search to narrow.</p>`;
+
   $('#list').innerHTML=h;
   wireRows();
   if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
@@ -1140,34 +1154,6 @@ async function t7Peek(name){
   t7Loading=false;
   T7TRACKS = (r&&r.tracks) ? {name, tracks:r.tracks} : null;
   if(!T7TRACKS)toast('could not read that folder');
-}
-function drawMidT7(){
-  $('#ctl').innerHTML='';
-  const acts=$('#midacts');
-  const f=T7.folders.find(x=>x.name===t7Pick);
-  const src=(T7TRACKS&&T7TRACKS.name===t7Pick)?T7TRACKS.tracks:[];
-  const rows=src.map(t7Row).filter(t=>{ if(!q)return true;
-    return (t.artist+' '+t.title+' '+(t.album||'')).toLowerCase().includes(q); });
-  view=rows.slice(0,CAP);
-  $('#midh').innerHTML = (t7Pick?esc(t7Pick):'The drive') + ' <span style="color:var(--dim)">· '+esc(T7.root||'T7')+'</span>';
-  acts.innerHTML='';
-  const known=rows.filter(t=>!t.lean).length;
-  $('#midstat').innerHTML = !t7Pick ? ''
-    : t7Loading ? 'reading the folder…'
-    : `<s>${rows.length}</s>${rows.length>CAP?' · '+CAP+' shown':''} · ${known} already in curation`
-      + (f&&f.lossless?` · <s>${f.lossless}</s> lossless`:'');
-  let h='';
-  if(!t7Pick) h=`<p class="note">Pick a folder on the left. This is the music you already own —
-      indexed ${esc(T7.built||'never')} — grouped the way the drive groups it.
-      Drag a track, or the whole folder, onto a collection.</p>`;
-  else if(t7Loading) h=`<p class="note">Reading the folder…</p>`;
-  else if(!view.length) h=`<p class="note">Nothing here${q?' matches':''}.</p>`;
-  else h=view.map((t,i)=>rowHTML(t,i)).join('')
-       + (rows.length>CAP?`<p class="note">${rows.length-CAP} more — search to narrow.</p>`:'');
-  $('#list').innerHTML=h;
-  wireRows();
-  if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
-  mark();
 }
 // A file on the drive is owned by definition: T7 lit, and never "to buy".
 function t7Row(r){
