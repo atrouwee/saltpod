@@ -324,6 +324,10 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
               border-radius: 5px; color: var(--faint); cursor: pointer; }
 .modes span:hover { color: var(--dim); }
 .modes span.on { color: var(--ink); background: var(--panel); }
+/* the plus reads as an action, not a third view, so it keeps a gap and no
+   pressed state */
+.modes .plus { color: var(--dim); margin-right: 6px; width: 20px; }
+.modes .plus:hover { color: var(--ink); background: var(--panel); }
 /* a filter that is ON but folded away still has to declare itself */
 .modes span.act { color: var(--orange); position: relative; }
 .modes span.act:after { content: ""; position: absolute; top: 1px; right: 1px; width: 4px; height: 4px;
@@ -498,7 +502,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 
 <div id="work">
   <aside class="left" id="left">
-    <div class="plabel"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span><span class="act" id="newcol">+ new</span></div>
+    <div class="plabel"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span></div>
     <div class="pbody" id="colbody"></div>
   </aside>
   <!-- The library to take from, always beside the iPod. Nothing here is edited:
@@ -1049,19 +1053,17 @@ function nudge(dir){
 /* ---------------- left: collections, each a drop target ---------------- */
 function drawCols(){
   $('#left').querySelector('.plabel').classList.toggle('off',active!=='ipod');
-  $('#newcol').textContent='+ new';
   paintModes('ipod',$('#lmodes'));
+  wireNewCol();
   drawSrc();
   if(MODE.ipod==='album'){
     // Albums on the iPod are what the device itself would show: derived from
     // the tags of the tracks actually on it.
     PODALBUMS=albumsOf(ALL.filter(t=>t.device));
-    $('#newcol').style.display='none';
     $('#colbody').innerHTML=albumRows(PODALBUMS,'ipod');
     wireAlbums($('#colbody'),'ipod');
     return;
   }
-  $('#newcol').style.display='';
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All on iPod<span class="cnt">${ALL.filter(t=>t.device).length}</span></div>`;
@@ -1112,7 +1114,6 @@ function drawCols(){
       toast('added to '+name);
     };
   });
-  $('#newcol').onclick=enterNew;
   // THE WHOLE PANE TAKES A DROP. Aiming at "+ new" to make a collection is
   // a bullseye you should not have to hit: dropping a playlist or a folder
   // anywhere on the iPod means "this belongs on the iPod", and a collection
@@ -1131,7 +1132,7 @@ function drawCols(){
     if(key.startsWith('pl:')) return pourPlaylist(key.slice(3),null);
     if(key.startsWith('t7:')) return pourFolder(key.slice(3),null);
   };
-  const nc=$('#newcol');
+  const nc=$('#newcol'); if(!nc)return;
   nc.ondragover=e=>{ e.preventDefault(); e.dataTransfer.dropEffect='copy'; nc.classList.add('drop'); };
   nc.ondragleave=()=>nc.classList.remove('drop');
   nc.ondrop=async e=>{ e.preventDefault(); e.stopPropagation(); nc.classList.remove('drop');
@@ -1242,15 +1243,38 @@ function albumKey(t){
 const ICON_LIST='<svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true">'
  +'<g fill="currentColor"><rect y="0" width="12" height="1.6" rx=".6"/><rect y="4.2" width="12" height="1.6" rx=".6"/>'
  +'<rect y="8.4" width="12" height="1.6" rx=".6"/></g></svg>';
+const ICON_PLUS='<svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">'
+ +'<g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+ +'<line x1="6.5" y1="1.4" x2="6.5" y2="11.6"/><line x1="1.4" y1="6.5" x2="11.6" y2="6.5"/></g></svg>';
 const ICON_FILTER='<svg width="12" height="11" viewBox="0 0 12 11" aria-hidden="true">'
  +'<path d="M.8 1h10.4L7.2 5.6v4L4.8 10.6V5.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
 const ICON_ALBUM='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">'
  +'<g fill="currentColor"><rect width="5" height="5" rx="1"/><rect x="7" width="5" height="5" rx="1"/>'
  +'<rect y="7" width="5" height="5" rx="1"/><rect x="7" y="7" width="5" height="5" rx="1"/></g></svg>';
+function wireNewCol(){
+  const nc=$('#newcol'); if(!nc)return;
+  nc.onclick=enterNew;
+  // a whole playlist or folder dropped on the plus becomes a collection
+  nc.ondragover=e=>{ if(!DRAGKIND)return; e.preventDefault(); e.dataTransfer.dropEffect='copy'; nc.classList.add('drop'); };
+  nc.ondragleave=()=>nc.classList.remove('drop');
+  nc.ondrop=async e=>{ e.preventDefault(); e.stopPropagation(); nc.classList.remove('drop');
+    const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+    if(key.startsWith('alb:')){ const a=SRCALBUMS.find(x=>x.key===key.slice(4)); if(a)await albumToIpod(a); return; }
+    if(key.startsWith('pl:')){ await pourPlaylist(key.slice(3),null); return; }
+    if(key.startsWith('t7:')){ await pourFolder(key.slice(3),null); return; } };
+}
 function paintModes(pane,el){
   if(!el)return;
   const m=MODE[pane];
-  el.innerHTML=`<span class="${m==='list'?'on':''}" data-m="list" title="playlists">${ICON_LIST}</span>`
+  // The iPod pane carries a plus, and it leads the group rather than
+  // trailing it: sitting last, it dragged the two marks sideways every time
+  // album view hid it. Hidden here means INVISIBLE, not absent -- the slot
+  // stays and the marks never move.
+  const plus = pane==='ipod'
+    ? `<span class="plus" id="newcol" title="new collection"
+             style="visibility:${m==='list'?'visible':'hidden'}">${ICON_PLUS}</span>` : '';
+  el.innerHTML=plus
+              +`<span class="${m==='list'?'on':''}" data-m="list" title="playlists">${ICON_LIST}</span>`
               +`<span class="${m==='album'?'on':''}" data-m="album" title="albums">${ICON_ALBUM}</span>`;
   el.querySelectorAll('[data-m]').forEach(x=>x.onclick=e=>{e.stopPropagation();
     if(MODE[pane]!==x.dataset.m)setMode(pane,x.dataset.m);});

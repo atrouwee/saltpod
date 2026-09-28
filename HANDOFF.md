@@ -447,6 +447,17 @@ Two things that were quietly wrong and are worth remembering:
   pane's stat got its own row by wrapping, so forbidding wrap pushed
   BUY / VINYL clean out of the pane.
 
+**The plus leads the iPod pane's marks, and it is a glyph, not a word.**
+`+ new` sat last in the group, so every switch to album view -- which hides
+it -- dragged the two view marks sideways. It is now the first thing in the
+same group, and in album view it is **invisible rather than absent**, so the
+slot stays and the marks hold their position. Measured: both marks at the
+same x in either view.
+
+Watch the ordering in `drawCols`: the album branch returns early, so the
+marks must be painted *and wired* before it, or switching to albums takes the
+switch back with it.
+
 **The filters fold behind a mark**, like the two views do -- a funnel in the
 centre's strip. A mark cannot say *which* filter is on, so it carries an
 orange dot when one is: a hidden filter silently narrowing the list would be
