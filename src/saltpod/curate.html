@@ -185,7 +185,7 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo));
        box-shadow: inset 0 1px 0 rgba(255,255,255,.16); }
 .row.sel .s { color: rgba(255,255,255,.82); }
-.row.sel .ch, .row.sel .pos, .row.sel .grab { color: #fff; }
+.row.sel .ch, .row.sel .grab { color: #fff; }
 .row.sel .tag { color: #fff; border-color: rgba(255,255,255,.55); }
 .art { width: 44px; height: 44px; border-radius: 7px; background: var(--seam);
        object-fit: cover; flex: none; -webkit-user-drag: none; }
@@ -256,7 +256,6 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .col.pend .cnt { color: var(--orange); }
 .row.dragging { opacity: .35; }
 .row.over { box-shadow: inset 0 2px 0 var(--sel-hi); }
-.pos { color: var(--dim); font-family: var(--mono); font-size: 11px; width: 24px; text-align: right; }
 /* Three dots on every row. Everything a drag can do, a click can do: the menu
    lists it, and "Add to playlist" opens a picker the way a phone does. */
 .more { font-family: var(--mono); font-size: 14px; line-height: 1; color: var(--dim); padding: 2px 6px;
@@ -839,18 +838,16 @@ function libRow(r){
           am_status:(r.cloud==='subscription'||AM_OWNED.includes(r.cloud))?null:r.cloud,
           play_from:null, audio:false, preview:null, art:null, lean:true};
 }
-function rowHTML(t,i,pos,ro){
+function rowHTML(t,i,seq){
   const dur=mmss(t.seconds||t.dev_seconds);
   const have = t.device || t.local;      // on the iPod, or a file sync can reach
-  return `<div class="row ${t.tier==='skipped'?'skip':''} ${have?'':'unowned'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}"
-      ${pos!=null?'style="grid-template-columns:24px 44px minmax(0,1fr) auto auto"':''}>
-    ${pos!=null?`<span class="pos">${pos}</span>`:''}
+  return `<div class="row ${t.tier==='skipped'?'skip':''} ${have?'':'unowned'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -973,7 +970,10 @@ function drawMid(){
     // A picked list is a sequence, so it is numbered in its own order --
     // whether it came from the iPod, Apple Music or the drive. Only our own
     // collections can be re-sequenced; the rest are numbered but not grabbable.
-    h=view.map((t,i)=>rowHTML(t,i,L.ordered?all.indexOf(t)+1:null,L.readonly)).join('');
+    // one layout for every list; the handle appears only where a drag would
+    // actually change the order -- our own collections, unfiltered
+    const seq = L.ordered && !L.readonly && !filtered();
+    h=view.map((t,i)=>rowHTML(t,i,seq)).join('');
   }
   if(shown.length>CAP)h+=`<p class="note">${shown.length-CAP} more — search to narrow.</p>`;
 

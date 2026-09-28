@@ -462,3 +462,23 @@ switch back with it.
 centre's strip. A mark cannot say *which* filter is on, so it carries an
 orange dot when one is: a hidden filter silently narrowing the list would be
 worse than no filter at all.
+
+## One row layout, no position numbers
+
+A picked list used to be numbered, which meant two grids -- one with a
+position column, one without -- and the number restated what the row's own
+position already said. The owner: *"the order is already shown as is."*
+
+The numbers are gone and there is one grid. **The grab handle stays**, because
+that is not decoration: re-sequencing is the product. It now answers a
+sharper question than "is this list ordered" -- it appears only where a drag
+would actually change something:
+
+```
+seq = L.ordered && !L.readonly && !filtered()
+```
+
+So a collection of yours shows handles; the same collection with a filter on
+does not, because moving a row past neighbours you cannot see would be a lie;
+and an Apple Music playlist or a drive folder never does, because their order
+is not yours to set.
