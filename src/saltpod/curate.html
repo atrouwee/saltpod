@@ -185,10 +185,18 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .src .gone { text-decoration: line-through; }
 /* the iPod sits in the strip as a fixed slot like the others: always drawn,
    lit when the track is actually on the device */
-.src .pod { display: inline-flex; align-items: center; color: var(--faint); }
-.src .pod.on { color: var(--ink); }
-.row.sel .src .pod { color: rgba(255,255,255,.5); }
-.row.sel .src .pod.on { color: #fff; }
+/* Two fixed slots at the end of every row, so neither ever moves: the
+   bitrate, then the iPod. The iPod is the highest-priority fact in the row --
+   is this ON the thing -- so it sits closest to the chevron, and it is drawn
+   rather than spelled. Both slots are always present and only change state;
+   a tag appearing or vanishing to their left cannot shift them. */
+.br { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; color: var(--dim);
+      font-variant-numeric: tabular-nums; width: 3.4ch; text-align: right; flex: none; }
+.pod { display: inline-flex; align-items: center; color: var(--faint); flex: none; }
+.pod.on { color: var(--ink); }
+.row.sel .br { color: rgba(255,255,255,.7); }
+.row.sel .pod { color: rgba(255,255,255,.45); }
+.row.sel .pod.on { color: #fff; }
 .row.sel .src, .row.sel .src b { color: #fff; }
 .tags { display: flex; gap: 6px; align-items: center; flex: none; }
 .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
@@ -276,6 +284,8 @@ code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
 .col .cnt .act:hover { color: var(--ink); }
 .col.drop, aside.right.drop .pbody { outline: 2px dashed var(--sel-hi); outline-offset: -3px; border-radius: 10px; }
 .col.drop { background: rgba(106,169,244,.12); }
+/* the pane itself, lit while a whole playlist or folder is over it */
+aside.left.drop { background: rgba(106,169,244,.07); box-shadow: inset 0 0 0 2px var(--sel-hi); }
 /* Two panes on the left can each remember a pick; only one is what the centre
    shows. One slot, one meaning: `on` is the list on screen (raised, bold);
    `was` is remembered here and not on screen (bold, hairline, no fill). The
@@ -450,7 +460,7 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
   <aside class="srcpane" id="src">
-    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am">Apple Music</span><span class="pill" data-s="t7">Drive</span></span><span class="sp"></span><span class="pstat" id="srcstat"></span></div>
+    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am">Apple Music</span><span class="pill" data-s="t7">Library</span></span><span class="sp"></span><span class="pstat" id="srcstat"></span></div>
     <div class="pbody" id="srcbody"></div>
   </aside>
 
@@ -606,6 +616,10 @@ PANES.forEach(id=>{
 let SYNCED=[], BYKEY=new Map();
 let LIB=[], libLoaded=false, amPick=null, PEEK=null, peeking=false;
 let T7={folders:[],root:null,built:null,total:0}, t7Pick=null, T7TRACKS=null, t7Loading=false;
+// 'pl' | 't7' while a whole list is being dragged, null for a single track.
+// The pane highlights only for the first kind: a lone track has no name to
+// make a collection out of, so it still needs an actual target.
+let DRAGKIND=null;
 const CAP=400;                       // rows drawn at once; search narrows the rest
 
 /* ---------------- folding the side panes ---------------- */
@@ -658,8 +672,7 @@ async function load(){
     fetch('/api/local').then(r=>r.json()).catch(()=>null)]);
   if(dv){DEV=dv; if(devPick&&!DEV.playlists.some(p=>p.name===devPick))devPick=null;}
   if(lo){T7=lo; if(t7Pick&&!T7.folders.some(f=>f.name===t7Pick))t7Pick=null;
-    const pill=document.querySelector('#stabs .pill[data-s="t7"]');
-    if(pill&&T7.root)pill.textContent=T7.root;}
+  }
   if(d){DISCOGS=d; OWN=new Map((d.collection||[]).map(x=>[x.key,x])); WANT=new Map((d.wantlist||[]).map(x=>[x.key,x]));}
   if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
@@ -722,10 +735,8 @@ function srcStrip(t){
   if(t.am)      g.push(t.am_status ? `<span class="gone" title="in Apple Music, ${esc(t.am_status)}">AM</span>`
                                    : (t.am_owned?'<b title="owned in Apple Music">AM</b>':'<span title="in Apple Music, rented">AM</span>'));
   if(t.t7)      g.push(`<b title="stored on the T7${t.lossless?', lossless':''}">T7</b>`);
-  // The iPod gets its own mark rather than three letters: it is the one
-  // place in this list that is a physical object, and at 11px it reads
-  // faster than "POD" ever did.
-  g.push(`<span class="pod${t.device?' on':''}" title="${t.device?'stored on the iPod':'not on the iPod'}">${IPOD_SVG}</span>`);
+  // the iPod is NOT in this strip -- it sits at the end of the row, beside
+  // the chevron, where it never moves. See rowHTML.
   if(owned(t))  g.push('<b title="you own the record">LP</b>');
   else if(wanted(t)) g.push('<span title="on the Discogs wantlist">lp</span>');
   return g.join('');
@@ -764,7 +775,7 @@ function rowHTML(t,i,pos,ro){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.kbps?t.kbps:''}</span><span class="pod${t.device?' on':''}" title="${t.device?'on the iPod':'not on the iPod'}">${IPOD_SVG}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${pos!=null&&!ro?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -993,7 +1004,23 @@ function drawCols(){
     };
   });
   $('#newcol').onclick=enterNew;
-  // a playlist dropped on + new becomes a collection of its own name
+  // THE WHOLE PANE TAKES A DROP. Aiming at "+ new" to make a collection is
+  // a bullseye you should not have to hit: dropping a playlist or a folder
+  // anywhere on the iPod means "this belongs on the iPod", and a collection
+  // of that name is what that sentence produces. Rows and "+ new" stop
+  // propagation, so a precise drop still wins; this only catches the misses.
+  const pane=$('#left');
+  pane.ondragover=e=>{
+    if(!DRAGKIND)return;                       // a bare track needs a target
+    e.preventDefault(); e.dataTransfer.dropEffect='copy'; pane.classList.add('drop');
+  };
+  pane.ondragleave=e=>{ if(!pane.contains(e.relatedTarget))pane.classList.remove('drop'); };
+  pane.ondrop=async e=>{
+    e.preventDefault(); pane.classList.remove('drop');
+    const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+    if(key.startsWith('pl:')) return pourPlaylist(key.slice(3),null);
+    if(key.startsWith('t7:')) return pourFolder(key.slice(3),null);
+  };
   const nc=$('#newcol');
   nc.ondragover=e=>{ e.preventDefault(); e.dataTransfer.dropEffect='copy'; nc.classList.add('drop'); };
   nc.ondragleave=()=>nc.classList.remove('drop');
@@ -1074,8 +1101,8 @@ function drawAM(){
     const mo=el.querySelector('.more');
     if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'ampl',p);};
     if(p){   // a whole playlist in the hand: the payload is its name
-      el.ondragstart=e=>{ e.dataTransfer.setData('text/plain','pl:'+p.name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
-      el.ondragend=()=>{ el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
+      el.ondragstart=e=>{ DRAGKIND='pl'; e.dataTransfer.setData('text/plain','pl:'+p.name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
+      el.ondragend=()=>{ DRAGKIND=null; el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
     }
   });
 }
@@ -1094,8 +1121,8 @@ function drawT7(){
     el.onclick=async()=>{ activate('t7'); setSrc('t7'); t7Pick=name; T7TRACKS=null; sel=recallSel(); await t7Peek(name); draw(); };
     const mo=el.querySelector('.more');
     if(mo)mo.onclick=e=>{e.stopPropagation(); openMenu(mo,'t7f',T7.folders.find(f=>f.name===name));};
-    el.ondragstart=e=>{ e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
-    el.ondragend=()=>{ el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
+    el.ondragstart=e=>{ DRAGKIND='t7'; e.dataTransfer.setData('text/plain','t7:'+name); e.dataTransfer.effectAllowed='copy'; el.classList.add('dragging'); };
+    el.ondragend=()=>{ DRAGKIND=null; el.classList.remove('dragging'); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); };
   });
 }
 async function t7Peek(name){

@@ -259,8 +259,26 @@ The row class is `unowned`, set from `t.device || t.local`. Note that it does
 not change when the drive is unplugged: `local` is read from the index, not
 from the volume, so the list does not go dark when you pull the T7.
 
-**The iPod has its own mark.** The `POD` slot in the source strip is now a
-drawn Classic -- body, screen, click wheel -- at 8x13, lit when the track is
-on the device and faint when it is not. It is a fixed slot like the other
-three, so nothing shifts; it reads faster than three letters did, and it is
-the one place in that strip that names a physical object.
+**The iPod has its own mark, at the end of the row.** A drawn Classic --
+body, screen, click wheel -- at 8x13, lit when the track is on the device.
+It sits beside the chevron rather than in the source strip, because *is this
+on the thing* is the highest-priority fact in the row and it must never move:
+in the strip it slid left and right as tags appeared.
+
+**Two fixed slots close the row: bitrate, then the iPod.** Both are always
+drawn and only change state, so a tag appearing to their left cannot shift
+them -- verified: the mark sits at the same x on every row.
+
+**The bitrate is computed, never read.** The iTunesDB field is not
+trustworthy: 60928 for every MP3 on this device, 160 for AIFFs that are
+really nearer 850 -- six distinct values across 467 tracks is a misparse, not
+data. `kbps_of()` does size x 8 / seconds instead, which agrees with what the
+files actually are. `local_index` now records `size` so drive files report a
+bitrate too, from the next index onward.
+
+**Dropping a list anywhere on the iPod pane makes a collection of it.**
+Aiming at `+ new` is a bullseye you should not have to hit. Rows and `+ new`
+stop propagation, so a precise drop still wins; the pane only catches the
+misses. It lights only for a whole playlist or folder -- a lone track has no
+name to make a collection out of, so that still needs a real target. The
+source tab for the drive is called **Library**.

@@ -55,6 +55,10 @@ def probe(path):
         "album": tags.get("album"),
         "album_artist": tags.get("album_artist") or tags.get("albumartist"),
         "duration_sec": round(dur, 2),
+        # size is here so a bitrate can be worked out without a second pass:
+        # the stored bitrate in an iTunesDB is not trustworthy, and arithmetic
+        # on size and duration is
+        "size": (os.path.getsize(path) if os.path.exists(path) else None),
         "ipod_ready": ext in IPOD_NATIVE,
         "needs_convert": ext in NEEDS_CONVERT,
         "untagged": not (tags.get("title") and tags.get("artist")),

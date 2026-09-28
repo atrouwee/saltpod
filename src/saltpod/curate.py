@@ -467,6 +467,39 @@ def plan_summary(mount=None):
 
 LOSSLESS_EXT = {'.flac', '.wav', '.aif', '.aiff', '.alac'}
 
+
+def kbps_of(dev, key):
+    """Bitrate, worked out from size and duration rather than read.
+
+    The iTunesDB field is not trustworthy: it reports 60928 for every MP3 on
+    this device and 160 for AIFFs that are really nearer 850. Six distinct
+    values across 467 tracks is a misparse, not data. Size x 8 / seconds is
+    arithmetic, and it agrees with what the files actually are.
+    """
+    secs = (dev or {}).get('seconds')
+    size = (dev or {}).get('size')
+    if secs and size:
+        return round(size * 8 / secs / 1000)
+    e = _local_by_key().get(key)
+    if e and e.get('duration_sec') and e.get('size'):
+        return round(e['size'] * 8 / e['duration_sec'] / 1000)
+    return None
+
+
+_LOCBYKEY = {'built': None, 'map': {}}
+
+
+def _local_by_key():
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    stamp = os.path.getmtime(idx) if os.path.exists(idx) else 0
+    if _LOCBYKEY['built'] == stamp:
+        return _LOCBYKEY['map']
+    m = {}
+    for e in (local_index_raw() or {}).get('tracks') or []:
+        m[S.key_for(e.get('artist'), e.get('title'))] = e
+    _LOCBYKEY['built'], _LOCBYKEY['map'] = stamp, m
+    return m
+
 # ------------------------------------------------- lookup, when it is needed
 #
 # Identity, price and a lossless source are only interesting for a track you
@@ -702,7 +735,7 @@ def tracks_payload(scope=''):
             'bought': r['bought'], 'on_ipod': r['on_ipod'],
             'collections': r['collections'], 'note': r.get('note', ''),
             'orphan': bool(r.get('orphan')),
-            'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
+            'kbps': kbps_of(dev, k), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
             'album': it.get('album'), 'genre': it.get('genre'),
             'released': it.get('released'), 'price': it.get('price'),
             'seconds': it.get('seconds'), 'url': it.get('url'),
