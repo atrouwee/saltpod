@@ -239,17 +239,46 @@ def backup(mount):
     return d
 
 
-def sync(mount=None, eject=True):
+def drop_excluded(p, exclude):
+    """Take the rows the page unticked out of a fresh plan.
+
+    Sync always re-plans against the live device -- it never trusts a plan the
+    page computed seconds ago -- so exclusions arrive as IDENTITIES, not as
+    indices into a list that may have moved: track keys and playlist names.
+    Anything named here that is no longer in the plan is silently ignored,
+    which is the right outcome: it means the device already agrees.
+    """
+    if not exclude:
+        return p
+    xt = set(exclude.get('tracks') or ())
+    xp = set(exclude.get('playlists') or ())
+    if xt:
+        p['adds'] = [a for a in p['adds'] if a[0] not in xt]
+        p['removes'] = [r for r in p['removes'] if r[0] not in xt]
+    if xp:
+        # An unticked playlist is left exactly as the device has it. Its
+        # tracks may still be copied across -- that is honest: you said not to
+        # touch the playlist, not that the music should stay off the device.
+        p['collections'] = {c: m for c, m in p['collections'].items() if c not in xp}
+        p['new_playlists'] = [c for c in p['new_playlists'] if c not in xp]
+        p['update_playlists'] = [c for c in p['update_playlists'] if c not in xp]
+        p['delete_playlists'] = [c for c in p['delete_playlists'] if c not in xp]
+    return p
+
+
+def sync(mount=None, eject=True, exclude=None):
     _cfg()
     mount = mount or MOUNT
-    p = plan(mount)
+    p = drop_excluded(plan(mount), exclude)
     print_plan(p)
     if not (p['adds'] or p['removes'] or p['new_playlists'] or p['update_playlists'] or p['delete_playlists']):
         print('\nnothing to do'); return
     root, st = p['root'], p['state']
     # '## <phase> [i/n]' lines are for the page's progress panel; the prose
     # after each is for a person reading the log.
+    print('@@ backup doing')
     print('## backup'); bdir = backup(mount)
+    print('@@ backup done')
     print('\nbackup: %s' % os.path.relpath(bdir, ROOT))
     changed_tracks = False
 
@@ -257,6 +286,7 @@ def sync(mount=None, eject=True):
     n_add = len(p['adds'])
     for i_add, (k, r, src) in enumerate(p['adds'], 1):
         print('## copy %d/%d' % (i_add, n_add))
+        print('@@ a:%s doing' % k)
         ext = os.path.splitext(src)[1].lower()
         if ext in CONVERT:
             rel, loc = new_location(mount, '.m4a')
@@ -266,7 +296,8 @@ def sync(mount=None, eject=True):
         elif ext in AS_IS:
             rel, loc = new_location(mount, ext); staged = src
         else:
-            print('  skip (unsupported): %s' % src); continue
+            print('  skip (unsupported): %s' % src)
+            print('@@ a:%s error unsupported file type' % k); continue
         meta = probe(staged); meta['ext'] = os.path.splitext(rel)[1].lower()
         meta['title'] = meta['title'] or r['title']; meta['artist'] = meta['artist'] or r['artist']
         dst = os.path.join(mount, rel)
@@ -278,11 +309,13 @@ def sync(mount=None, eject=True):
         st['tracks'][k].setdefault('device', {})['location'] = loc
         changed_tracks = True
         print('  added   %s - %s -> %s (id %d)' % (r['artist'], r['title'], rel, tid))
+        print('@@ a:%s done' % k)
 
     # 2. removals
     if p['removes']:
         print('## remove %d' % len(p['removes']))
     for k, r, tid in p['removes']:
+        print('@@ r:%s doing' % k)
         loc = E.track_remove(root, tid)
         f = os.path.join(mount, loc.lstrip(':').replace(':', os.sep))
         if os.path.exists(f):
@@ -290,22 +323,32 @@ def sync(mount=None, eject=True):
         st['tracks'][k]['on_ipod'] = False
         changed_tracks = True
         print('  removed %s - %s (id %d)' % (r['artist'], r['title'], tid))
+        print('@@ r:%s done' % k)
 
     # 3. playlists from collections
     for c in p['delete_playlists']:
+        print('@@ p:%s doing' % c)
         E.playlist_delete(root, c)
         print('  playlist %-30s deleted' % c[:30])
+        print('@@ p:%s done' % c)
     print('## playlists')
     for c, members in p['collections'].items():
         if c in p.get('unchanged', ()):
             continue                      # already exactly this on the device
+        print('@@ p:%s doing' % c)
         ids = [p['dev_by_key'][k] for k, r in members if k in p['dev_by_key']]
         if c in p['new_playlists']:
             E.playlist_create(root, c)
         E.playlist_set_tracks(root, c, ids)
         print('  playlist %-30s %d tracks' % (c[:30], len(ids)))
+        print('@@ p:%s done' % c)
 
     # 4. write, verify, bookkeeping
+    # THE POINT OF NO RETURN. Everything above this line is recoverable by
+    # doing nothing: copied files the database does not mention are orphans
+    # that the next sync tidies, and the database on the device is untouched.
+    # From here the device is committed.
+    print('@@ write doing')
     print('## write')
     out = W.serialise(root, GUID)
     dbp = os.path.join(mount, DB_REL)
@@ -321,17 +364,24 @@ def sync(mount=None, eject=True):
     st['synced_playlists'] = sorted((set(st.get('synced_playlists', [])) | set(p['collections']))
                                     - set(p['delete_playlists']))
     S.save(st)
+    print('@@ write done')
+    print('@@ verify doing')
     print('## verify')
     print('\ndatabase written and verified on device: %d bytes, hash58 OK' % len(out))
+    print('@@ verify done')
     if eject:
+        print('@@ eject doing')
         print('## eject')
         subprocess.run(['sync']); subprocess.run(['diskutil', 'eject', mount])
         print('ejected')
+        print('@@ eject done')
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('cmd', choices=['plan', 'sync'])
+    ap.add_argument('--exclude', default=None,
+                    help='JSON file naming tracks/playlists to leave out of this sync')
     ap.add_argument('--mount', default=None)
     ap.add_argument('--no-eject', action='store_true')
     a = ap.parse_args()
@@ -339,10 +389,11 @@ def main():
     a.mount = a.mount or MOUNT
     if not os.path.exists(os.path.join(a.mount, DB_REL)):
         sys.exit('iPod not mounted at %s' % a.mount)
+    ex = json.load(open(a.exclude)) if a.exclude else None
     if a.cmd == 'plan':
-        print_plan(plan(a.mount))
+        print_plan(drop_excluded(plan(a.mount), ex))
     else:
-        sync(a.mount, eject=not a.no_eject)
+        sync(a.mount, eject=not a.no_eject, exclude=ex)
 
 
 if __name__ == '__main__':

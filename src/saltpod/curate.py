@@ -450,12 +450,17 @@ def plan_summary(mount=None):
         # are. Estimates -- the real number is only known after ffmpeg has run.
         factor = {'.flac': 1.05, '.alac': 1.0, '.wav': 0.55, '.aiff': 0.55, '.aif': 0.55}
         add_bytes = 0
+        # Per row as well as in total: the panel lets you untick rows, and a
+        # capacity figure that did not follow would be worse than none.
+        add_size = {}
         for k, r, src in p['adds']:
             try:
                 sz = os.path.getsize(src)
             except OSError:
                 sz = 0
-            add_bytes += int(sz * factor.get(os.path.splitext(src)[1].lower(), 1.0))
+            est = int(sz * factor.get(os.path.splitext(src)[1].lower(), 1.0))
+            add_size[k] = est
+            add_bytes += est
         try:
             sv = os.statvfs(m)
             free_bytes = sv.f_bavail * sv.f_frsize
@@ -467,13 +472,17 @@ def plan_summary(mount=None):
             'new': p['new_playlists'], 'update': p['update_playlists'],
             'unchanged': p.get('unchanged', []),
             'delete': p['delete_playlists'],
-            'adds': [{'artist': r['artist'], 'title': r['title'],
+            'adds': [{'key': k, 'artist': r['artist'], 'title': r['title'],
+                      'bytes': add_size.get(k, 0),
                       'convert': os.path.splitext(src)[1].lower() in A.CONVERT}
                      for k, r, src in p['adds']],
             'no_source': [{'artist': r['artist'], 'title': r['title']}
                           for k, r in p['no_source']],
-            'removes': [{'artist': r['artist'], 'title': r['title']}
+            'removes': [{'key': k, 'artist': r['artist'], 'title': r['title']}
                         for k, r, t in p['removes']],
+            # How many tracks each playlist ends up with, so an unticked
+            # playlist row can say what it is leaving alone.
+            'sizes': {c: len(m) for c, m in p['collections'].items()},
         }
     except Exception as e:
         return {'ok': False, 'reason': str(e)[:300]}
@@ -1309,10 +1318,24 @@ class Handler(BaseHTTPRequestHandler):
             S.import_device(verbose=False)
             return {'ok': True}
         if a == 'sync':
+            # Exclusions travel to the subprocess as a file, not as an
+            # argument: a selection can name hundreds of keys and an argv is
+            # not the place for that. Written under the run directory so a
+            # sync is reconstructible from what is on disk afterwards.
+            args = ['sync']
+            ex = body.get('exclude') or None
+            if ex and (ex.get('tracks') or ex.get('playlists')):
+                rd = os.path.join(ROOT, 'data', 'runs')
+                os.makedirs(rd, exist_ok=True)
+                xp = os.path.join(rd, 'exclude-%d.json' % int(time.time()))
+                with open(xp, 'w') as fh:
+                    json.dump({'tracks': list(ex.get('tracks') or []),
+                               'playlists': list(ex.get('playlists') or [])}, fh, indent=1)
+                args += ['--exclude', xp]
             return {'ok': True, 'job': run_job('sync to the iPod', [
                 ('sync', [py, '-u', '-c',
                  'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
-                 'sys.exit(main(["sync"]))']),
+                 'sys.exit(main(%r))' % (args,)]),
                 ('ejected', _mark_ejected)], fingerprint=True).id}
         if a == 'index':
             return {'ok': True, 'job': run_job('index the music drive', [

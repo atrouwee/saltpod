@@ -32,6 +32,9 @@ def main(argv=None):
     p.add_argument("--mount", help="where the iPod is mounted; default from data/device.json")
 
     p = sub.add_parser("sync", help="make the iPod match the curation state: backup, convert, copy, write, verify, eject")
+    p.add_argument("--exclude", default=None, metavar="FILE",
+                   help="JSON naming tracks/playlists to leave out: "
+                        '{"tracks": ["<key>"], "playlists": ["<name>"]}')
     p.add_argument("--mount")
     p.add_argument("--no-eject", action="store_true", help="leave the iPod mounted afterwards")
 
@@ -79,7 +82,11 @@ def main(argv=None):
             fail(f"no iPod at {mount}", "plug it in and put it in Disk Mode (hold Select+Menu, then Select+Play)")
         if a.cmd == "plan":
             apply.print_plan(apply.plan(mount)); return 0
-        apply.sync(mount, eject=not a.no_eject); return 0
+        ex = None
+        if getattr(a, "exclude", None):
+            import json as _j
+            ex = _j.load(open(a.exclude))
+        apply.sync(mount, eject=not a.no_eject, exclude=ex); return 0
     if a.cmd == "device":
         from . import state
         state.import_device(a.mount); return 0

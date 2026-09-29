@@ -279,7 +279,6 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
        padding: 2px 7px; border-radius: 99px; border: 1px solid var(--faint);
        color: var(--dim); white-space: nowrap; }
 .tag.buy, .tag.ok { color: var(--ink); border-color: var(--ink); }
-.tag.maybe { color: var(--ink); border-style: dashed; }
 .tag.skip { opacity: .5; }
 .tag.vinyl { color: var(--ink); background: var(--panel); }
 /* FULL INK MEANS YOU COULD PUT IT ON THE IPOD TODAY -- a file exists, either
@@ -414,6 +413,7 @@ aside.left.drop { background: rgba(106,169,244,.07); box-shadow: inset 0 0 0 2px
 @media (prefers-reduced-motion: reduce) { .look.on:before { animation: none; } }
 .card .acts button { padding: 4px 9px; font-size: 9.5px; margin-left: auto; }
 p.note { color: var(--dim); font-size: 13px; margin: 8px 8px 12px; line-height: 1.5; }
+p.note s { text-decoration: none; color: var(--ink); }
 
 /* ---------- settings overlay, where Data lives now ---------- */
 /* The data panel is the sync panel at a larger size: the same hairline edge,
@@ -536,6 +536,70 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 #toast.on { opacity: 1; }
 .warn { color: var(--dim); }
 
+/* ---------------- the sync panel ----------------
+   Built out of the parts the rest of the page is built out of: it IS an
+   aside.right that happens to be fixed. Same 46px .plabel, same .pbody,
+   same .month section labels, same .col rows carrying a .cnt on the right,
+   same .substat line at the foot. The only new things are the slide and the
+   excluded state, because nothing existing does either.
+
+   The scrim is not decoration: the plan is a diff against the device taken a
+   moment ago, and letting you change a decision behind it would make the
+   list on screen a lie. */
+#spscrim { position: fixed; inset: 0; background: rgba(7,12,19,.55); z-index: 28;
+       opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+#spscrim.on { opacity: 1; pointer-events: auto; }
+#sp { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 94vw); z-index: 29;
+      background: var(--ground); border-left: 1px solid var(--faint);
+      display: flex; flex-direction: column; min-width: 0;
+      transform: translateX(100%); transition: transform .22s cubic-bezier(.32,.72,0,1);
+      box-shadow: -18px 0 46px rgba(7,12,19,.5); }
+#sp.on { transform: none; }
+@media (prefers-reduced-motion: reduce) { #sp, #spscrim { transition: none; } }
+#sp .plabel { border-bottom: 1px solid var(--faint); }
+#sp .substat { border-top: 1px solid var(--faint); display: flex; align-items: center;
+      gap: 12px; padding: 9px 14px; }
+#sp .substat .sp { flex: 1 1 auto; min-width: 0; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
+#sp .substat button { flex: none; font: inherit; font-size: 11px; letter-spacing: .1em;
+      text-transform: uppercase; height: var(--hbtn); padding: 0 14px; border-radius: 10px;
+      border: 1px solid var(--faint); background: transparent; color: var(--ink);
+      cursor: pointer; }
+/* the confirm is the header's Sync button, which is what it is */
+#sp .substat button.go { background: linear-gradient(var(--sel-hi), var(--sel-lo));
+      border: 0; color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.16); }
+#sp .substat button[disabled] { opacity: .4; cursor: default; background: none;
+      border: 1px solid var(--faint); color: var(--dim); box-shadow: none; }
+/* the all/none control sits where a count sits, because it replaces one */
+.month .all { float: right; cursor: pointer; letter-spacing: .06em; }
+.month .all:hover { color: var(--ink); }
+/* THE COMMIT BOUNDARY. Everything above it is undone by doing nothing:
+   copied files the database does not mention are orphans the next sync
+   tidies. Below it the device is changed. */
+.month.edge { display: flex; align-items: center; gap: 10px; color: var(--faint); }
+.month.edge:before, .month.edge:after { content: ""; flex: 1 1 auto; height: 1px;
+      background: var(--faint); }
+/* An excluded row keeps its place and says it is out -- nothing shifts. */
+.col.out .nm { color: var(--faint); text-decoration: line-through; }
+.col.out .cnt { color: var(--faint); }
+/* the infrastructure rows: this happens, it was never yours to pick */
+.col.fixed { cursor: default; }
+.col.fixed:hover { background: none; }
+.col.fixed .nm { color: var(--dim); }
+.col .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col.doing { background: var(--panel); }
+.col.doing .cnt { color: var(--orange); }
+.col.done .nm { color: var(--dim); }
+.col.err .nm, .col.err .cnt { color: var(--orange); }
+/* the capacity gauge, the same object the footer carries, at panel width */
+.spgauge { height: 5px; border-radius: 3px; background: var(--raised); overflow: hidden;
+      margin: 6px 8px 0; }
+.spgauge i { display: block; height: 100%; background: var(--sel-hi); }
+.spgauge i.over { background: var(--orange); }
+#splog { margin: 14px 8px 0; padding: 8px 10px; background: var(--seam); border-radius: 8px;
+      font: 10.5px/1.5 var(--mono); color: var(--dim); max-height: 110px; overflow: auto;
+      white-space: pre-wrap; word-break: break-word; }
+
 @media (max-width: 1000px) { :root { --lw: 200px; --rw: 260px; } }
 
 /* ---------- narrow windows, last so they win on source order ----------
@@ -609,6 +673,17 @@ kbd { font: 11px var(--mono); color: var(--ink); border: 1px solid var(--faint);
 <footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
 <div id="menu"><div class="mh" id="menuh"></div><div class="mb" id="menub"></div></div>
+
+<!-- THE SYNC PANEL. One list, twice: the changes you are approving, and then
+     the same rows reporting themselves as they happen. Built from the same
+     parts as every other pane -- a .plabel, a .pbody, .month labels, .col
+     rows, a .substat foot -- because it is another pane, not another idea. -->
+<div id="spscrim"></div>
+<aside id="sp">
+  <div class="plabel"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
+  <div class="pbody" id="spbody"></div>
+  <div class="substat pstat"><span class="sp" id="spnote"></span><span id="spbtn"></span></div>
+</aside>
 
 <div id="dlg"><div id="dlgbox">
   <div id="dlgh"><span id="dlgt">Collection</span><span id="dlgbtn"></span></div>
@@ -1799,13 +1874,11 @@ function closeSettings(){$('#rsheet').classList.remove('on');}
 // the gear opens Data, and closes it again: one control, both directions
 $('#gear').onclick=()=>{ if($('#rsheet').classList.contains('on'))closeSettings(); else openSettings(); };
 // Sync is never one click. It asks the device what it actually holds, shows
-// the diff, and only then writes -- the same plan / sync pair the terminal has.
-$('#dosync').onclick=async()=>{
-  toast('asking the iPod…');
-  const p=await fetch('/api/plan').then(r=>r.json()).catch(()=>null);
-  if(!p||!p.ok){openDlg('__sync__',(p&&p.reason)||'could not reach the iPod');return;}
-  openDlg('__sync__',null,p);
-};
+// the diff row by row, lets you untick any of it, and only then writes --
+// the same plan / sync pair the terminal has, now with `--exclude`.
+$('#dosync').onclick=openSync;
+$('#spx').onclick=closeSync;
+$('#spscrim').onclick=closeSync;
 
 // A job keeps being polled whether or not the overlay is open; the overlay, when
 // it is open, just shows the latest. Closing the panel used to stop the poll,
@@ -1834,49 +1907,227 @@ async function pollJob(){
   await load(); toast(r.state==='done'?'finished':'job failed — see the log');
 }
 
-/* ---------------- sync, watched from the panel ----------------
-   The panel does not close on confirm; it becomes the progress surface, one
-   line per phase, the current one lit and the finished ones ticked. Phases
-   come from '## ' lines the sync prints, so the page reads them rather than
-   guessing from prose. When the last completes the iPod has been ejected, and
-   the panel says so -- that is the moment the strip flips to "ejected". */
-const SYNC_PHASES=[['backup','backing up the database'],['copy','copying and converting'],
-  ['remove','taking tracks off'],['playlists','writing playlists'],['write','writing the database'],
-  ['verify','verifying on the device'],['eject','ejecting']];
-function paintSyncProgress(r){
-  const log=r.log||[]; let cur=null; const counts={}, seen=new Set();
-  for(const ln of log){ const m=ln.match(/^## (\w+)(?: (\S+))?/); if(m){cur=m[1]; seen.add(m[1]); if(m[2])counts[m[1]]=m[2];} }
-  const done=r.state==='done', err=r.state==='error';
-  $('#dlgt').textContent = done ? 'Synced' : err ? 'Sync stopped' : 'Syncing';
-  $('#dlgp').innerHTML = done
-    ? `Done at ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false})}. The iPod has been ejected — safe to unplug.`
-    : err ? '<span style="color:var(--orange)">Stopped before finishing. The log is below; the pre-write backup is intact.</span>'
-    : 'Working — leave the iPod plugged in.';
-  const idx=SYNC_PHASES.findIndex(p=>p[0]===cur);
-  $('#dlglist').innerHTML = SYNC_PHASES.map((p,i)=>{
-    const skipped = p[0]==='remove' && !seen.has('remove') && (done||idx>i);
-    const st = skipped ? 'skip' : (done||i<idx) ? 'done' : (i===idx ? (err?'err':'now') : 'todo');
-    const mark = st==='done'?'&#10003;':st==='now'?'&hellip;':st==='err'?'!':st==='skip'?'&ndash;':'';
-    return `<div class="drow ${st}"><span class="dn">${p[1]}${counts[p[0]]?' · '+esc(counts[p[0]]):''}</span><span class="dc">${mark}</span></div>`;
-  }).join('') + `<pre style="max-height:120px;margin-top:10px">${esc(log.filter(l=>!l.startsWith('## ')).slice(-6).join('\n'))}</pre>`;
-  $('#dlgbtn').innerHTML = (done||err) ? '<button class="go" id="dlgok">Close</button>' : '';
-  const ok=$('#dlgok'); if(ok)ok.onclick=()=>{closeDlg();};
+/* ---------------- THE SYNC PANEL ----------------
+
+   The gap this closes: the tool has always been stage-then-commit -- decide
+   freely, nothing touches the device until you say so -- but the confirm was
+   all-or-nothing. You could see the seven removals and you could not drop
+   one. That is the affordance the architecture already implied and did not
+   have.
+
+   Two ideas carry the whole thing:
+
+   1. ONE LIST, TWICE. The rows you approve are the rows that report
+      themselves. No swap to a spinner, no second screen -- the tick box
+      becomes the status mark in the same 16px slot, so nothing moves at the
+      moment your attention is on what is moving.
+
+   2. EXECUTION ORDER, NOT IMPORTANCE. The list is in the order the sync
+      actually runs, so progress goes top to bottom and never jumps. The
+      counts that matter lead in the summary instead.
+
+   Exclusions travel as identities -- track keys, playlist names -- never as
+   indices: sync re-plans against the live device and the row at position 4
+   may not be the same row by then.
+*/
+const SP = { plan:null, off:new Set(), state:'review', rows:[], log:[] };
+
+const gb = b => b==null ? '?' : b>=1e9 ? (b/1e9).toFixed(1)+' GB' : Math.round(b/1e6)+' MB';
+
+async function openSync(){
+  SP.state='loading'; SP.off.clear(); SP.plan=null; SP.rows=[]; SP.log=[];
+  $('#sp').classList.add('on'); $('#spscrim').classList.add('on');
+  $('#spt').textContent='Review sync';
+  $('#spbody').innerHTML='<p class="note">Reading the device…</p>';
+  $('#spbtn').innerHTML=''; $('#spnote').textContent='';
+  const p=await fetch('/api/plan').then(r=>r.json()).catch(()=>null);
+  if(!p||!p.ok){
+    SP.state='blocked';
+    $('#spbody').innerHTML='<div class="month">'
+      + esc((p&&(p.reason||p.error))||'could not read the iPod') + '</div>'
+      + '<p class="note">Plug the iPod in and put it in Disk Mode: hold '
+      + '<kbd>Select</kbd>+<kbd>Menu</kbd> to reset, then immediately '
+      + '<kbd>Select</kbd>+<kbd>Play</kbd> until the screen says Disk Mode.</p>';
+    paintSyncFoot(true); return;
+  }
+  SP.plan=p; SP.state='review'; buildSyncRows(); paintSync();
 }
-async function runSyncInPanel(){
-  $('#dlgt').textContent='Syncing'; $('#dlgbtn').innerHTML='';
-  $('#dlgp').textContent='Starting…'; $('#dlglist').innerHTML='';
-  const r=await post('/api/action',{action:'sync'});
-  if(!r.ok||!r.job){$('#dlgp').textContent=r.error||'could not start the sync';return;}
+function closeSync(){
+  if(SP.state==='running')return;            // never while the device is being written
+  $('#sp').classList.remove('on'); $('#spscrim').classList.remove('on');
+  SP.state='review';
+}
+
+/* The rows, in the order sync performs them. Infrastructure rows are in the
+   list from the start: a dated backup is a promise the tool makes, and it
+   should not first appear at the moment it is being kept. */
+function buildSyncRows(){
+  const p=SP.plan, R=[];
+  R.push({sec:'first', n:0, ids:[]});
+  R.push({id:'backup', infra:true, name:'back up the database'});
+  if(p.adds.length){
+    R.push({sec:'copy across', n:p.adds.length, ids:p.adds.map(a=>'a:'+a.key)});
+    p.adds.forEach(a=>R.push({id:'a:'+a.key, name:a.artist+' — '+a.title,
+      meta:(a.convert?'→ ALAC · ':'')+gb(a.bytes), bytes:a.bytes||0}));
+  }
+  if(p.removes.length){
+    R.push({sec:'take off the iPod', n:p.removes.length, ids:p.removes.map(r=>'r:'+r.key)});
+    p.removes.forEach(r=>R.push({id:'r:'+r.key, name:r.artist+' — '+r.title}));
+  }
+  const pls=[...p.delete.map(c=>({c:c,what:'delete'})), ...p.new.map(c=>({c:c,what:'create'})),
+             ...p.update.map(c=>({c:c,what:'update'}))];
+  if(pls.length){
+    R.push({sec:'playlists', n:pls.length, ids:pls.map(x=>'p:'+x.c)});
+    pls.forEach(x=>R.push({id:'p:'+x.c, name:x.c,
+      meta:x.what==='delete'?'delete':x.what+' · '+(((p.sizes||{})[x.c])||0)}));
+  }
+  R.push({edge:'committed from here'});
+  R.push({id:'write',  infra:true, name:'write the database'});
+  R.push({id:'verify', infra:true, name:'verify on the device'});
+  R.push({id:'eject',  infra:true, name:'eject'});
+  SP.rows=R;
+}
+
+const spIncluded = () => SP.rows.filter(r=>r.id&&!r.infra&&!SP.off.has(r.id));
+function spCounts(){
+  const inc=spIncluded();
+  return {adds:inc.filter(r=>r.id[0]==='a').length,
+          rems:inc.filter(r=>r.id[0]==='r').length,
+          pls: inc.filter(r=>r.id[0]==='p').length,
+          bytes:inc.reduce((a,r)=>a+(r.bytes||0),0)};
+}
+
+function paintSync(){
+  const p=SP.plan; if(!p)return;
+  const c=spCounts(), run=SP.state!=='review';
+  const free=p.free_bytes, fits=free==null||c.bytes<=free;
+
+  // THE SUMMARY LEADS WITH WHAT IS IRREVERSIBLE. Removals delete files from
+  // the device; additions are undone by removing them again.
+  const bits=[];
+  if(c.rems) bits.push('<s>'+c.rems+'</s> off the iPod');
+  if(c.adds) bits.push('<s>'+c.adds+'</s> copied across');
+  if(c.pls)  bits.push('<s>'+c.pls+'</s> playlist'+(c.pls>1?'s':''));
+  const same=(p.unchanged||[]).length;
+  let sum = bits.length ? bits.join(' \u00b7 ') : 'Nothing selected';
+  if(!run){
+    if(bits.length) sum += '. A dated backup is taken first, and tracks the collections '
+      + 'do not mention are left alone.';
+    if(same) sum += ' '+same+' playlist'+(same>1?'s':'')+' already match'
+      +(same>1?'':'es')+' the device.';
+    if(SP.off.size) sum += ' '+SP.off.size+' unticked.';
+  }
+  let h='<p class="note">'+sum+'</p>';
+  if(c.adds&&free!=null){
+    const pct=Math.max(0,Math.min(100, 100*Math.min(c.bytes,free)/free));
+    h+='<div class="month" style="margin-top:0">'+gb(c.bytes)+' of '+gb(free)+' free'
+      +(fits?'':' \u2014 will not fit')+'</div>'
+      +'<div class="spgauge"><i class="'+(fits?'':'over')+'" style="width:'+(fits?pct:100)+'%"></i></div>';
+  }
+
+  // The section toggle carries its ROW INDEX, not its ids: a key may hold any
+  // character, so no separator is safe to pack a list into an attribute with.
+  h += SP.rows.map((r,ri)=>{
+    if(r.edge) return '<div class="month edge">'+esc(r.edge)+'</div>';
+    if(r.sec){
+      // The count follows the ticks. A header still reading 7 over five
+      // ticked rows is the sort of small lie that makes you re-count.
+      if(!r.ids.length) return '<div class="month">'+esc(r.sec)+'</div>';
+      const kept=r.ids.filter(i=>!SP.off.has(i)).length;
+      const allOn=kept===r.n;
+      return '<div class="month">'+esc(r.sec)+' \u00b7 '+(allOn?r.n:kept+' of '+r.n)
+        + (run?'':'<span class="all" data-sec="'+ri+'">'+(allOn?'none':'all')+'</span>')
+        + '</div>';
+    }
+    // The state lives in the .cnt slot -- the slot that already holds a
+    // count on every other row in the product. One slot, one meaning.
+    const st = r.infra ? (r.state||'fixed') : (r.state || (SP.off.has(r.id)?'out':''));
+    const mk = {doing:'\u2026', done:'\u2713', err:'!'}[r.state] || '';
+    const right = r.err ? esc(r.err) : (mk || (run?'':esc(r.meta||'')));
+    return '<div class="col '+st+'" data-id="'+esc(r.id)+'">'
+      + '<span class="nm">'+esc(r.name)+'</span>'
+      + '<span class="cnt">'+right+'</span></div>';
+  }).join('');
+  if(SP.log.length) h+='<div id="splog">'+esc(SP.log.slice(-8).join('\n'))+'</div>';
+  $('#spbody').innerHTML=h;
+
+  if(!run){
+    $('#spbody').querySelectorAll('.col:not(.fixed)').forEach(el=>el.onclick=()=>{
+      const id=el.dataset.id; SP.off.has(id)?SP.off.delete(id):SP.off.add(id); paintSync();});
+    $('#spbody').querySelectorAll('[data-sec]').forEach(el=>el.onclick=e=>{
+      e.stopPropagation();
+      const ids=(SP.rows[+el.dataset.sec]||{}).ids||[], allOn=ids.every(i=>!SP.off.has(i));
+      ids.forEach(i=>allOn?SP.off.add(i):SP.off.delete(i)); paintSync();});
+  }
+  paintSyncFoot(fits);
+}
+
+function paintSyncFoot(fits){
+  const note=$('#spnote'), btn=$('#spbtn');
+  const close=()=>{btn.innerHTML='<button id="spdone">Close</button>';
+    const d=$('#spdone'); if(d)d.onclick=closeSync;};
+  if(SP.state==='blocked'){ note.textContent=''; close(); return; }
+  const c=spCounts(), n=c.adds+c.rems+c.pls;
+  if(SP.state==='review'){
+    // The button names the consequence rather than the verb. "Sync" tells you
+    // nothing about the seven files it is about to delete.
+    const label = !n ? 'Nothing to do'
+      : [c.rems?('Remove '+c.rems):'', c.adds?('Copy '+c.adds):'',
+         (!c.rems&&!c.adds&&c.pls)?('Write '+c.pls):''].filter(Boolean).join(' \u00b7 ');
+    btn.innerHTML='<button class="go" id="spgo"'+((!n||!fits)?' disabled':'')+'>'+esc(label)+'</button>';
+    note.textContent = !fits ? 'not enough room'
+      : n ? 'nothing has changed on the device yet' : '';
+    const g=$('#spgo'); if(g)g.onclick=runSync;
+    return;
+  }
+  if(SP.state==='running'){ btn.innerHTML=''; note.textContent='leave the iPod plugged in'; return; }
+  close();
+}
+
+/* Running. The server prints `@@ <id> <state>` beside its own prose; the page
+   matches those ids to the rows it drew, so progress is reported BY the
+   changes rather than about them. */
+async function runSync(){
+  SP.state='running'; SP.log=[];
+  $('#spt').textContent='Syncing';
+  paintSync();
+  const ex={tracks:[],playlists:[]};
+  SP.off.forEach(id=>{ const v=id.slice(2);
+    if(id[0]==='p')ex.playlists.push(v); else ex.tracks.push(v); });
+  const r=await post('/api/action',{action:'sync',exclude:ex});
+  if(!r.ok||!r.job){ SP.state='error'; SP.log=[r.error||'could not start the sync'];
+    $('#spt').textContent='Sync stopped'; paintSync(); return; }
   job=r.job; $('#gear').classList.add('busy');
   const id=r.job;
   const tick=async()=>{
     const j=await fetch('/api/job?id='+id).then(x=>x.json()).catch(()=>null);
     if(!j){setTimeout(tick,1500);return;}
-    lastJob=j; paintSyncProgress(j);
-    if(j.state==='running'){setTimeout(tick,900);return;}
-    job=null; $('#gear').classList.remove('busy'); await load(); pollHealth();
+    lastJob=j; readSyncLog(j);
+    if(j.state==='running'){paintSync();setTimeout(tick,800);return;}
+    job=null; $('#gear').classList.remove('busy');
+    SP.state = j.state==='done' ? 'done' : 'error';
+    $('#spt').textContent = j.state==='done' ? 'Synced' : 'Sync stopped';
+    // Anything still waiting when the run ends never happened. Say so rather
+    // than leaving a row that looks like it is still going.
+    SP.rows.forEach(r2=>{ if(r2.id&&!r2.state&&!SP.off.has(r2.id))
+      r2.state = j.state==='done' ? 'done' : 'todo'; });
+    paintSync();
+    $('#spnote').textContent = j.state==='done'
+      ? 'the iPod has been ejected — safe to unplug'
+      : 'stopped before finishing — the pre-write backup is intact';
+    await load(); pollHealth();
   };
   tick();
+}
+function readSyncLog(j){
+  const byId={}; SP.rows.forEach(r=>{ if(r.id)byId[r.id]=r; });
+  const prose=[];
+  for(const ln of (j.log||[])){
+    const m=ln.match(/^@@ (\S+) (doing|done|error)(?: (.*))?$/);
+    if(m){ const r=byId[m[1]]; if(r){ r.state=m[2]; if(m[3])r.err=m[3]; } continue; }
+    if(!ln.startsWith('## ')&&ln.trim())prose.push(ln);
+  }
+  SP.log=prose;
 }
 
 /* ---------------- the three-dot menu ----------------
@@ -2094,36 +2345,6 @@ const dlg=$('#dlg'), dlgin=$('#dlgin');
 let dlgMode=null;
 function openDlg(mode,why,plan){
   dlgMode=mode;
-  if(mode==='__sync__'){
-    $('#dlgt').textContent='Sync to the iPod';
-    dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
-    if(!plan){
-      $('#dlgp').innerHTML=`${esc(why||'')}<br><br>Plug the iPod in and put it in Disk Mode:
-        hold <kbd>Select</kbd>+<kbd>Menu</kbd> to reset, then immediately
-        <kbd>Select</kbd>+<kbd>Play</kbd> until the screen says Disk Mode.`;
-      $('#dlglist').innerHTML=''; $('#dlgbtn').innerHTML='';
-    } else {
-      const n=plan.new.length+plan.update.length+plan.delete.length+plan.adds.length+plan.removes.length;
-      const gb=b=>b==null?'?':(b>=1e9?(b/1e9).toFixed(1)+' GB':Math.round(b/1e6)+' MB');
-      const fits = plan.add_bytes==null||plan.free_bytes==null||plan.add_bytes<=plan.free_bytes;
-      const same=(plan.unchanged||[]).length;
-      $('#dlgp').innerHTML = n
-        ? 'A dated backup is taken first, and tracks the collections do not mention are left alone.'
-          + (same?` ${same} playlist${same>1?'s':''} already match${same>1?'':'es'} the device and will not be touched.`:'')
-          + (plan.adds.length?` Adds about <b style="color:var(--ink)">${gb(plan.add_bytes)}</b> after conversion, of ${gb(plan.free_bytes)} free${fits?'':' — <span style="color:var(--orange)">that will not fit</span>'}.`:'')
-        : 'Nothing to do — the iPod already matches.';
-      const line=(label,items)=>items.length?`<div class="dsec">${label} · ${items.length}</div>`
-        + items.slice(0,12).map(x=>`<div class="drow"><span class="dn">${esc(typeof x==='string'?x:x.artist+' — '+x.title)}</span>${x.convert?'<span class="dc">&rarr; ALAC</span>':''}</div>`).join('')
-        + (items.length>12?`<div class="dc" style="padding:4px 10px">and ${items.length-12} more</div>`:''):'';
-      $('#dlglist').innerHTML = line('playlists to create',plan.new)+line('playlists to update',plan.update)
-        + line('playlists to delete',plan.delete)+line('tracks to copy across',plan.adds)
-        + line('tracks to take off',plan.removes)
-        + line('in a collection but not owned yet — left until there is a file',plan.no_source);
-      $('#dlgbtn').innerHTML = (n&&fits)?'<button class="go" id="dlgok">Sync</button>':'';
-      const ok=$('#dlgok'); if(ok)ok.onclick=runSyncInPanel;
-    }
-    dlg.classList.add('on'); return;
-  }
   const t=view[sel];
   const cfg={
     null:        {h:'Collection', p:t?`Put “${t.artist} — ${t.title}” in a collection. Type a new name, or pick one; picking one it is already in takes it out.`:'Select a track first.', input:true, list:true},
@@ -2267,6 +2488,12 @@ qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.b
 document.addEventListener('keydown',e=>{
   if(dlg.classList.contains('on'))return;
   if($('#rsheet').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
+  // With the panel up, the list behind it is not what the keyboard is for.
+  if($('#sp').classList.contains('on')){
+    if(e.key==='Escape'){e.preventDefault();closeSync();}
+    else if(e.key==='Enter'){const g=$('#spgo'); if(g&&!g.disabled){e.preventDefault();g.click();}}
+    return;
+  }
   if((e.metaKey||e.ctrlKey)&&(e.key==='z'||e.key==='Z')){
     e.preventDefault(); doUndo(e.shiftKey); return;      // \u2318Z / \u2318\u21E7Z
   }
@@ -2281,7 +2508,7 @@ document.addEventListener('keydown',e=>{
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}
   if(k==='.'){ const mo=document.querySelector('#list .row.sel .more'); if(mo){e.preventDefault(); if(MENU)closeMenu(); else openMenu(mo,'track',view[sel]);} return; }
-  if(k==='Escape'){ if(MENU){closeMenu();} else if(MARK.size){clearMark();draw();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
+  if(k==='Escape'){ if($('#sp').classList.contains('on')){closeSync();} else if(MENU){closeMenu();} else if(MARK.size){clearMark();draw();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
   if(k==='X'){ const t=view[sel]; if(t)deleteFromIpod(t); return; }
 
   if(k==='J'){e.preventDefault();nudge(+1);return;}

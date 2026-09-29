@@ -9,7 +9,10 @@ make one that lands.
 1. **README** — what it is and how to run it.
 2. **HISTORY** — how it got here and why the rules are what they are.
 3. **HANDOFF** — what is true right now and what is open.
-4. **Format facts that cost time**, in the README. Each one is a real
+4. **DESIGN** — the seven laws, the three row shapes, the twelve state words.
+   Read it before touching the page; most sloppy UI is one of two laws
+   broken.
+5. **Format facts that cost time**, in the README. Each one is a real
    afternoon. Keep them, add to them.
 
 ## How to run it against your own iPod
@@ -43,10 +46,18 @@ needs a model.
   that changes the iPod, and `restore` undoes it.
 - **A new verb goes in `cli.py` with a help line that says what it does in a
   sentence.** If the page can do it, the terminal must be able to as well.
-- **A new panel takes the shape the others have** — a hairline edge, a title
-  strip carrying the name on the left and the panel's one action on the
-  right, mono section labels. Look at the sync panel.
+- **A new panel takes the shape the others have** — a hairline edge, a 46px
+  title strip carrying the name on the left and the panel's one action on the
+  right, mono section labels, a scrolling body. Look at the sync panel, and
+  read DESIGN part 3.
 - **A new state is a fixed slot, not a thing that appears.** Nothing shifts.
+- **A name plus one number is a `.col`.** There are three row shapes and a
+  fourth needs a reason. DESIGN part 4.
+- **Reach for a state word that already exists** — twelve of them, DESIGN
+  part 7 — before inventing a thirteenth.
+- **Take values off the scale.** If you need a number that is not on it, you
+  are probably solving a spacing problem with a new number instead of with
+  the container.
 
 ## Before opening a pull request
 
