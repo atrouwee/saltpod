@@ -224,6 +224,28 @@ same `.pbody`, the same `.month` labels and the same `.substat` foot — the
 only things it adds are the slide and the scrim, because nothing existing
 does either.
 
+### One title strip, four containers
+
+The dialog and the menu had each grown a near-copy of `.plabel` — same
+family, size, tracking, transform and colour, differing only in height and
+in whether they drew their own edge. Three rules that had to be kept in step
+by hand, and were not.
+
+It is the same shape of thing as the radius ladder: **the strip gets shorter
+as the surface gets lighter**, and a surface that floats has to draw the
+edge its container does not.
+
+| Container | `--strip-h` | `.seam` |
+|---|---|---|
+| pane | 46px | no — the column already has an edge |
+| panel | 46px | yes |
+| dialog | 40px | yes |
+| menu | 34px | yes |
+
+One class, one modifier, two custom properties per container. `.seam` means
+exactly one thing: *this surface floats, so it draws its own edge* — a
+bottom hairline and a `--panel` ground.
+
 **The scrim is load-bearing, not decoration.** The sync plan is a diff taken
 against the device a moment ago; letting you change a decision behind it
 would make the list on screen a lie.

@@ -176,10 +176,20 @@ body.nl aside.left .plabel .name { flex: 0 0 auto; min-width: 0; }
 body.ns #stabs { flex: 0 0 auto; }
 body.nr #rtabs .pill { border-bottom-color: transparent; }
 /* each pane opens with one quiet mono line: what it is, and what can be done to it */
-.plabel { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; flex: none;
-          height: 46px; padding: 0 14px; overflow: hidden;
+/* THE TITLE STRIP, once. The dialog and the menu each grew their own
+   near-copy of this -- same family, size, tracking, transform and colour,
+   differing only in height and in whether they draw their own seam. That is
+   a ladder like the radius one: the strip gets shorter as the surface gets
+   lighter (pane 46 > dialog 40 > menu 34), and a floating surface has to
+   draw the edge its container does not. Two custom properties and one
+   modifier, instead of three rules that have to be kept in step by hand. */
+.plabel { display: flex; align-items: center; gap: var(--strip-gap, 12px); flex-wrap: nowrap;
+          flex: none; min-height: var(--strip-h, 46px); height: var(--strip-h, 46px);
+          padding: 0 var(--strip-x, 14px); overflow: hidden;
           font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-label);
           text-transform: uppercase; color: var(--dim); }
+/* a surface that floats draws its own edge; a pane's container already has one */
+.plabel.seam { border-bottom: 1px solid var(--faint); background: var(--panel); }
 .plabel .name { color: var(--ink); flex: 1 1 auto; min-width: 6ch; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; }
 /* In the centre the name does NOT grow: it sits with its count beside it,
@@ -343,12 +353,10 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
         background: var(--ground); border: 1px solid var(--faint); border-radius: var(--r-md); overflow: hidden;
         box-shadow: 0 14px 28px rgba(0,0,0,.45); }
 #menu.on { display: block; }
-#menu .mh { padding: 8px 12px; display: flex; align-items: center; gap: 10px; min-height: 34px;
-            font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); text-transform: uppercase;
-            color: var(--dim); border-bottom: 1px solid var(--faint); background: var(--panel);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#menu .mh .back { cursor: pointer; color: var(--dim); font-size: var(--fs-text); }
-#menu .mh .back:hover { color: var(--ink); }
+#menu { --strip-h: 34px; --strip-x: 12px; --strip-gap: 10px; }
+#menu .plabel { white-space: nowrap; text-overflow: ellipsis; }
+#menu .plabel .back { cursor: pointer; color: var(--dim); font-size: var(--fs-text); }
+#menu .plabel .back:hover { color: var(--ink); }
 #menu .mb { padding: 6px; max-height: 52vh; overflow: auto; }
 #menu .drow { padding: 7px 10px; }
 #menu .drow .dk { margin-left: auto; font: var(--fs-label) var(--mono); color: var(--dim); letter-spacing: var(--ls-ctrl); }
@@ -540,10 +548,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
           overflow: hidden; }
 /* The panel's own header carries its title on the left and the one thing it
    does on the right -- the same place the page header keeps Sync. */
-#dlgh { margin: 0; padding: 8px 10px 8px 16px; display: flex; align-items: center; gap: 12px;
-        min-height: 40px; font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-label);
-        text-transform: uppercase; color: var(--dim); font-weight: 500;
-        border-bottom: 1px solid var(--faint); background: var(--panel); }
+#dlgbox { --strip-h: 40px; --strip-x: 16px; }
 #dlgt { flex: 1 1 auto; }
 #dlgbtn:empty { display: none; }
 #dlgbody { padding: 14px 16px 16px; overflow: auto; }
@@ -594,7 +599,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       box-shadow: -18px 0 46px rgba(7,12,19,.5); }
 #sp.on { transform: none; }
 @media (prefers-reduced-motion: reduce) { #sp, #spscrim { transition: none; } }
-#sp .plabel { border-bottom: 1px solid var(--faint); }
+
 #sp .substat { border-top: 1px solid var(--faint); display: flex; align-items: center;
       gap: 12px; padding: 9px 14px; }
 #sp .substat .sp { flex: 1 1 auto; min-width: 0; overflow: hidden;
@@ -723,7 +728,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 
 <footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
-<div id="menu"><div class="mh" id="menuh"></div><div class="mb" id="menub"></div></div>
+<div id="menu"><div class="plabel seam" id="menuh"></div><div class="mb" id="menub"></div></div>
 
 <!-- THE SYNC PANEL. One list, twice: the changes you are approving, and then
      the same rows reporting themselves as they happen. Built from the same
@@ -731,13 +736,13 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
      rows, a .substat foot -- because it is another pane, not another idea. -->
 <div id="spscrim"></div>
 <aside id="sp">
-  <div class="plabel"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
+  <div class="plabel seam"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
   <div class="pbody" id="spbody"></div>
   <div class="substat pstat"><span class="sp" id="spnote"></span><span id="spbtn"></span></div>
 </aside>
 
 <div id="dlg"><div id="dlgbox">
-  <div id="dlgh"><span id="dlgt">Collection</span><span id="dlgbtn"></span></div>
+  <div class="plabel seam"><span class="name" id="dlgt">Collection</span><span id="dlgbtn"></span></div>
   <div id="dlgbody">
     <p id="dlgp"></p>
     <input id="dlgin" placeholder="Late Night">
