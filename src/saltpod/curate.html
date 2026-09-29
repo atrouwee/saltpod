@@ -444,6 +444,19 @@ footer { position: relative; background: var(--ground);
 .st i.ok { color: var(--ink); } .st i.ok:before { background: var(--ink); }
 .st i.warn { color: var(--orange); } .st i.warn:before { background: var(--orange); }
 .st i.off:before { background: transparent; box-shadow: inset 0 0 0 1px var(--faint); }
+/* iTunes' capacity bar, miniaturised. The most-copied convention in this
+   category, and the one you want while DECIDING rather than while syncing.
+   Free space only: what a sync would add needs plan(), which reads the whole
+   database and is far too expensive to poll. */
+.st i.cap { width: 46px; height: 5px; border-radius: 99px; background: var(--faint);
+            overflow: hidden; padding: 0; display: inline-block; flex: none; }
+.st i.cap:before { display: none; }
+.st i.cap b { display: block; height: 100%; background: var(--dim); }
+.st i.capn:before { display: none; }
+/* the undo hint sits with the keyboard shortcuts, since that is where its
+   own shortcut is printed */
+.undoc { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; color: var(--dim);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 28ch; }
 .st .w { color: var(--dim); text-transform: none; letter-spacing: .02em; }
 /* the inline new-collection field, in the pane it belongs to */
 .ninl { padding: 4px 8px 8px; }
@@ -638,6 +651,31 @@ let active='ipod';
 try{ active=localStorage['saltpod.active']||'ipod'; }catch(e){}
 function activate(which){ captureScroll(); active=which; try{ localStorage['saltpod.active']=which; }catch(e){} }
 function setSrc(which){ captureScroll(); stab=which; try{ localStorage['saltpod.stab']=which; }catch(e){} }
+
+/* ---------------- undo ----------------
+   The stack lives on the SERVER, where the state does. A snapshot of every
+   record a decision touched is taken before it is applied, so undo restores
+   exactly what was there -- including collection membership and sequence,
+   which no amount of re-deciding by hand could reconstruct.
+   It deliberately stops at the device: a completed sync is not on the stack,
+   because the only thing that could undo one is the backup it took. */
+let UNDOC={can_undo:0,can_redo:0,next:null};
+async function refreshUndo(){
+  try{ UNDOC=await fetch('/api/undo').then(r=>r.json()); }catch(e){}
+  paintUndo();
+}
+function paintUndo(){
+  const el=$('#undoc'); if(!el)return;
+  el.textContent = UNDOC.can_undo ? `\u21A9 ${UNDOC.next}` : '';
+  el.title = UNDOC.can_undo ? `\u2318Z to undo: ${UNDOC.next}` : '';
+  el.style.visibility = UNDOC.can_undo ? 'visible' : 'hidden';
+}
+async function doUndo(redo){
+  const r=await post('/api/undo',{redo:!!redo}).catch(()=>null);
+  if(!r||!r.ok){ toast(redo?'nothing to redo':'nothing to undo'); await refreshUndo(); return; }
+  await load(); await refreshUndo();
+  toast(`${redo?'redid':'undid'} \u2014 ${r.label}`);
+}
 
 /* ---------------- where you were ----------------
    Every redraw replaces the innerHTML of a pane, which puts its scroll back
@@ -891,7 +929,7 @@ function drawFoot(){
     <span><kbd>b</kbd> buy</span><span><kbd>v</kbd> vinyl</span>
     <span><kbd>x</kbd> ${inCol?'take out':'skip'}</span>
     <span><kbd>c</kbd> collection</span><span><kbd>.</kbd> menu</span><span><kbd>/</kbd> search</span>
-    <span id="saved" style="margin-left:auto"></span>`;
+    <span id="undoc" class="undoc"></span><span id="saved" style="margin-left:auto"></span>`;
 }
 
 /* ONE LIST VIEW, whatever is feeding it.
@@ -1533,7 +1571,7 @@ async function decide(patch,keys,advance){
   // row leaves and `sel` already points at the next one. Getting this wrong means
   // every decision needs a following keypress, which ruins the rhythm.
   if(advance&&!filtered())sel=Math.min(sel+1,Math.max(0,view.length-1));
-  await load();
+  await load(); refreshUndo();
 }
 
 /* ---------------- playing ---------------- */
@@ -1896,11 +1934,16 @@ function paintMenu(){
 // Off the iPod: out of every playlist it is in, then skipped, which sync
 // reads as "take this track off the device". Nothing happens on the device
 // until the next sync, and the row says so by being struck through.
+// Taking a track off the device no longer strips it from the playlists it
+// belongs to. It used to have to: plan() would see it in a collection, not
+// on the device, and add it straight back. `skipped` is authoritative in
+// plan() now, so the membership survives -- and un-skipping puts the track
+// back exactly where it was, which it never could before.
 async function deleteFromIpod(t){
-  for(const c of (t.collections||[]))
-    await post('/api/decide',{keys:[t.key],collection:c,mode:'remove'});
   await decide({tier:'skipped'},[t.key]);
-  toast(t.device?'off the iPod on the next sync':'skipped');
+  const inCols=(t.collections||[]).length;
+  toast((t.device?'off the iPod on the next sync':'skipped')
+        + (inCols?` \u00b7 still in ${inCols} playlist${inCols>1?'s':''}`:''));
 }
 document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more'))closeMenu(); });
 // a scroll of the page closes the menu; a scroll inside the menu is the menu working
@@ -2084,6 +2127,9 @@ qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.b
 document.addEventListener('keydown',e=>{
   if(dlg.classList.contains('on'))return;
   if($('#rsheet').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
+  if((e.metaKey||e.ctrlKey)&&(e.key==='z'||e.key==='Z')){
+    e.preventDefault(); doUndo(e.shiftKey); return;      // \u2318Z / \u2318\u21E7Z
+  }
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
   const k=e.key;
@@ -2120,6 +2166,11 @@ function paintHealth(){
   g.push(dot(...ip));
   const mu={ok:['ok','Music',''],closed:['off','Music','closed'],wedged:['warn','Music','not answering']}[h.music]||['off','Music',''];
   g.push(dot(...mu));
+  if(h.free!=null&&h.size!=null){
+    const used=1-h.free/h.size, gb=b=>(b/1e9).toFixed(0);
+    g.push(`<i class="cap" title="${gb(h.free)} GB free of ${gb(h.size)} GB"><b style="width:${Math.max(2,Math.round(used*100))}%"></b></i>`);
+    g.push(`<i class="capn">${gb(h.free)} GB free</i>`);
+  }
   (h.sources||[]).forEach(s=>g.push(dot(s.online?'ok':'off',s.name,s.online?'':'offline')));
   if(h.tools&&!(h.tools.ffmpeg&&h.tools.ffprobe))g.push(dot('warn','ffmpeg','missing'));
   if(h.config)g.push(dot('warn','config','missing'));

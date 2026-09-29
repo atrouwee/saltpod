@@ -163,6 +163,13 @@ def plan(mount=None):
         for k, r in members:
             if k in dev_by_key or any(k == a[0] for a in adds):
                 continue
+            # A skipped track is not a candidate, whatever collection names
+            # it. Without this, removing a track that belongs to a playlist
+            # meant stripping it from that playlist first -- destroying the
+            # membership to make the removal stick -- and the next plan would
+            # otherwise add it back on the following sync.
+            if r.get('tier') == 'skipped':
+                continue
             src = source_for(k, r)
             if not src:
                 no_source.append((k, r))

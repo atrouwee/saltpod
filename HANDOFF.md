@@ -523,3 +523,35 @@ last thing in the stylesheet now.
 **Supported range: 600px and up.** Below about 800 all three side panes are
 rails and the window is the list, which is usable but not the point of the
 tool.
+
+## Undo, and a delete that stops destroying things
+
+**Delete used to strip a track from every collection it belonged to**, and it
+had to: `plan()` would see the track in a collection, not on the device, and
+add it straight back on the next sync. So the membership was sacrificed to
+make the removal stick -- and nothing recorded it, so no amount of
+re-deciding could put it back.
+
+The fix is in `plan()`, not in the button: **`skipped` is authoritative over
+collection membership.** A skipped track is never an add candidate, whatever
+names it. Delete now only sets the tier, the playlists survive, and the toast
+says so (`still in 2 playlists`).
+
+**There is an undo stack**, server-side because that is where the state is.
+Before every decision, `_snapshot()` copies each touched record plus
+`collections` and `collection_order`; `⌘Z` restores it, `⌘⇧Z` redoes. Undo and
+redo are the same move in opposite directions -- pop one stack, snapshot the
+present onto the other -- so redo came free. The footer shows what `⌘Z` would
+undo, by name.
+
+It stops at the device on purpose: **a completed sync is not on the stack**,
+because the only thing that can undo one is the backup it took.
+
+## The capacity gauge
+
+Free space now rides the health poll -- a `statvfs` is cheap enough to poll
+where `plan()` is not -- and the footer carries iTunes' capacity bar,
+miniaturised, beside the other things the machine has to say. It is the
+most-copied convention in this category and the one you want while
+*deciding*, not while syncing. The "what a sync would add" figure stays in
+the sync panel, because that one does need a full database read.

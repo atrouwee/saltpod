@@ -90,6 +90,15 @@ def health():
     if db:
         out['ipod'] = 'ready'
         EJECTED_AT = None
+        # Free space is a statvfs -- cheap enough to poll, unlike plan(),
+        # which reads the whole database. That is why the gauge can be
+        # always-on while the "what a sync would add" figure cannot.
+        try:
+            sv = os.statvfs(mount)
+            out['free'] = sv.f_bavail * sv.f_frsize
+            out['size'] = sv.f_blocks * sv.f_frsize
+        except Exception:
+            pass
     elif vol:
         out['ipod'] = 'waking'
     elif EJECTED_AT:
@@ -825,11 +834,69 @@ def adopt(st, body):
             st['tracks'][k] = S.blank(a.get('artist') or '', a.get('title') or '')
 
 
-def apply_decision(body):
+UNDO, REDO = [], []
+UNDO_MAX = 60
+
+
+def _snapshot(st, keys):
+    """A before-image of everything a decision can touch.
+
+    Copies rather than references: the caller is about to mutate these in
+    place. Collections and their order come along because a decision can
+    change membership, and membership carries a sequence -- which is the
+    product.
+    """
+    import copy
+    return {'tracks': {k: copy.deepcopy(st['tracks'][k])
+                       for k in keys if k in st['tracks']},
+            'collections': list(st.get('collections', [])),
+            'collection_order': copy.deepcopy(st.get('collection_order', {}))}
+
+
+def _restore(st, snap):
+    for k, rec in snap['tracks'].items():
+        st['tracks'][k] = rec
+    st['collections'] = list(snap['collections'])
+    st['collection_order'] = snap['collection_order']
+
+
+def _label(body, keys):
+    n = len(keys)
+    many = '%d tracks' % n if n != 1 else 'a track'
+    if body.get('rename_collection') is not None:
+        to = body.get('to')
+        return ('delete "%s"' % body['rename_collection']) if not to \
+            else ('rename "%s"' % body['rename_collection'])
+    if 'reorder' in body:
+        return 're-sequence %s' % (body['reorder'].get('collection') or 'a collection')
+    if 'collection' in body:
+        verb = 'remove from' if body.get('mode') == 'remove' else 'add to'
+        return '%s %s \u2014 %s' % (verb, body['collection'], many)
+    if 'tier' in body:
+        return '%s \u2014 %s' % ({'skipped': 'skip', 'shortlisted': 'buy',
+                                   'maybe': 'maybe', 'seen': 'undecide'}.get(body['tier'], body['tier']), many)
+    for f in ('vinyl', 'bought', 'wanted'):
+        if f in body:
+            return '%s %s \u2014 %s' % ('set' if body[f] else 'clear', f, many)
+    return 'edit %s' % many
+
+
+def apply_decision(body, _record=True):
     with LOCK:
         global LOCAL_KEYS
         LOCAL_KEYS = local_keys()
         st = S.load()
+        if _record:
+            touched = set(body.get('keys') or ([body['key']] if body.get('key') else []))
+            for a in body.get('adopt') or []:
+                touched.add(a.get('key'))
+            if 'reorder' in body:
+                touched |= set(body['reorder'].get('keys') or [])
+            if body.get('rename_collection') is not None:
+                touched |= set(st['tracks'])          # a rename can touch any record
+            UNDO.append({'label': _label(body, touched), 'snap': _snapshot(st, touched)})
+            del UNDO[:-UNDO_MAX]
+            REDO.clear()
         adopt(st, body)
         keys = body.get('keys') or ([body['key']] if body.get('key') else [])
         touched = []
@@ -990,6 +1057,9 @@ class Handler(BaseHTTPRequestHandler):
                     if q in CLIENTS:
                         CLIENTS.remove(q)
             return
+        if u.path == '/api/undo':
+            return self._send(200, json.dumps({'can_undo': len(UNDO), 'can_redo': len(REDO),
+                                               'next': UNDO[-1]['label'] if UNDO else None}))
         if u.path == '/api/looking':
             with LOOKUP_LOCK:
                 return self._send(200, json.dumps({'keys': sorted(LOOKING)}))
@@ -1186,6 +1256,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == '/api/decide':
                 return self._send(200, json.dumps(apply_decision(body)))
+            if u.path == '/api/undo':
+                # Undo and redo are the same move in opposite directions: take
+                # the top of one stack, snapshot the present onto the other,
+                # then restore. That makes redo free and keeps them symmetric.
+                back = body.get('redo') is not True
+                src, dst = (UNDO, REDO) if back else (REDO, UNDO)
+                if not src:
+                    return self._send(200, json.dumps({'ok': False, 'empty': True}))
+                entry = src.pop()
+                with LOCK:
+                    st = S.load()
+                    dst.append({'label': entry['label'],
+                                'snap': _snapshot(st, entry['snap']['tracks'].keys())})
+                    _restore(st, entry['snap'])
+                    S.save(st)
+                push({'type': 'data', 'why': ('undo ' if back else 'redo ') + entry['label']})
+                return self._send(200, json.dumps({'ok': True, 'label': entry['label'],
+                                                   'can_undo': len(UNDO), 'can_redo': len(REDO)}))
             if u.path == '/api/action':
                 return self._send(200, json.dumps(self._action(body)))
         except Exception as e:
