@@ -199,6 +199,30 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row:hover { background: var(--panel); }
 .row.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo));
        box-shadow: inset 0 1px 0 rgba(255,255,255,.16); }
+/* A MARKED ROW IS NOT A SELECTED ROW. The cursor is one row and stays the
+   full accent; a marked row is a quieter wash of the same hue, so a range
+   reads as one block with the cursor still findable inside it. Same colour
+   family on purpose -- a second hue would say "a different kind of thing". */
+.row.marked { background: color-mix(in srgb, var(--sel-lo) 34%, transparent); }
+.row.marked:hover { background: color-mix(in srgb, var(--sel-lo) 44%, transparent); }
+.row.marked.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo)); }
+/* With a selection live, a cursor row that is NOT in it must not wear the
+   same full accent as one that is -- otherwise cmd-clicking a row out of a
+   range leaves it looking selected while the action will skip it. Outline
+   instead of fill: still obviously the cursor, obviously not included. */
+#list.hasmark .row.sel:not(.marked) { background: transparent;
+       box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--sel-lo) 70%, transparent); }
+#list.hasmark .row.sel:not(.marked) .s { color: var(--dim); }
+#list.hasmark .row.sel:not(.marked) .ch,
+#list.hasmark .row.sel:not(.marked) .grab,
+#list.hasmark .row.sel:not(.marked) .pod,
+#list.hasmark .row.sel:not(.marked) .src,
+#list.hasmark .row.sel:not(.marked) .src b { color: inherit; }
+.selcount { color: var(--ink); }
+.selcount b { font-weight: 600; }
+.selclear { margin-left: 7px; cursor: pointer; text-decoration: underline;
+       text-underline-offset: 2px; color: var(--dim); }
+.selclear:hover { color: var(--ink); }
 .row.sel .s { color: rgba(255,255,255,.82); }
 .row.sel .ch, .row.sel .grab { color: #fff; }
 .row.sel .tag { color: #fff; border-color: rgba(255,255,255,.55); }
@@ -608,6 +632,37 @@ const mmss = s => { if(!s) return ''; const n=Math.round(s);
 const $=s=>document.querySelector(s), au=$('#au');
 
 let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', job=null;
+
+/* MULTI-SELECT. `sel` stays what it was -- the cursor, an index into `view`,
+   which everything from scroll memory to nudge to play depends on. The
+   selection is a separate set ON TOP of it, and it holds KEYS, not indices:
+   indices are invalidated by every redraw, filter and sort, and a stale index
+   silently acts on the wrong track. A key is the same track forever.
+   MARKLIST records which list the set belongs to, so switching pane, playlist,
+   filter or search clears it -- a selection you cannot see is a selection you
+   will act on by accident. */
+const MARK=new Set(); let MARKLIST=null;
+function markedKeys(){ return [...MARK]; }
+/* THE ONE FUNCTION EVERY ACTION ASKS. A selection when there is one, the row
+   under the cursor when there is not, so single-track use is untouched. */
+function targets(){ return MARK.size ? markedKeys() : (view[sel]?[view[sel].key]:[]); }
+function clearMark(){ if(!MARK.size)return false; MARK.clear(); MARKLIST=null; return true; }
+function syncMarkList(){ const k=listKey(); if(MARKLIST!==k){MARK.clear(); MARKLIST=k;} }
+function setMark(keys){ MARK.clear(); MARKLIST=listKey(); keys.forEach(k=>MARK.add(k)); }
+/* A range is taken in the order the list is CURRENTLY shown, which is the
+   order the eye drew it -- not the order the underlying array happens to be
+   in. Anchor included, both ends inclusive. */
+/* Every drop target reads the payload through this. A single drag is a
+   one-element array, so the multi-track case is not a second code path. */
+function dropKeys(e){
+  const raw=e.dataTransfer.getData('text/plain');
+  return raw?raw.split('\n').filter(Boolean):[];
+}
+function markRange(a,b){
+  MARKLIST=listKey();
+  const [lo,hi]=a<b?[a,b]:[b,a];
+  for(let i=lo;i<=hi;i++) if(view[i]) MARK.add(view[i].key);
+}
 let colPick=null;          // null = the whole library; a name = that collection, in its order
 let rtab='buy';
 // A collection made with "+ new" does not exist on the server until its first
@@ -904,7 +959,7 @@ function libRow(r){
 function rowHTML(t,i,seq){
   const dur=mmss(t.seconds||t.dev_seconds);
   const have = t.device || t.local;      // on the iPod, or a file sync can reach
-  return `<div class="row ${t.tier==='remove'?'skip':''} ${have?'':'unowned'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}">
+  return `<div class="row ${t.tier==='remove'?'skip':''} ${have?'':'unowned'} ${MARK.has(t.key)?'marked':''}" draggable="true" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
@@ -925,6 +980,16 @@ function draw(){
 
 function drawFoot(){
   const inCol=active==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
+  // With a selection live, the strip stops advertising single-track keys and
+  // says what the selection is and how to drop it -- the one thing you need
+  // to know while a bulk action is one keystroke away.
+  if(MARK.size){
+    $('#keys').innerHTML=`<span class="selcount"><b>${MARK.size}</b> selected</span>
+      <span><kbd>s</kbd> sync all</span><span><kbd>x</kbd> ${inCol?'take all out':'remove all'}</span>
+      <span><kbd>c</kbd> add all to playlist</span><span><kbd>esc</kbd> clear</span>
+      <span id="undoc" class="undoc"></span><span id="saved" style="margin-left:auto"></span>`;
+    return;
+  }
   $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
     <span><kbd>s</kbd> sync</span><span><kbd>v</kbd> vinyl</span>
     <span><kbd>x</kbd> ${inCol?'take out':'remove'}</span>
@@ -999,7 +1064,8 @@ function drawMid(){
   const fs = FILTERS.filter(f=>!(inPod&&(f==='on iPod'||f==='rented only')));
   if(!fs.includes(filter))filter='all';
   $('#ctl').innerHTML=fs.map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
-  $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{captureScroll();filter=p.dataset.f;sel=recallSel();draw();});
+  $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{captureScroll();clearMark();filter=p.dataset.f;sel=recallSel();draw();});
+  const sc=$('#selclr'); if(sc)sc.onclick=()=>{clearMark();draw();};
   paintFilterToggle();
 
   const L=currentList();
@@ -1016,8 +1082,10 @@ function drawMid(){
 
   const mins=Math.round(all.reduce((a,t)=>a+(t.seconds||t.dev_seconds||0),0)/60);
   const known=all.filter(t=>!t.lean).length;
+  // A selection outranks the tally: it is the thing you are about to act on.
   $('#midstat').innerHTML = !L.picked ? ''
     : L.loading ? 'reading…'
+    : MARK.size ? `<span class="selcount"><b>${MARK.size}</b> selected</span><span class="selclear" id="selclr">clear</span>`
     : [ filtered()? `<s>${shown.length}</s> of ${all.length}` : `<s>${all.length}</s> tracks`,
         (!filtered()&&mins&&L.picked)?`${mins} min`:'',
         (L.foreign&&known)?`${known} in curation`:'',
@@ -1042,6 +1110,10 @@ function drawMid(){
 
   $('#list').innerHTML=h;
   wireRows();
+  // A SELECTION BELONGS TO ONE LIST. Leaving the list drops it: marks you
+  // cannot see are marks you will act on by accident, and every action in
+  // this tool writes to the device eventually.
+  if(MARK.size&&MARKLIST!==listKey())clearMark();
   if(view.length&&sel>=view.length)sel=view.length-1;   // never clamp an empty (loading) list
   mark();
 }
@@ -1057,16 +1129,36 @@ async function takeOver(dp){
 }
 function wireRows(){
   const canSeq=active==='ipod'&&!!colPick&&!filtered();
+  $('#list').classList.toggle('hasmark',MARK.size>0);
   [...$('#list').querySelectorAll('.row')].forEach(r=>{
-    r.onclick=()=>{sel=+r.dataset.i;mark();};
+    // The three conventions every list in every OS uses, and the reason the
+    // cursor and the selection are separate: shift needs an anchor to measure
+    // a range from, and that anchor is where the cursor already was.
+    r.onclick=e=>{
+      const i=+r.dataset.i;
+      if(e.shiftKey){ e.preventDefault(); markRange(sel,i); sel=i; draw(); return; }
+      if(e.metaKey||e.ctrlKey){
+        e.preventDefault(); syncMarkList();
+        const k=r.dataset.k; MARK.has(k)?MARK.delete(k):MARK.add(k);
+        sel=i; draw(); return; }
+      // a plain click is a fresh start, which is what makes a selection safe
+      const had=clearMark(); sel=i; had?draw():mark();
+    };
     const mo=r.querySelector('.more');
-    if(mo)mo.onclick=e=>{e.stopPropagation(); sel=+r.dataset.i; mark(); openMenu(mo,'track',view[sel]);};
-    r.ondblclick=()=>{sel=+r.dataset.i;mark();play();};
+    if(mo)mo.onclick=e=>{e.stopPropagation(); const i=+r.dataset.i;
+      // the dots on a row OUTSIDE the selection mean that row, not the selection
+      if(MARK.size&&!MARK.has(r.dataset.k)){clearMark(); sel=i; draw();} else {sel=i; mark();}
+      openMenu(mo,'track',view[sel]);};
+    r.ondblclick=()=>{clearMark();sel=+r.dataset.i;mark();play();};
     r.ondragstart=e=>{
-      e.dataTransfer.setData('text/plain',r.dataset.k);
+      // Dragging a row inside the selection carries the whole selection; the
+      // payload is newline-joined so every existing drop target keeps working
+      // through dropKeys(). Dragging a row outside it means just that row.
+      const many = MARK.size && MARK.has(r.dataset.k);
+      e.dataTransfer.setData('text/plain', many ? markedKeys().join('\n') : r.dataset.k);
       e.dataTransfer.effectAllowed='copyMove';
       r.classList.add('dragging');
-      sel=+r.dataset.i; mark();
+      if(!many){ clearMark(); sel=+r.dataset.i; mark(); }
     };
     r.ondragend=()=>{r.classList.remove('dragging');
       document.querySelectorAll('.over,.drop').forEach(x=>x.classList.remove('over','drop'));};
@@ -1075,13 +1167,23 @@ function wireRows(){
       r.ondragleave=()=>r.classList.remove('over');
       r.ondrop=async e=>{
         e.preventDefault(); e.stopPropagation(); r.classList.remove('over');
-        const key=e.dataTransfer.getData('text/plain'); if(!key)return;
-        const keys=(ORDER[colPick]||[]).slice();
-        const from=keys.indexOf(key), to=+r.dataset.i;
-        if(from<0){ await decide({collection:colPick,mode:'add'},[key]); return; }   // came from outside
-        if(from===to)return;
-        keys.splice(from,1); keys.splice(to,0,key);
-        await saveOrder(colPick,keys,to);
+        const dk=dropKeys(e); if(!dk.length)return;
+        const keys=(ORDER[colPick]||[]).slice(), to=+r.dataset.i;
+        const inside=dk.filter(k=>keys.includes(k));
+        if(!inside.length){ await decide({collection:colPick,mode:'add'},dk); return; }  // came from outside
+        // A BLOCK MOVES AS A BLOCK, and keeps its own internal order -- the
+        // sequence you arranged inside the selection is as much the product
+        // as the sequence of the list. Aim at the row you want the block to
+        // land on, measured after the block is lifted out.
+        const block=keys.filter(k=>inside.includes(k));
+        const anchor=keys[to];
+        const rest=keys.filter(k=>!inside.includes(k));
+        let at=rest.indexOf(anchor);
+        if(at<0)at=Math.min(to,rest.length);            // dropped onto the block itself
+        else if(to>keys.indexOf(block[0]))at+=1;        // moving down: land after the anchor
+        rest.splice(at,0,...block);
+        if(rest.join('\u0000')===keys.join('\u0000'))return;
+        await saveOrder(colPick,rest,at);
       };
     }
   });
@@ -1166,15 +1268,20 @@ function drawCols(){
     el.ondragleave=()=>el.classList.remove('drop');
     el.ondrop=async e=>{
       e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
-      const key=e.dataTransfer.getData('text/plain'); if(!key)return;
+      const dk=dropKeys(e); if(!dk.length)return;
+      const key=dk[0];
       if(key.startsWith('alb:')){ const a=SRCALBUMS.find(x=>x.key===key.slice(4));
         if(a)await decide({collection:name,mode:'add'},a.tracks.map(t=>t.key)); return; }
       if(key.startsWith('pl:')){ await pourPlaylist(key.slice(3),name); return; }   // a whole playlist
       if(key.startsWith('t7:')){ await pourFolder(key.slice(3),name); return; }     // a whole folder
-      const t=ALL.find(x=>x.key===key);
-      if(t&&t.collections.includes(name)){toast('already in '+name);return;}
-      await decide({collection:name,mode:'add'},[key]);
-      toast('added to '+name);
+      // Already-in is a no-op, not a refusal: dropping ten where three are
+      // already there should add the seven, and say so.
+      const fresh=dk.filter(k=>{const t=ALL.find(x=>x.key===k); return !(t&&t.collections.includes(name));});
+      if(!fresh.length){toast(dk.length>1?`all ${dk.length} already in ${name}`:'already in '+name);return;}
+      await decide({collection:name,mode:'add'},fresh);
+      const skipped=dk.length-fresh.length;
+      toast(`${fresh.length>1?fresh.length+' tracks':'added'} to ${name}`
+            + (skipped?` \u00b7 ${skipped} already there`:''));
     };
   });
   // THE WHOLE PANE TAKES A DROP. Aiming at "+ new" to make a collection is
@@ -1537,14 +1644,17 @@ document.querySelectorAll('#rtabs .pill').forEach(t=>t.onclick=()=>{rtab=t.datas
   pane.addEventListener('dragleave',e=>{ if(!pane.contains(e.relatedTarget))pane.classList.remove('drop'); });
   pane.addEventListener('drop',async e=>{
     e.preventDefault(); pane.classList.remove('drop');
-    const key=e.dataTransfer.getData('text/plain'); if(!key)return;
-    const t=ALL.find(x=>x.key===key); if(!t)return;
+    const dk=dropKeys(e).filter(k=>ALL.some(x=>x.key===k)); if(!dk.length)return;
     if(rtab==='buy'){
-      if(t.tier==='sync'){toast(t.bought?'already bought':'already on the buy list');return;}
-      await decide({tier:'sync'},[key]); toast('will sync to the iPod');
+      const fresh=dk.filter(k=>(ALL.find(x=>x.key===k)||{}).tier!=='sync');
+      if(!fresh.length){toast(dk.length>1?`all ${dk.length} already marked`:'already on the buy list');return;}
+      await decide({tier:'sync'},fresh);
+      toast(`${fresh.length>1?fresh.length+' tracks':'this'} will sync to the iPod`);
     } else {
-      if(t.vinyl){toast('already on the vinyl list');return;}
-      await decide({vinyl:true},[key]); toast('on the vinyl list');
+      const fresh=dk.filter(k=>!(ALL.find(x=>x.key===k)||{}).vinyl);
+      if(!fresh.length){toast(dk.length>1?`all ${dk.length} already flagged`:'already on the vinyl list');return;}
+      await decide({vinyl:true},fresh);
+      toast(`${fresh.length>1?fresh.length+' tracks':'this'} on the vinyl list`);
     }
   });
 })();
@@ -1558,7 +1668,7 @@ async function post(url,body){
     body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({ok:false}));
 }
 async function decide(patch,keys,advance){
-  const ks = keys || (view[sel]?[view[sel].key]:[]);
+  const ks = keys || targets();
   if(!ks.length)return;
   // anything decided on that has no record yet gets one, named from the row
   const newborn=ks.filter(k=>!BYKEY.has(k))
@@ -1888,7 +1998,13 @@ function paintMenu(){
     b.innerHTML=(cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}"><span class="dn">${esc(c)}</span>${t.collections.includes(c)?'<span class="dc">&#10003;</span>':''}</div>`).join(''):'')
       +'<div class="sep"></div>'+`<input id="menunew" placeholder="new playlist…">`;
     b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=async()=>{
-      const c=x.dataset.pc, had=t.collections.includes(c);
+      const c=x.dataset.pc, sel2=(MARK.size>1&&MARK.has(t.key))?markedKeys():[t.key];
+      if(sel2.length>1){ const fresh=sel2.filter(k=>!((BYKEY.get(k)||{}).collections||[]).includes(c));
+        closeMenu();
+        if(!fresh.length)return toast(`all ${sel2.length} already in ${c}`);
+        await decide({collection:c,mode:'add'},fresh);
+        return toast(`${fresh.length} added to ${c}`); }
+      const had=t.collections.includes(c);
       await decide({collection:c},[t.key]); toast(had?`out of ${c}`:`added to ${c}`);
       const nt=BYKEY.get(t.key); if(nt){MENU.payload=nt;paintMenu();} else closeMenu();
     });
@@ -1897,12 +2013,15 @@ function paintMenu(){
       if(e.key==='Escape'){closeMenu();return;}
       if(e.key==='Enter'){const v=inp.value.trim(); if(!v)return;
         if(!COLS.includes(v))PENDING.add(v);
-        closeMenu(); await decide({collection:v,mode:'add'},[t.key]); toast(`added to ${v}`);}};
+        const sel2=(MARK.size>1&&MARK.has(t.key))?markedKeys():[t.key];
+        closeMenu(); await decide({collection:v,mode:'add'},sel2);
+        toast(`${sel2.length>1?sel2.length+' added':'added'} to ${v}`);}};
     setTimeout(()=>inp.focus({preventScroll:true}),0);
     return;
   }
-  // a track
-  h.innerHTML=esc(t.artist+' — '+t.title);
+  // a track -- or the whole selection, when the dots were clicked inside one
+  const many = MARK.size>1 && MARK.has(t.key), N = many?MARK.size:1;
+  h.innerHTML = many ? `<b>${N}</b> tracks selected` : esc(t.artist+' — '+t.title);
   const inCol=active==='ipod'&&!!colPick;
   // Inside a collection, x takes the track out of it; X takes it off the iPod
   // altogether -- out of every playlist, gone from the device on the next
@@ -1910,26 +2029,38 @@ function paintMenu(){
   // iPod. For a track not on the device, the same choice is Never sync this.
   // Two decisions named for their effect, and `undecided` -- the absence of
   // one -- as the way back out of either.
-  const onPod = t.tier==='sync', offPod = t.tier==='remove';
+  // With a selection, a tick means ALL of them are already there -- a tick on
+  // a mixed set would claim something untrue about most of the rows.
+  const everyIs = v => !many ? t.tier===v : markedKeys().every(k=>(BYKEY.get(k)||{}).tier===v);
+  const onPod = everyIs('sync'), offPod = everyIs('remove');
   // Being in a playlist IS the decision, so a track in one cannot be undecided:
   // the server would put it straight back to `sync` and the row would look
   // broken. Take it out of the playlist first; that is the row above.
-  const anyCol = (t.collections||[]).length > 0;
+  const anyCol = many ? markedKeys().some(k=>((BYKEY.get(k)||{}).collections||[]).length>0)
+                      : (t.collections||[]).length > 0;
 
   b.innerHTML=menuRow('Sync to the iPod','s',onPod,'m-want')
-    +menuRow(t.device?'Remove from the iPod':'Never sync this','x',offPod,'m-skip')
+    +menuRow((many?markedKeys().some(k=>(BYKEY.get(k)||{}).device):t.device)
+             ?'Remove from the iPod':'Never sync this','x',offPod,'m-skip')
     +(anyCol?'':menuRow('Undecided','u',t.tier==='undecided','m-undo'))
     +'<div class="sep"></div>'
-    +menuRow('Add to playlist &rsaquo;','c',false,'m-add')
-    +(inCol?menuRow('Take out of '+esc(colPick),'',false,'m-out'):'')
-    +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play');
+    +menuRow(many?'Add all to playlist &rsaquo;':'Add to playlist &rsaquo;','c',false,'m-add')
+    +(inCol?menuRow((many?`Take all ${N} out of `:'Take out of ')+esc(colPick),'',false,'m-out'):'')
+    +'<div class="sep"></div>'
+    +menuRow('Vinyl','v',many?markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl):!!t.vinyl,'m-vinyl')
+    +(many?'':menuRow('Play','space',false,'m-play'));
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
-  on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},[t.key]);});
-  on('m-want',()=>{closeMenu();decide({tier:onPod&&!anyCol?'undecided':'sync'},[t.key]);});
-  on('m-skip',()=>{closeMenu(); offPod?decide({tier:'undecided'},[t.key]):deleteFromIpod(t);});
-  on('m-undo',()=>{closeMenu();decide({tier:'undecided'},[t.key]);});
-  on('m-vinyl',()=>{closeMenu();decide({vinyl:!t.vinyl},[t.key]);});
+  const KS = many ? markedKeys() : [t.key];
+  on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},KS);});
+  on('m-want',()=>{closeMenu();decide({tier:onPod&&!anyCol?'undecided':'sync'},KS);});
+  on('m-skip',()=>{closeMenu(); offPod?decide({tier:'undecided'},KS):deleteFromIpod(t,KS);});
+  on('m-undo',()=>{closeMenu();decide({tier:'undecided'},KS);});
+  // A mixed selection turns vinyl ON -- the majority intent when you picked
+  // a set and reached for a flag. Everything already flagged stays flagged.
+  on('m-vinyl',()=>{closeMenu();
+    const all = many ? markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl) : !!t.vinyl;
+    decide({vinyl:!all},KS);});
   on('m-play',()=>{closeMenu();play();});
 }
 // Off the iPod: skipped, which sync
@@ -1940,8 +2071,16 @@ function paintMenu(){
 // on the device, and add it straight back. `remove` is authoritative in
 // plan() now, so the membership survives -- and setting it back to sync puts
 // the track exactly where it was, which it never could before.
-async function deleteFromIpod(t){
-  await decide({tier:'remove'},[t.key]);
+async function deleteFromIpod(t,keys){
+  const ks = keys && keys.length ? keys : [t.key];
+  await decide({tier:'remove'},ks);
+  if(ks.length>1){
+    const onDev=ks.filter(k=>(BYKEY.get(k)||{}).device).length;
+    const held=ks.filter(k=>((BYKEY.get(k)||{}).collections||[]).length).length;
+    toast(`${ks.length} tracks \u00b7 ${onDev} off the iPod on the next sync`
+          + (held?` \u00b7 ${held} still in playlists`:''));
+    return;
+  }
   const inCols=(t.collections||[]).length;
   toast((t.device?'off the iPod on the next sync':'will never sync')
         + (inCols?` \u00b7 still in ${inCols} playlist${inCols>1?'s':''}`:''));
@@ -2131,6 +2270,10 @@ document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&(e.key==='z'||e.key==='Z')){
     e.preventDefault(); doUndo(e.shiftKey); return;      // \u2318Z / \u2318\u21E7Z
   }
+  if((e.metaKey||e.ctrlKey)&&(e.key==='a'||e.key==='A')){
+    if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;   // let a field select its own text
+    e.preventDefault(); setMark(view.map(t=>t.key)); draw(); return;
+  }
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
   const k=e.key;
@@ -2138,23 +2281,34 @@ document.addEventListener('keydown',e=>{
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}
   if(k==='.'){ const mo=document.querySelector('#list .row.sel .more'); if(mo){e.preventDefault(); if(MENU)closeMenu(); else openMenu(mo,'track',view[sel]);} return; }
-  if(k==='Escape'){ if(MENU){closeMenu();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
+  if(k==='Escape'){ if(MENU){closeMenu();} else if(MARK.size){clearMark();draw();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
   if(k==='X'){ const t=view[sel]; if(t)deleteFromIpod(t); return; }
-  if(k==='J'||(k==='ArrowDown'&&e.shiftKey)){e.preventDefault();nudge(+1);return;}
-  if(k==='K'||(k==='ArrowUp'&&e.shiftKey)){e.preventDefault();nudge(-1);return;}
-  if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
-  else if(k==='k'||k==='ArrowUp'){e.preventDefault();sel=Math.max(0,sel-1);mark();}
+
+  if(k==='J'){e.preventDefault();nudge(+1);return;}
+  if(k==='K'){e.preventDefault();nudge(-1);return;}
+  // Shift+arrow extends the selection -- the universal convention, and worth
+  // taking back from nudge, which keeps J/K and is saltpod's own idea anyway.
+  if((k==='ArrowDown'||k==='ArrowUp')&&e.shiftKey){
+    e.preventDefault(); const to=Math.max(0,Math.min(view.length-1,sel+(k==='ArrowDown'?1:-1)));
+    if(!MARK.size&&view[sel]){syncMarkList();MARK.add(view[sel].key);}
+    markRange(sel,to); sel=to; draw(); return;
+  }
+  if(k==='j'||k==='ArrowDown'){e.preventDefault();const had=clearMark();
+    sel=Math.min(view.length-1,sel+1); had?draw():mark();}
+  else if(k==='k'||k==='ArrowUp'){e.preventDefault();const had=clearMark();
+    sel=Math.max(0,sel-1); had?draw():mark();}
   else if(k===' '){e.preventDefault();play();}
-  else if(k==='s'||k==='w'||k==='b'){decide({tier:'sync'},null,true);}
+  else if(k==='s'||k==='w'||k==='b'){decide({tier:'sync'},null,!MARK.size);}
 
   else if(k==='x'){
     // inside a collection, x takes the track out of it; it is not a verdict on the track
-    if(colPick){const t=view[sel]; if(t)decide({collection:colPick,mode:'remove'},[t.key]);}
-    else decide({tier:'remove'},null,true);}
+    const ks=targets(); if(!ks.length)return;
+    if(colPick)decide({collection:colPick,mode:'remove'},ks);
+    else decide({tier:'remove'},null,!MARK.size);}
   else if(k==='u'){decide({tier:'undecided'});}
-  else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl});}
+  else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl},targets());}
   else if(k==='c'){e.preventDefault();openDlg(null);}
-  else if(k==='f'){filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
+  else if(k==='f'){clearMark();filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
 });
 /* ---------------- what the machine can reach ---------------- */
 function paintHealth(){

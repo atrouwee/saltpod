@@ -172,6 +172,54 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## Multi-select
+
+`sel` is still the cursor -- an index into `view`, and scroll memory, nudge,
+play and the row menu all depend on it. The selection is a **separate set on
+top of it**, and it holds **keys, not indices**: an index is invalidated by
+every redraw, filter and sort, and a stale index silently acts on the wrong
+track. A key is the same track forever.
+
+The three conventions, unmodified from every list in every OS: **click**
+replaces, **shift-click** takes the range from the cursor, **cmd-click**
+toggles one. `⌘A` takes the visible list, `Escape` drops the selection, a
+plain arrow collapses it.
+
+**Shift+arrow now extends the selection.** It used to be an alias for nudge;
+`J`/`K` keep nudge, which is saltpod's own idea, and shift+arrow goes back to
+the convention it belongs to.
+
+**A selection belongs to one list.** `MARKLIST` records which, and changing
+pane, playlist, filter or search clears it. A mark you cannot see is a mark
+you will act on by accident, and every action here reaches the device
+eventually.
+
+Three rules make the bulk case honest rather than merely possible:
+
+- **A tick means all of them.** `Sync to the iPod` shows a tick only when
+  every selected track is already `sync`. A tick on a mixed set would claim
+  something untrue about most of the rows.
+- **Already-there is a no-op, not a refusal.** Dropping ten tracks on a
+  playlist that holds three of them adds the seven and says
+  `7 added · 3 already there`.
+- **A mixed flag turns on.** Selecting a mixed set and pressing `v` flags
+  everything; it does not toggle each one to its opposite.
+
+The cursor can sit on a row that is *not* in the selection -- cmd-click it
+out of a range and it does. So with a selection live, a cursor row outside it
+is drawn as an **outline instead of a fill**: still obviously the cursor,
+obviously not included. Without that, the row it will skip looks exactly like
+the rows it will act on.
+
+**Dragging carries the selection.** The payload is newline-joined keys and
+every drop target reads it through `dropKeys()`, so the single-track case is
+one element rather than a second code path. Inside a collection a dragged
+block **moves as a block and keeps its internal order** -- the sequence
+within a selection is as much the product as the sequence of the list.
+
+The server needed nothing: `/api/decide` already took `keys: [...]`, and one
+bulk write is one undo step.
+
 ## One question per track: sync or remove
 
 The tool asks a track one thing -- *does this belong on the iPod?* -- and
