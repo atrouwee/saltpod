@@ -110,7 +110,8 @@ trusting them.
 
 One file, no build step, nothing fetched from anywhere. Keyboard first.
 
-- **Curate.** `b` keep, `m` maybe, `x` skip, `v` vinyl want-list, `c` put it in
+- **Curate.** One question per track — does this belong on the iPod? `s` sync
+  it, `x` remove it, `u` back to undecided. `v` vinyl want-list, `c` put it in
   a collection. `space` plays the whole track from your library, or a
   30-second iTunes preview for music you do not own yet. Every keystroke saves.
 - **Collections are sequences.** Drag rows, or `J`/`K` to move one, `space` to

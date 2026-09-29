@@ -448,7 +448,7 @@ footer { position: relative; background: var(--ground);
    category, and the one you want while DECIDING rather than while syncing.
    Free space only: what a sync would add needs plan(), which reads the whole
    database and is far too expensive to poll. */
-.st i.cap { width: 46px; height: 5px; border-radius: 99px; background: var(--faint);
+.st i.cap { margin-left: -8px; width: 46px; height: 5px; border-radius: 99px; background: var(--faint);
             overflow: hidden; padding: 0; display: inline-block; flex: none; }
 .st i.cap:before { display: none; }
 .st i.cap b { display: block; height: 100%; background: var(--dim); }
@@ -822,14 +822,14 @@ async function load(){
   draw();
 }
 function counts(){
-  const c={seen:0,shortlisted:0,maybe:0,skipped:0,vinyl:0,bought:0};
+  const c={undecided:0,sync:0,remove:0,vinyl:0,bought:0};
   ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
-  // "to buy" is what you still have to go and get: shortlisted, not marked
+  // "to buy" is what you still have to go and get: marked sync, not held
   // bought, and no file for it anywhere on your drives.
-  const todo=ALL.filter(t=>t.tier==='shortlisted'&&!t.bought&&!t.local);
+  const todo=ALL.filter(t=>t.tier==='sync'&&!t.bought&&!t.local);
   const eur=todo.reduce((a,t)=>a+(t.price||0),0);
   // what the next sync would do, as far as the page can know without the device
-  const offs=ALL.filter(t=>t.device&&t.tier==='skipped').length;
+  const offs=ALL.filter(t=>t.device&&t.tier==='remove').length;
   const ons=ALL.filter(t=>!t.device&&t.local&&t.collections.length).length;
   const pend=offs+ons, sb=$('#dosync');
   sb.textContent = pend ? `Sync · ${pend}` : 'Sync';
@@ -841,14 +841,15 @@ function counts(){
 }
 function pass(t){
   if(q){const h=(t.artist+' '+t.title+' '+(t.album||'')).toLowerCase(); if(!h.includes(q))return false;}
-  if(filter==='undecided')return t.tier==='seen';
+  if(filter==='undecided')return t.tier==='undecided';
   if(filter==='vinyl')return t.vinyl;
   if(filter==='on vinyl')return !!owned(t);
   if(filter==='on T7')return t.t7;
   // in Apple Music and nowhere you own: the work still to do
   if(filter==='rented only')return t.am&&!t.t7&&!owned(t);
   if(filter==='on iPod')return t.device;
-  if(filter==='remove')return t.device&&t.tier==='skipped';
+  if(filter==='remove')return t.tier==='remove';
+  if(filter==='sync')return t.tier==='sync';
   if(filter==='all')return true;
   return t.tier===filter;
 }
@@ -880,9 +881,8 @@ function srcStrip(t){
 }
 function tagsFor(t){
   const g=[];
-  if(t.tier==='shortlisted')g.push('<span class="tag buy">buy</span>');
-  if(t.tier==='maybe')g.push('<span class="tag maybe">maybe</span>');
-  if(t.tier==='skipped')g.push('<span class="tag skip">skip</span>');
+  if(t.tier==='sync'&&!t.local&&!t.device)g.push('<span class="tag buy">buy</span>');
+  if(t.tier==='remove')g.push('<span class="tag skip">remove</span>');
 
   if(t.vinyl)g.push('<span class="tag vinyl">vinyl</span>');
   if(!colPick)t.collections.forEach(c=>g.push(`<span class="tag">${esc(c)}</span>`));
@@ -904,7 +904,7 @@ function libRow(r){
 function rowHTML(t,i,seq){
   const dur=mmss(t.seconds||t.dev_seconds);
   const have = t.device || t.local;      // on the iPod, or a file sync can reach
-  return `<div class="row ${t.tier==='skipped'?'skip':''} ${have?'':'unowned'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}">
+  return `<div class="row ${t.tier==='remove'?'skip':''} ${have?'':'unowned'}" draggable="true" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
@@ -926,8 +926,8 @@ function draw(){
 function drawFoot(){
   const inCol=active==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
   $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
-    <span><kbd>b</kbd> buy</span><span><kbd>v</kbd> vinyl</span>
-    <span><kbd>x</kbd> ${inCol?'take out':'skip'}</span>
+    <span><kbd>s</kbd> sync</span><span><kbd>v</kbd> vinyl</span>
+    <span><kbd>x</kbd> ${inCol?'take out':'remove'}</span>
     <span><kbd>c</kbd> collection</span><span><kbd>.</kbd> menu</span><span><kbd>/</kbd> search</span>
     <span id="undoc" class="undoc"></span><span id="saved" style="margin-left:auto"></span>`;
 }
@@ -1445,7 +1445,7 @@ function drawRight(){
   document.querySelectorAll('#rtabs .pill').forEach(t=>t.classList.toggle('on',t.dataset.r===rtab));
   const el=$('#rbody');
   if(rtab==='buy'){
-    const short=ALL.filter(t=>t.tier==='shortlisted');
+    const short=ALL.filter(t=>t.tier==='sync');
     // Three stages, in the direction they move: still to buy; bought -- a file
     // exists on your drive, found by the index -- and waiting for a sync; and
     // already on the iPod. "Bought" is not a button you have to remember; the
@@ -1453,7 +1453,7 @@ function drawRight(){
     const todo=short.filter(t=>!t.bought&&!t.local), ready=short.filter(t=>t.local&&!t.device), done=short.filter(t=>t.device);
     const eur=todo.reduce((a,t)=>a+(t.price||0),0);
     const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
-    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> on iPod`;
+    $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> synced`;
     let h='';
     const dots=t=>`<span class="more" data-card="${esc(t.key)}" title="more">&#8943;</span>`;
     // Identity, price and a lossless source are looked up when a track joins
@@ -1481,7 +1481,7 @@ function drawRight(){
               :(t.it_verdict==='not_found'?'<span class="warn">iTunes does not carry it</span>'
                 :'<span class="warn">not looked up</span>'))}
           <button data-bought="${esc(t.key)}">bought</button></div>${look(t)}</div>`).join('')
-      : (ready.length ? '' : `<p class="note">Nothing to buy. Drag a track here, or press <kbd>b</kbd> on one.</p>`);
+      : (ready.length ? '' : `<p class="note">Nothing to buy. Drag a track here, or press <kbd>s</kbd> on one.</p>`);
     const unknown=todo.filter(t=>!t.url&&!t.it_verdict&&!t.looking).length;
     if(unknown) h+=`<p class="note" style="margin-top:10px"><span class="go" id="lookall" style="color:var(--ink);cursor:pointer;text-decoration:underline">Look up the ${unknown} without a source</span> — one iTunes query each.</p>`;
     if(todo.length||ready.length) h+=`<p class="note" style="margin-top:14px">Buy on Bandcamp or iTunes, download, drop the file in your music folder, then
@@ -1496,7 +1496,7 @@ function drawRight(){
     el.querySelectorAll('[data-bc]').forEach(x=>x.onclick=()=>
       toast('Bandcamp needs a bandcamp.com tab — bin/bandcamp_search.js'));
     const la=$('#lookall'); if(la)la.onclick=async()=>{
-      const r=await post('/api/action',{action:'lookup',all_shortlisted:true});
+      const r=await post('/api/action',{action:'lookup',all_sync:true});
       toast(`looking up ${r.queued||0}…`); await load(); };
   } else {
     // Vinyl runs in one direction: flagged here -> wanted on Discogs -> owned.
@@ -1540,8 +1540,8 @@ document.querySelectorAll('#rtabs .pill').forEach(t=>t.onclick=()=>{rtab=t.datas
     const key=e.dataTransfer.getData('text/plain'); if(!key)return;
     const t=ALL.find(x=>x.key===key); if(!t)return;
     if(rtab==='buy'){
-      if(t.tier==='shortlisted'){toast(t.bought?'already bought':'already on the buy list');return;}
-      await decide({tier:'shortlisted'},[key]); toast('on the buy list');
+      if(t.tier==='sync'){toast(t.bought?'already bought':'already on the buy list');return;}
+      await decide({tier:'sync'},[key]); toast('will sync to the iPod');
     } else {
       if(t.vinyl){toast('already on the vinyl list');return;}
       await decide({vinyl:true},[key]); toast('on the vinyl list');
@@ -1640,7 +1640,7 @@ function openSettings(){
       <div class="box"><div class="dsec">the iPod</div>
         <div style="color:var(--dim);font-size:12px">
           ${ALL.filter(t=>t.device).length} tracks on the device &middot;
-          ${ALL.filter(t=>t.device&&t.tier==='skipped').length} marked to remove &middot;
+          ${ALL.filter(t=>t.device&&t.tier==='remove').length} marked to remove &middot;
           ${ALL.filter(t=>t.lossless).length} have a lossless original</div>
         <div class="brow"><button id="doDevice">Re-read the device</button></div></div>
       <div class="box"><div class="dsec">Apple Music</div>
@@ -1773,7 +1773,7 @@ async function runSyncInPanel(){
    One menu, two kinds. A track's lists what a keystroke or a drag would do,
    and "Add to playlist" swaps the menu for a picker of the collections, ticks
    for the ones it is in, a field to make a new one. A collection's carries
-   rename, add-all-shortlisted and delete -- the confirms stay as panels. */
+   rename, add-all-wanted and delete -- the confirms stay as panels. */
 const menu=$('#menu');
 let MENU=null;
 function menuRow(label,key,tick,cls){
@@ -1796,14 +1796,14 @@ function paintMenu(){
   const h=$('#menuh'), b=$('#menub');
   if(MENU.kind==='col'){
     const c=MENU.payload;
-    const nShort=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(c)).length;
+    const nShort=ALL.filter(t=>t.tier==='sync'&&!t.collections.includes(c)).length;
     h.innerHTML=esc(c);
-    b.innerHTML=menuRow('Rename…','',false,'m-rename')+menuRow(`Add all shortlisted${nShort?' · '+nShort:''}`,'',false,'m-addshort')
+    b.innerHTML=menuRow('Rename…','',false,'m-rename')+menuRow(`Add everything marked sync${nShort?' · '+nShort:''}`,'',false,'m-addshort')
       +'<div class="sep"></div>'+menuRow('Delete…','',false,'m-delete');
     b.querySelector('.m-rename').onclick=()=>{closeMenu();colPick=c;openDlg('__rename__');};
     b.querySelector('.m-delete').onclick=()=>{closeMenu();colPick=c;openDlg('__delete__');};
     b.querySelector('.m-addshort').onclick=async()=>{closeMenu();
-      const ks=ALL.filter(t=>t.tier==='shortlisted'&&!t.collections.includes(c)).map(t=>t.key);
+      const ks=ALL.filter(t=>t.tier==='sync'&&!t.collections.includes(c)).map(t=>t.key);
       if(!ks.length)return toast('nothing new to add');
       await decide({collection:c,mode:'add'},ks); toast(`added ${ks.length} to ${c}`);};
     return;
@@ -1907,42 +1907,43 @@ function paintMenu(){
   // Inside a collection, x takes the track out of it; X takes it off the iPod
   // altogether -- out of every playlist, gone from the device on the next
   // sync. That is what "delete from library" means when the library is the
-  // iPod. For a track not on the device, the same choice is just Skip.
-  const delLabel = t.device ? 'Delete from iPod' : 'Skip';
-  // Shortlisted is what puts a track in the buy list, so undeciding is how it
-  // leaves. One row, named for where you are standing: "Undecided" is true but
-  // nobody reads it as "get this out of my buy list", which is the thing they
-  // came to the menu to do.
-  const undoLabel = t.tier==='shortlisted' ? 'Take off the buy list' : 'Undecided';
-  b.innerHTML=menuRow('Add to playlist &rsaquo;','c',false,'m-add')
-    +(inCol?menuRow('Take out of '+esc(colPick),'x',false,'m-out'):'')
+  // iPod. For a track not on the device, the same choice is Never sync this.
+  // Two decisions named for their effect, and `undecided` -- the absence of
+  // one -- as the way back out of either.
+  const onPod = t.tier==='sync', offPod = t.tier==='remove';
+  // Being in a playlist IS the decision, so a track in one cannot be undecided:
+  // the server would put it straight back to `sync` and the row would look
+  // broken. Take it out of the playlist first; that is the row above.
+  const anyCol = (t.collections||[]).length > 0;
+
+  b.innerHTML=menuRow('Sync to the iPod','s',onPod,'m-want')
+    +menuRow(t.device?'Remove from the iPod':'Never sync this','x',offPod,'m-skip')
+    +(anyCol?'':menuRow('Undecided','u',t.tier==='undecided','m-undo'))
     +'<div class="sep"></div>'
-    +menuRow('Buy','b',t.tier==='shortlisted','m-buy')+menuRow('Maybe','m',t.tier==='maybe','m-maybe')
-    +menuRow(undoLabel,'u',t.tier==='seen','m-undo')
-    +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play')
-    +'<div class="sep"></div>'+menuRow(delLabel,inCol?'X':'x',t.tier==='skipped','m-del');
+    +menuRow('Add to playlist &rsaquo;','c',false,'m-add')
+    +(inCol?menuRow('Take out of '+esc(colPick),'',false,'m-out'):'')
+    +'<div class="sep"></div>'+menuRow('Vinyl','v',!!t.vinyl,'m-vinyl')+menuRow('Play','space',false,'m-play');
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
   on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},[t.key]);});
-  on('m-buy',()=>{closeMenu();decide({tier:'shortlisted'},[t.key]);});
-  on('m-maybe',()=>{closeMenu();decide({tier:'maybe'},[t.key]);});
-  on('m-del',()=>{closeMenu();deleteFromIpod(t);});
-  on('m-undo',()=>{closeMenu();decide({tier:'seen'},[t.key]);});
+  on('m-want',()=>{closeMenu();decide({tier:onPod&&!anyCol?'undecided':'sync'},[t.key]);});
+  on('m-skip',()=>{closeMenu(); offPod?decide({tier:'undecided'},[t.key]):deleteFromIpod(t);});
+  on('m-undo',()=>{closeMenu();decide({tier:'undecided'},[t.key]);});
   on('m-vinyl',()=>{closeMenu();decide({vinyl:!t.vinyl},[t.key]);});
   on('m-play',()=>{closeMenu();play();});
 }
-// Off the iPod: out of every playlist it is in, then skipped, which sync
+// Off the iPod: skipped, which sync
 // reads as "take this track off the device". Nothing happens on the device
 // until the next sync, and the row says so by being struck through.
 // Taking a track off the device no longer strips it from the playlists it
 // belongs to. It used to have to: plan() would see it in a collection, not
-// on the device, and add it straight back. `skipped` is authoritative in
-// plan() now, so the membership survives -- and un-skipping puts the track
-// back exactly where it was, which it never could before.
+// on the device, and add it straight back. `remove` is authoritative in
+// plan() now, so the membership survives -- and setting it back to sync puts
+// the track exactly where it was, which it never could before.
 async function deleteFromIpod(t){
-  await decide({tier:'skipped'},[t.key]);
+  await decide({tier:'remove'},[t.key]);
   const inCols=(t.collections||[]).length;
-  toast((t.device?'off the iPod on the next sync':'skipped')
+  toast((t.device?'off the iPod on the next sync':'will never sync')
         + (inCols?` \u00b7 still in ${inCols} playlist${inCols>1?'s':''}`:''));
 }
 document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more'))closeMenu(); });
@@ -2046,8 +2047,8 @@ async function pourPlaylist(name, into){
   const waiting=keys.filter(k=>!(BYKEY.get(k)||{}).local).length;
   toast(`${keys.length} into ${target}${into?'':' — new'}${waiting?` · ${waiting} not owned yet`:''}`);
 }
-// AN ALBUM ONTO THE IPOD. The tracks are flagged `wanted` and nothing else
-// happens: sync copies a wanted track that belongs to no collection, and the
+// AN ALBUM ONTO THE IPOD. The tracks are marked `sync` and nothing else
+// happens: sync copies a synced track that belongs to no collection, and the
 // device assembles the album itself out of the tags. Making a playlist named
 // after it would put the same record in two menus.
 async function albumToIpod(a){
@@ -2055,18 +2056,18 @@ async function albumToIpod(a){
   if(!ks.length){toast('all of it is already on the iPod');return;}
   const newborn=a.tracks.filter(t=>!BYKEY.has(t.key)&&ks.includes(t.key))
     .map(t=>({key:t.key,artist:t.artist,title:t.title}));
-  const r=await post('/api/decide',{keys:ks,...(newborn.length?{adopt:newborn}:{}),wanted:true});
+  const r=await post('/api/decide',{keys:ks,...(newborn.length?{adopt:newborn}:{}),tier:'sync'});
   if(!r.ok){toast('NOT SAVED — check the terminal');return;}
   await load(); saved();
   const waiting=ks.filter(k=>!(BYKEY.get(k)||{}).local).length;
   toast(`${ks.length} track${ks.length>1?'s':''} queued for the iPod${waiting?` · ${waiting} not owned yet`:''}`);
 }
-// AND OFF IT. Skipped is what sync reads as "take this off the device", the
+// AND OFF IT. `remove` is what sync reads as "take this off the device", the
 // same verdict a single track gets; an album is just all of them at once.
 async function albumOffIpod(a){
   const ks=a.tracks.filter(t=>t.device).map(t=>t.key);
   if(!ks.length){toast('none of it is on the iPod');return;}
-  const r=await post('/api/decide',{keys:ks,tier:'skipped',wanted:false});
+  const r=await post('/api/decide',{keys:ks,tier:'remove'});
   if(!r.ok){toast('NOT SAVED — check the terminal');return;}
   await load(); saved();
   toast(`${ks.length} track${ks.length>1?'s':''} off the iPod on the next sync`);
@@ -2120,7 +2121,7 @@ dlgin.onkeydown=e=>{ e.stopPropagation(); if(e.key==='Escape')closeDlg(); else i
 dlg.onclick=e=>{if(e.target===dlg)closeDlg();};
 
 /* ---------------- keys ---------------- */
-const FILTERS=['all','undecided','shortlisted','maybe','rented only','on T7','on vinyl','on iPod','remove'];
+const FILTERS=['all','undecided','sync','remove','rented only','on T7','on vinyl','on iPod'];
 const qi=$('#q');
 qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawMid();drawFoot();paintPlaying();};
 qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.blur();draw();} if(e.key==='Enter')qi.blur();};
@@ -2144,13 +2145,13 @@ document.addEventListener('keydown',e=>{
   if(k==='j'||k==='ArrowDown'){e.preventDefault();sel=Math.min(view.length-1,sel+1);mark();}
   else if(k==='k'||k==='ArrowUp'){e.preventDefault();sel=Math.max(0,sel-1);mark();}
   else if(k===' '){e.preventDefault();play();}
-  else if(k==='b'){decide({tier:'shortlisted'},null,true);}
-  else if(k==='m'){decide({tier:'maybe'},null,true);}
+  else if(k==='s'||k==='w'||k==='b'){decide({tier:'sync'},null,true);}
+
   else if(k==='x'){
     // inside a collection, x takes the track out of it; it is not a verdict on the track
     if(colPick){const t=view[sel]; if(t)decide({collection:colPick,mode:'remove'},[t.key]);}
-    else decide({tier:'skipped'},null,true);}
-  else if(k==='u'){decide({tier:'seen'});}
+    else decide({tier:'remove'},null,true);}
+  else if(k==='u'){decide({tier:'undecided'});}
   else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl});}
   else if(k==='c'){e.preventDefault();openDlg(null);}
   else if(k==='f'){filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
@@ -2164,13 +2165,15 @@ function paintHealth(){
   const ip={ready:['ok','iPod',''],waking:['warn','iPod','waking'],
             ejected:['off','iPod','ejected'+(h.ejected_at?' '+h.ejected_at:'')],absent:['off','iPod','']}[h.ipod]||['off','iPod',''];
   g.push(dot(...ip));
-  const mu={ok:['ok','Music',''],closed:['off','Music','closed'],wedged:['warn','Music','not answering']}[h.music]||['off','Music',''];
-  g.push(dot(...mu));
+  // The gauge is a fact ABOUT THE IPOD, so it sits with it rather than
+  // drifting between devices. One slot, one subject.
   if(h.free!=null&&h.size!=null){
     const used=1-h.free/h.size, gb=b=>(b/1e9).toFixed(0);
     g.push(`<i class="cap" title="${gb(h.free)} GB free of ${gb(h.size)} GB"><b style="width:${Math.max(2,Math.round(used*100))}%"></b></i>`);
     g.push(`<i class="capn">${gb(h.free)} GB free</i>`);
   }
+  const mu={ok:['ok','Music',''],closed:['off','Music','closed'],wedged:['warn','Music','not answering']}[h.music]||['off','Music',''];
+  g.push(dot(...mu));
   (h.sources||[]).forEach(s=>g.push(dot(s.online?'ok':'off',s.name,s.online?'':'offline')));
   if(h.tools&&!(h.tools.ffmpeg&&h.tools.ffprobe))g.push(dot('warn','ffmpeg','missing'));
   if(h.config)g.push(dot('warn','config','missing'));

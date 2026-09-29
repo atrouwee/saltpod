@@ -172,29 +172,56 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## One question per track: sync or remove
+
+The tool asks a track one thing -- *does this belong on the iPod?* -- and
+takes three answers: **`sync`** yes, **`remove`** no, **`undecided`** not yet
+asked. That is the whole decision model.
+
+It used to be four tiers and a flag: `seen`, `shortlisted`, `maybe`,
+`skipped`, plus a separate `wanted` boolean that sync actually read. Across
+1,211 real tracks `maybe` and `shortlisted` were both **zero**. Nobody
+reaches for a mood when the question is binary, and `wanted` duplicated the
+tier from a second column, so two fields could disagree about the same
+sentence. `migrate()` in `state.py` folds the old names forward on load and
+is idempotent, so no data was rewritten by hand.
+
+Two more fields went with them. **`note`** was never written by anything and
+is gone. **`bought`** is no longer stored -- a file existing on the drive is
+what bought means, so it is derived, which removed a flag that could be
+wrong. **`vinyl`** stays: it answers a different question and a track can be
+both.
+
+The names say what sync will do, which is the point. `Sync to the iPod` and
+`Remove from the iPod` in the row menu, `s` and `x` on the keyboard, `u` back
+to undecided.
+
 ## Adding to a collection is the decision to buy
 
 Putting a track in a collection says it belongs on the iPod. If there is no
 file for it and it was never bought, that is the same sentence as *I have to
-go and buy this* -- so `apply_decision` promotes it to **shortlisted**, and it
-appears in Buy. It fires only from an undecided, maybe or skipped tier, never
-over a decision already made, and never for a track the index holds a file
-for. Pouring a folder off the drive therefore adds nothing to the buy list;
+go and buy this* -- so `apply_decision` promotes it to **`sync`**, and it
+appears in Buy. It fires only from an undecided or removed tier, never over a
+decision already made, and never for a track the index holds a file for. Pouring a folder off the drive therefore adds nothing to the buy list;
 pouring an Apple Music playlist adds most of it, which is the gap the tool
 exists to close.
 
-A shortlisted track leaves the buy list the same way it arrived: its `...`,
-where **Undecided** is named *Take off the buy list* while it is shortlisted.
-Buy cards carry the three dots too, so the menu is reachable from the list
-the track is actually in.
+A track leaves the buy list the same way it arrived: its `...`, where
+**Undecided** withdraws the decision. Buy cards carry the three dots too, so
+the menu is reachable from the list the track is actually in.
+
+**Being in a playlist is itself the decision**, so `Undecided` is not offered
+for a track in one -- the server would promote it straight back to `sync` and
+the row would look broken. Take it out of the playlist first; that row sits
+directly above.
 
 ## Lookup happens when a track joins the buy list, not before
 
 Identity, price and a lossless source are only interesting for a track you
 have decided to buy. Matching a whole playlist up front spends hundreds of
-requests on tracks that will never be shortlisted, and the answers go stale
+requests on tracks that will never be marked, and the answers go stale
 before they are read. So `apply_decision` queues a single iTunes lookup the
-moment a track becomes shortlisted -- by hand, by menu, or by the collection
+moment a track is marked `sync` -- by hand, by menu, or by the collection
 rule above -- and a background worker resolves it in about a second and
 pushes `data` over SSE.
 
@@ -208,7 +235,7 @@ changes). With it, Sault - Power and Barker - Fluid Mechanics both score
 
 Every buy card carries a **fixed state slot**: *looking up iTunes…* while in
 flight, then *iTunes exact · 8:00 · bandcamp confirmed*, or *not on iTunes ·
-try Bandcamp*, or *look it up* as a link for anything shortlisted before this
+try Bandcamp*, or *look it up* as a link for anything marked before this
 existed. One slot, four states, nothing moves. A link above the note looks up
 everything still unknown in one go.
 
@@ -412,12 +439,12 @@ put the same record in two different menus.
 
 That needed a change in `apply.plan`, which until now only ever copied tracks
 belonging to a collection -- a track in no playlist was never written. It now
-also copies tracks flagged **`wanted`** that belong to no collection. That
-flag is the whole mechanism: drop an album on the iPod pane, or use its
-`...`, and its tracks are marked `wanted`; sync copies them; the device
-assembles the album itself.
+also copies tracks marked **`sync`** that belong to no collection. That tier
+is the whole mechanism: drop an album on the iPod pane, or use its `...`, and
+its tracks are marked `sync`; sync copies them; the device assembles the
+album itself.
 
-Off the device is the same verdict a single track gets: **skipped** on every
+Off the device is the same verdict a single track gets: **`remove`** on every
 track of the album, which sync reads as "take this off".
 
 **Group on the album name alone.** Keying on artist+album looked safer and
@@ -532,8 +559,8 @@ add it straight back on the next sync. So the membership was sacrificed to
 make the removal stick -- and nothing recorded it, so no amount of
 re-deciding could put it back.
 
-The fix is in `plan()`, not in the button: **`skipped` is authoritative over
-collection membership.** A skipped track is never an add candidate, whatever
+The fix is in `plan()`, not in the button: **`remove` is authoritative over
+collection membership.** A removed track is never an add candidate, whatever
 names it. Delete now only sets the tier, the playlists survive, and the toast
 says so (`still in 2 playlists`).
 

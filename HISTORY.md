@@ -87,7 +87,9 @@ returns a remix by somebody else.
 them into a chosen subset: one record per track across all playlists, four
 tiers (seen, shortlisted, maybe, skipped) and two flags deliberately kept
 separate — vinyl and bought answer different questions and a track can be
-both. Monthly playlists became metadata; what reaches the iPod are
+both. (Two of those tiers were never used once in 1,211 tracks; the model
+later collapsed to `sync` / `remove` / `undecided`, and `bought` became
+derived. See HANDOFF.) Monthly playlists became metadata; what reaches the iPod are
 user-named **collections**.
 
 Rebuild is non-destructive by construction — it writes only identity fields

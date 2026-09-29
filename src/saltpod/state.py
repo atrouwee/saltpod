@@ -4,7 +4,7 @@
 Four tiers, per AJ's own model:
 
     seen         it turned up in a monthly playlist. The default, not a choice.
-    shortlisted  I want this in lossless.       -> feeds the buy guides
+    sync         This belongs on the iPod.       -> feeds the buy guides
     maybe        defer; resurfaces next quarter.
     skipped      not this one.
 
@@ -39,9 +39,36 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STATE = os.path.join(ROOT, 'data', 'state.json')
 
-DECISION_FIELDS = ('tier', 'vinyl', 'collections', 'bought', 'on_ipod', 'wanted',
-                   'note', 'decided_at')
-TIERS = ('seen', 'shortlisted', 'maybe', 'skipped')
+DECISION_FIELDS = ('tier', 'vinyl', 'collections', 'bought', 'on_ipod', 'decided_at')
+# ONE QUESTION PER TRACK: should this be on the iPod? `sync` yes, `remove`
+# no, `undecided` not yet asked -- which is the absence of a decision rather than
+# a third choice. What used to be four tiers had two nobody ever used
+# (`maybe` and `shortlisted` were both zero across 1,211 tracks) and a
+# separate `wanted` flag that meant exactly what a collection already meant.
+# The buy list is now DERIVED -- want it, no file for it -- so it can never
+# disagree with what you actually decided.
+TIERS = ('undecided', 'sync', 'remove')
+
+# What the old four collapse to, applied on load so an older state file, or
+# someone else's clone, still opens.
+_TIER_WAS = {'seen': 'undecided', 'shortlisted': 'sync', 'maybe': 'sync',
+             'skipped': 'remove', 'want': 'sync', 'skip': 'remove'}
+
+
+def migrate(st):
+    """Fold the old decision model into the new one. Idempotent."""
+    for r in (st.get('tracks') or {}).values():
+        t = r.get('tier')
+        if t in _TIER_WAS:
+            r['tier'] = _TIER_WAS[t]
+        elif t not in TIERS:
+            r['tier'] = 'undecided'
+        if r.pop('wanted', False) and r['tier'] != 'remove':
+            r['tier'] = 'sync'           # `wanted` always meant this
+        if r.get('collections') and r['tier'] == 'undecided':
+            r['tier'] = 'sync'           # being in a playlist IS wanting it
+        r.pop('note', None)
+    return st
 
 
 def key_for(artist, title):
@@ -56,7 +83,7 @@ def key_for(artist, title):
 
 def load():
     if os.path.exists(STATE):
-        return json.load(open(STATE))
+        return migrate(json.load(open(STATE)))
     return {'version': 1, 'tracks': {}, 'collections': []}
 
 
@@ -75,7 +102,7 @@ def import_device(mount=None, verbose=True):
     These merge with playlist tracks by the same key, so something that is both
     in a 2026 monthly and already on the device becomes ONE record carrying
     both facts. For a device track the tiers read differently but mean the same
-    thing: `shortlisted` = keep it, `skipped` = take it off.
+    thing: `sync` = keep it, `remove` = take it off.
 
     Sets bought=True: it is on the device, so it is owned, whatever route it
     took to get there.
@@ -205,8 +232,8 @@ def set_order(st, name, keys):
 
 def blank(artist, title):
     return {'artist': artist, 'title': title, 'playlists': [],
-            'tier': 'seen', 'vinyl': False, 'collections': [], 'bought': False,
-            'on_ipod': False, 'note': '', 'decided_at': None}
+            'tier': 'undecided', 'vinyl': False, 'collections': [], 'bought': False,
+            'on_ipod': False, 'decided_at': None}
 
 
 def rebuild(verbose=True):
@@ -326,15 +353,15 @@ def _fmt(sec):
 def buylist():
     """The buy guide for what was CHOSEN, not for whole playlists."""
     st = load()
-    sel = [r for r in st['tracks'].values() if r['tier'] == 'shortlisted' and not r['bought']]
+    sel = [r for r in st['tracks'].values() if r['tier'] == 'sync' and not r['bought']]
     if not sel:
-        print('nothing shortlisted yet - curate first: python3 src/curate.py'); return
+        print('nothing marked sync yet - curate first: python3 src/curate.py'); return
     sel.sort(key=lambda r: (r['artist'].lower(), r['title'].lower()))
     itunes_total = sum((r.get('itunes') or {}).get('price') or 0 for r in sel)
     have_flac = [r for r in sel if (r.get('bandcamp') or {}).get('verdict') == 'confirmed']
 
     L = ['# Buy list - chosen, not defaulted\n',
-         '%d tracks shortlisted and not yet bought.\n' % len(sel),
+         '%d tracks marked sync and not yet bought.\n' % len(sel),
          '| | |', '|---|---|',
          '| iTunes equivalent (AAC 256) | **EUR %.2f** |' % itunes_total,
          '| of these, confirmed lossless on Bandcamp | **%d** |' % len(have_flac), '']

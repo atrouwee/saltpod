@@ -568,7 +568,7 @@ def _original(dev, key):
 #
 # Identity, price and a lossless source are only interesting for a track you
 # have decided to BUY. Looking them up for a whole playlist up front spends
-# hundreds of requests on tracks that will never be shortlisted -- and the
+# hundreds of requests on tracks that will never be marked sync -- and the
 # answers go stale before they are read. So the lookup now happens the moment
 # a track joins the buy list, for that track alone, in the background.
 #
@@ -602,7 +602,7 @@ _SECS = {'built': None, 'map': {}}
 def _secs_map():
     """key -> seconds, from the drive index and the Apple Music library.
 
-    Built once and reused: a linear scan of 9,000 entries per shortlisted
+    Built once and reused: a linear scan of 9,000 entries per marked
     track would make a queue of fifty feel broken.
     """
     idx = os.path.join(ROOT, 'data', 'local', 'index.json')
@@ -798,10 +798,14 @@ def tracks_payload(scope=''):
             'audio': bool(dev.get('origin') or dev.get('location')),
             'key': k, 'artist': r['artist'], 'title': r['title'],
             'playlists': r['playlists'], 'tier': r['tier'], 'vinyl': r['vinyl'],
-            'bought': r['bought'], 'on_ipod': r['on_ipod'],
-            'collections': r['collections'], 'note': r.get('note', ''),
+            # `bought` means you hold the music. A file IS that proof, so it is
+            # derived; the stored flag survives only as the manual override for
+            # "bought but not indexed yet".
+            'bought': bool(r.get('bought')) or bool(t7 or k in loc_keys),
+            'on_ipod': r['on_ipod'],
+            'collections': r['collections'],
             'orphan': bool(r.get('orphan')),
-            'quality': quality_of(dev, k), 'wanted': bool(r.get('wanted')), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
+            'quality': quality_of(dev, k), 'looking': k in LOOKING, 'it_verdict': it.get('verdict'),
             'album': it.get('album') or dev.get('album') or (_original(dev, k) or {}).get('album'),
             'album_artist': (_original(dev, k) or {}).get('album_artist'),
             'genre': it.get('genre'),
@@ -873,9 +877,9 @@ def _label(body, keys):
         verb = 'remove from' if body.get('mode') == 'remove' else 'add to'
         return '%s %s \u2014 %s' % (verb, body['collection'], many)
     if 'tier' in body:
-        return '%s \u2014 %s' % ({'skipped': 'skip', 'shortlisted': 'buy',
-                                   'maybe': 'maybe', 'seen': 'undecide'}.get(body['tier'], body['tier']), many)
-    for f in ('vinyl', 'bought', 'wanted'):
+        return '%s \u2014 %s' % ({'remove': 'remove from the iPod', 'sync': 'sync to the iPod',
+                                   'undecided': 'undecide'}.get(body['tier'], body['tier']), many)
+    for f in ('vinyl', 'bought'):
         if f in body:
             return '%s %s \u2014 %s' % ('set' if body[f] else 'clear', f, many)
     return 'edit %s' % many
@@ -900,7 +904,7 @@ def apply_decision(body, _record=True):
         adopt(st, body)
         keys = body.get('keys') or ([body['key']] if body.get('key') else [])
         touched = []
-        shortlisted = []
+        marked = []
         for k in keys:
             rec = st['tracks'].get(k)
             if not rec:
@@ -908,13 +912,11 @@ def apply_decision(body, _record=True):
             if 'tier' in body and body['tier'] in S.TIERS:
                 rec['tier'] = body['tier']
                 rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                if body['tier'] == 'shortlisted':
-                    shortlisted.append(k)
-            for f in ('vinyl', 'bought', 'on_ipod', 'wanted'):
+                if body['tier'] == 'sync':
+                    marked.append(k)
+            for f in ('vinyl', 'bought', 'on_ipod'):
                 if f in body:
                     rec[f] = bool(body[f])
-            if 'note' in body:
-                rec['note'] = str(body['note'])[:500]
             if 'collection' in body:
                 c = str(body['collection']).strip()[:60]
                 if c:
@@ -930,10 +932,10 @@ def apply_decision(body, _record=True):
                             and not rec.get('bought')
                             and not (rec.get('device') or {}).get('origin')
                             and k not in LOCAL_KEYS
-                            and rec.get('tier') in (None, '', 'seen', 'maybe', 'skipped')):
-                        rec['tier'] = 'shortlisted'
+                            and rec.get('tier') in (None, '', 'undecided', 'remove')):
+                        rec['tier'] = 'sync'
                         rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                        shortlisted.append(k)
+                        marked.append(k)
                     if mode == 'add' or (mode != 'remove' and not has):
                         if not has:
                             rec['collections'].append(c)
@@ -965,8 +967,8 @@ def apply_decision(body, _record=True):
             st['collections'] = sorted(cols)
         S.save(st)
     # outside the lock: the worker takes it for itself
-    want_lookup([k for k in shortlisted if not (st['tracks'].get(k) or {}).get('itunes')])
-    return {'ok': True, 'touched': touched, 'looking': len(shortlisted)}
+    want_lookup([k for k in marked if not (st['tracks'].get(k) or {}).get('itunes')])
+    return {'ok': True, 'touched': touched, 'looking': len(marked)}
 
 
 # ---------------------------------------------------------------- audio
@@ -1293,11 +1295,11 @@ class Handler(BaseHTTPRequestHandler):
                     st = S.load()
                 keys = [k for k, r in st['tracks'].items()
                         if r.get('device') and not r.get('itunes')]
-            if body.get('all_shortlisted'):
+            if body.get('all_sync'):
                 with LOCK:
                     st = S.load()
                 keys = [k for k, r in st['tracks'].items()
-                        if r.get('tier') == 'shortlisted' and not r.get('itunes')]
+                        if r.get('tier') == 'sync' and not r.get('itunes')]
             want_lookup(keys)
             return {'ok': True, 'queued': len(keys)}
         if a == 'rebuild':

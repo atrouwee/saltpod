@@ -150,14 +150,14 @@ def plan(mount=None):
                                   -os.path.getsize(e['path'])))
         return cands[0]['path'] if cands else None
 
-    # A track reaches the device two ways. Through a COLLECTION, which is a
-    # playlist and is written as one. Or on its own, flagged `wanted` -- which
-    # is how an album arrives: the Classic builds its Albums menu out of the
-    # tracks' own tags, so an album is not a thing you create, it is a thing
-    # that appears once the tracks are there. Copying them into a playlist
-    # named after the album would put it in the wrong menu twice.
+    # ONE ANSWER DECIDES IT: tier == 'sync'. A collection additionally says
+    # where in a playlist the track goes, and in what order -- but wanting it
+    # on the device is the same fact whether it arrived through a playlist or
+    # through an album. (An album is not a playlist: the Classic builds its
+    # Albums menu from the tracks' own tags, so writing one would put the
+    # record in two menus.)
     loose = [(k, r) for k, r in st['tracks'].items()
-             if r.get('wanted') and not r['collections']]
+             if r.get('tier') == 'sync' and not r['collections']]
     adds, no_source, removes = [], [], []
     for members in list(cols.values()) + [loose]:
         for k, r in members:
@@ -168,7 +168,7 @@ def plan(mount=None):
             # meant stripping it from that playlist first -- destroying the
             # membership to make the removal stick -- and the next plan would
             # otherwise add it back on the following sync.
-            if r.get('tier') == 'skipped':
+            if r.get('tier') == 'remove':
                 continue
             src = source_for(k, r)
             if not src:
@@ -176,7 +176,7 @@ def plan(mount=None):
                 continue
             adds.append((k, r, src))
     for k, r in st['tracks'].items():
-        if r.get('device') and r['tier'] == 'skipped' and k in dev_by_key:
+        if r.get('device') and r['tier'] == 'remove' and k in dev_by_key:
             removes.append((k, r, dev_by_key[k]))
 
     existing = {E.pl_name(p) for p in E.playlists(root, E.playlist_sections(root)[0])}
