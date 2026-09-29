@@ -1,5 +1,13 @@
 # First write to the device — 2026-09-27
 
+> **Photographs of the device** are cited throughout by filename
+> (`device-test*.jpg`). They are kept in the private working repository
+> rather than published here: they are photographs of the owner's own
+> hardware, not screenshots of the tool. Every claim they support is
+> also stated as a before/after count taken from the database itself,
+> which is the evidence that can be checked independently.
+
+
 **Result: accepted.** Stock firmware booted, showed `Test Rename (saltgate)` in
 Playlists with its one track (Migos — Stir Fry), and played it.
 Photo: `device-test-2026-09-27.jpg`.

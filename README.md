@@ -20,6 +20,11 @@ It is not a product.
 **Picking this up?** [HANDOFF.md](HANDOFF.md) — what is proven, what is not,
 what to run.
 
+![saltpod](docs/img/01-workspace.jpg)
+
+**[See it working &rarr;](docs/WALKTHROUGH.md)** — the interface in detail,
+with what each part is for and why it is shaped that way.
+
 ## Status
 
 **Works, on one device.** Two writes to a 160 GB Classic have been accepted
