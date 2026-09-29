@@ -625,6 +625,19 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 .col.fixed:hover { background: none; }
 .col.fixed .nm { color: var(--dim); }
 .col .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A RESERVED MENU SLOT. The column of dots has to exist on every row in a
+   list, or the count beside it steps sideways between a row that has a menu
+   and one that does not -- law 1 broken ACROSS rows instead of within one.
+   Five of the nine lists used to omit it, and the counts in the iPod and
+   source panes sat 28px apart from each other down the same column. */
+.more.hold { visibility: hidden; pointer-events: none; }
+/* the two-line name: an album carries its artist under its title */
+.col .nm.two { white-space: normal; }
+.col .nm.two > i { display: block; font-style: normal; overflow: hidden;
+       text-overflow: ellipsis; white-space: nowrap; }
+.col .nm .sub { display: block; font-size: var(--fs-meta); color: var(--dim);
+       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col.on .nm .sub { color: var(--dim); }
 .col.doing { background: var(--panel); }
 .col.doing .cnt { color: var(--orange); }
 .col.done .nm { color: var(--dim); }
@@ -807,16 +820,29 @@ let AMP=[], AMREAD=null, AMLIB=0;
 // Classic builds its Albums menu out of the tracks' own tags -- so album
 // view is a lens over the same tracks, never a second kind of container.
 let MODE={ipod:'list', src:'list'};
-try{ MODE={...MODE, ...JSON.parse(localStorage['saltpod.mode']||'{}')}; }catch(e){}
+/* A STORED VALUE IS NOT A PROMISE. Everything in localStorage was written by
+   an older build of this page, and the set of legal values moves underneath
+   it. `stab` came back holding 'ipod' from a version where the source tabs
+   and the active pane shared a variable -- a value no current code path can
+   produce -- and because nothing checked, the source pane sat on "Loading…"
+   permanently with no way out but devtools. Read every persisted enum
+   through this; the cost is one array per call and it cannot wedge. */
+const oneOf = (v, allowed, fallback) => allowed.indexOf(v) >= 0 ? v : fallback;
+
+try{
+  const m=JSON.parse(localStorage['saltpod.mode']||'{}');
+  MODE={ipod:oneOf(m.ipod,['list','album'],MODE.ipod),
+        src: oneOf(m.src, ['list','album'],MODE.src)};
+}catch(e){}
 function setMode(pane,m){ MODE[pane]=m; try{ localStorage['saltpod.mode']=JSON.stringify(MODE); }catch(e){}
   if(pane==='ipod'){colPick=null;devPick=null;albPick=null;} else {amPick=null;t7Pick=null;albPick=null;}
   activate(pane==='ipod'?'ipod':(stab==='t7'?'t7':'am')); sel=0; draw(); }
 let albPick=null;            // the album being shown, in either pane
 let PODALBUMS=[], SRCALBUMS=[];
 let stab='am';               // which source the shared pane is showing
-try{ stab=localStorage['saltpod.stab']||'am'; }catch(e){}
+try{ stab=oneOf(localStorage['saltpod.stab'],['am','t7'],'am'); }catch(e){}
 let active='ipod';
-try{ active=localStorage['saltpod.active']||'ipod'; }catch(e){}
+try{ active=oneOf(localStorage['saltpod.active'],['ipod','am','t7'],'ipod'); }catch(e){}
 function activate(which){ captureScroll(); active=which; try{ localStorage['saltpod.active']=which; }catch(e){} }
 function setSrc(which){ captureScroll(); stab=which; try{ localStorage['saltpod.stab']=which; }catch(e){} }
 
@@ -1344,7 +1370,8 @@ function drawCols(){
   }
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
-  let h=`<div class="col ${colPick===null&&!devPick&&active==='ipod'?'on':''}" data-all="1">All on iPod<span class="cnt">${ALL.filter(t=>t.device).length}</span></div>`;
+  let h=colRow({name:'All on iPod', cnt:ALL.filter(t=>t.device).length,
+    cls:(colPick===null&&!devPick&&active==='ipod')?'on':'', attrs:' data-all="1"'});
   h+=names.map(c=>{
       // what sync would still have to do: tracks in it that are not on the device,
       // plus the playlist itself if it has never been written
@@ -1352,10 +1379,10 @@ function drawCols(){
       const ready=off.filter(k=>(BYKEY.get(k)||{}).local).length, waiting=off.length-ready;
       const never=!SYNCED.includes(c)&&!PENDING.has(c);
       const mark=PENDING.has(c)?'new':(off.length?`+${off.length}`:(never?'unsynced':(n[c]||0)));
-      return `<div class="col ${c===colPick?(active==='ipod'?'on':'was'):''} ${(off.length||never||PENDING.has(c))?'pend':''}" data-c="${esc(c)}"
-        title="${esc(c)} — ${n[c]||0} tracks${off.length?`, ${ready} ready to sync, ${waiting} not owned yet`:', all on the iPod'}">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c)}</span>
-      <span class="cnt">${mark}</span><span class="more" title="more">&#8943;</span></div>`;}).join('');
+      return colRow({name:esc(c), cnt:mark, menu:true, attrs:` data-c="${esc(c)}"`,
+        cls:`${c===colPick?(active==='ipod'?'on':'was'):''} ${(off.length||never||PENDING.has(c))?'pend':''}`,
+        title:`${esc(c)} — ${n[c]||0} tracks${off.length?`, ${ready} ready to sync, ${waiting} not owned yet`:', all on the iPod'}`});
+    }).join('');
   if(!names.length)h+=`<p class="note">None yet. Press <b style="color:var(--ink)">+ new</b>, then drag tracks onto it.</p>`;
 
   // then everything else the iPod carries -- iTunes-made, hand-made, smart
@@ -1363,10 +1390,10 @@ function drawCols(){
   if(others.length){
     const allSmart=others.every(p=>p.smart);
     h+=`<div class="month" title="${allSmart?'the firmware\'s own lists: shown, never written':''}${DEV.mounted?'':' — read from '+esc(DEV.source||'the last backup')}">${allSmart?'smart · read-only':'on the iPod'}${DEV.mounted?'':' · last seen'}</div>`;
-    h+=others.map(p=>`<div class="col dim ${p.name===devPick?(active==='ipod'?'on':'was'):''}" data-dev="${esc(p.name)}"
-        title="${esc(p.name)} — ${p.n} tracks${p.smart?', a smart playlist: shown, never written':', made by iTunes or by hand; not a collection yet'}">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
-      <span class="cnt">${p.smart?'smart':p.n}</span></div>`).join('');
+    h+=others.map(p=>colRow({name:esc(p.name), cnt:p.smart?'smart':p.n,
+      cls:`dim ${p.name===devPick?(active==='ipod'?'on':'was'):''}`, attrs:` data-dev="${esc(p.name)}"`,
+      title:`${esc(p.name)} — ${p.n} tracks${p.smart?', a smart playlist: shown, never written':', made by iTunes or by hand; not a collection yet'}`
+    })).join('');
   }
   $('#colbody').innerHTML=h;
   const body=$('#colbody');
@@ -1453,8 +1480,9 @@ function paintSeeds(){
   el.innerHTML = !AMP.length
     ? `<p class="note">Not read yet — the gear has <b style="color:var(--ink)">Read Apple Music</b>.</p>`
     : rows.length
-      ? rows.map(p=>`<div class="col dim" data-seed="${esc(p.name)}" title="${esc(p.name)} — ${p.tracks} tracks, created ${(p.created||'?').slice(0,10)}">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span><span class="cnt">${p.tracks}</span></div>`).join('')
+      ? rows.map(p=>colRow({name:esc(p.name), cnt:p.tracks, cls:'dim',
+          attrs:` data-seed="${esc(p.name)}"`,
+          title:`${esc(p.name)} — ${p.tracks} tracks, created ${(p.created||'?').slice(0,10)}`})).join('')
       : `<p class="note">No playlist called that. <kbd>enter</kbd> makes “${esc(newQ.trim())}” as a new one.</p>`;
   el.querySelectorAll('[data-seed]').forEach(x=>x.onclick=()=>seedFrom(x.dataset.seed));
 }
@@ -1485,12 +1513,13 @@ function drawSrc(){
 }
 function drawAM(){
   const st=p=>p.slug===amPick?(active==='am'?'on':'was'):'';
-  let h=`<div class="col ${amPick==='__all__'?(active==='am'?'on':'was'):''}" data-am="__all__">All in Apple Music
-      <span class="cnt">${AMLIB||''}</span></div>`;
-  h+= AMP.length ? AMP.map(p=>`<div class="col ${st(p)} ${p.imported?'':'dim'}" data-am="${esc(p.slug)}" draggable="true"
-        title="${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''} — drag onto a collection, or onto + new">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
-      <span class="cnt">${(p.created||'').slice(0,7)||p.tracks}</span><span class="more" title="more">&#8943;</span></div>`).join('')
+  let h=colRow({name:'All in Apple Music', cnt:AMLIB||'',
+    cls:amPick==='__all__'?(active==='am'?'on':'was'):'', attrs:' data-am="__all__"'});
+  h+= AMP.length ? AMP.map(p=>colRow({name:esc(p.name), cnt:(p.created||'').slice(0,7)||p.tracks,
+        menu:true, cls:`${st(p)} ${p.imported?'':'dim'}`,
+        attrs:` data-am="${esc(p.slug)}" draggable="true"`,
+        title:`${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''} — drag onto a collection, or onto + new`
+      })).join('')
     : `<p class="note">Not read yet. Open the gear and press <b style="color:var(--ink)">Read Apple Music</b>.</p>`;
   $('#srcbody').innerHTML=h;
   $('#srcbody').querySelectorAll('[data-am]').forEach(el=>{
@@ -1577,23 +1606,52 @@ function albumsOf(rows){
 }
 function albumRows(list,pane){
   if(!list.length)return `<p class="note">No albums here — these tracks carry no album tag.</p>`;
-  return list.map(a=>`<div class="col ${albPick===a.key?'on':''}" data-alb="${esc(a.key)}" draggable="${pane!=='ipod'}"
-      title="${esc(a.artist||'')} — ${esc(a.album||'')} · ${a.tracks.length} tracks${a.onPod?', '+a.onPod+' on the iPod':''}">
-    ${a.art?`<img class="albart" src="${a.art}" loading="lazy" draggable="false">`:'<span class="albart"></span>'}
-    <span style="min-width:0;overflow:hidden">
-      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.album||'—')}</span>
-      <span style="display:block;font-size:10.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.artist||'')}</span>
-    </span>
-    <span class="cnt">${a.tracks.length}</span><span class="more" title="more">&#8943;</span></div>`).join('');
+  return list.map(a=>colRow({name:esc(a.album||'—'), sub:esc(a.artist||''), art:a.art||'',
+    cnt:a.tracks.length, menu:true, cls:albPick===a.key?'on':'',
+    attrs:` data-alb="${esc(a.key)}" draggable="${pane!=='ipod'}"`,
+    title:`${esc(a.artist||'')} — ${esc(a.album||'')} · ${a.tracks.length} tracks${a.onPod?', '+a.onPod+' on the iPod':''}`
+  })).join('');
+}
+
+/* THE ONE LIST ROW.
+
+   Nine places used to hand-assemble this and they disagreed about their own
+   internals: four carried a menu slot and five did not, six repeated the
+   same inline truncation style that `.col .nm` already does, and the album
+   row nested two more inline-styled spans on top. The visible cost was a
+   count column that stepped 28px sideways between a playlist and the "All"
+   row above it.
+
+   One builder, three slots, always in this order: name, count, menu. The
+   menu slot is RESERVED when the row has no menu -- an empty column is what
+   keeps every count and every set of dots on the same two verticals down
+   the whole pane.
+
+   Variants are class and content, never a different shape.               */
+function colRow(o){
+  const art = o.art === undefined ? ''
+    : (o.art ? `<img class="albart" src="${o.art}" loading="lazy" draggable="false">`
+             : '<span class="albart"></span>');
+  const name = o.sub
+    ? `<span class="nm two"><i>${o.name}</i><span class="sub">${o.sub}</span></span>`
+    : `<span class="nm">${o.name}</span>`;
+  return `<div class="col ${o.cls||''}"${o.attrs||''}${o.title?` title="${o.title}"`:''}>`
+    + art + name
+    + `<span class="cnt">${o.cnt==null?'':o.cnt}</span>`
+    + `<span class="more${o.menu?'':' hold'}" title="more">&#8943;</span></div>`;
 }
 
 /* the drive: what is already owned, filed the way the drive files it */
 function drawT7(){
   const st=n=>n===t7Pick?(active==='t7'?'on':'was'):'';
-  let h = T7.folders.length ? `<div class="col ${t7Pick==='__all__'?(active==='t7'?'on':'was'):''}" data-t7="__all__">All in Library<span class="cnt">${T7.total||''}</span></div>` + T7.folders.map(f=>`<div class="col ${st(f.name)} ${f.lossless?'':'dim'}" data-t7="${esc(f.name)}" draggable="true"
-        title="${esc(f.name)} — ${f.n} files${f.lossless?`, ${f.lossless} lossless`:', none lossless'} — drag onto a collection, or onto + new">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
-      <span class="cnt">${f.n}</span><span class="more" title="more">&#8943;</span></div>`).join('')
+  let h = T7.folders.length
+    ? colRow({name:'All in Library', cnt:T7.total||'',
+        cls:t7Pick==='__all__'?(active==='t7'?'on':'was'):'', attrs:' data-t7="__all__"'})
+      + T7.folders.map(f=>colRow({name:esc(f.name), cnt:f.n, menu:true,
+        cls:`${st(f.name)} ${f.lossless?'':'dim'}`,
+        attrs:` data-t7="${esc(f.name)}" draggable="true"`,
+        title:`${esc(f.name)} — ${f.n} files${f.lossless?`, ${f.lossless} lossless`:', none lossless'} — drag onto a collection, or onto + new`
+      })).join('')
     : `<p class="note">Nothing indexed yet. Open the gear and press <b style="color:var(--ink)">Index the drive</b>.</p>`;
   $('#srcbody').innerHTML=h;
   $('#srcbody').querySelectorAll('[data-t7]').forEach(el=>{
@@ -2082,9 +2140,7 @@ function paintSync(){
     const st = r.infra ? (r.state||'fixed') : (r.state || (SP.off.has(r.id)?'out':''));
     const mk = {doing:'\u2026', done:'\u2713', err:'!'}[r.state] || '';
     const right = r.err ? esc(r.err) : (mk || (run?'':esc(r.meta||'')));
-    return '<div class="col '+st+'" data-id="'+esc(r.id)+'">'
-      + '<span class="nm">'+esc(r.name)+'</span>'
-      + '<span class="cnt">'+right+'</span></div>';
+    return colRow({name:esc(r.name), cnt:right, cls:st, attrs:' data-id="'+esc(r.id)+'"'});
   }).join('');
   if(SP.log.length) h+='<div id="splog">'+esc(SP.log.slice(-8).join('\n'))+'</div>';
   $('#spbody').innerHTML=h;

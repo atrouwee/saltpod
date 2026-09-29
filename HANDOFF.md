@@ -172,6 +172,27 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## A stored value is not a promise
+
+Every persisted enum is now read through `oneOf(value, allowed, fallback)`.
+
+The bug that bought this: `stab` — which source the shared pane shows — came
+back from `localStorage` holding `'ipod'`, a value no current code path can
+produce, left behind by a build where the source tabs and the active pane
+shared a variable. Nothing validated it, so `drawSrc()` fell through both
+the `'am'` and `'t7'` branches, `ensureSrcAll()` fetched the wrong index, and
+album view sat on *Loading…* **permanently** — for that browser, across
+reloads, with no way out but devtools.
+
+Three values were exposed this way: `stab`, `active`, and the `MODE` object.
+The booleans were safe by construction because they are compared to `'1'`.
+
+The general rule, and it is not only about `localStorage`: **the set of legal
+values moves underneath anything you persist.** The same class of bug would
+have hit the tier rename if `filter` were stored — a saved `'maybe'` would
+have wedged the centre list on an empty view. Validate on read, fall back to
+the default, never trust what an older version of yourself wrote down.
+
 ## Multi-select
 
 `sel` is still the cursor -- an index into `view`, and scroll memory, nudge,

@@ -36,6 +36,14 @@ removed* and a row that is *being removed* are the same row in the same
 place. The earlier version had a separate checkbox column that vanished when
 the run started, and the whole list jumped.
 
+**The rule runs down a column as well as across a row.** A slot that exists
+on some rows of a list and not others makes the column beside it step
+sideways between them — the same violation, one axis over, and harder to
+see because each row looks fine on its own. Found on 30 September: five of
+the nine lists omitted the menu slot, so counts in the iPod and source panes
+sat on two verticals 28px apart in the same column. Every row in a list
+reserves every slot the list uses.
+
 ### 2. Blue is space. Orange is time.
 
 `--sel-hi` / `--sel-lo` mark **where you are**: the cursor, the selection, a
@@ -226,6 +234,22 @@ would make the list on screen a lie.
 
 There are exactly three. Adding a fourth needs a reason.
 
+**`.col` has one builder, `colRow()`, and every list goes through it.** Nine
+places used to assemble it by hand and they disagreed about their own
+internals: four carried a menu slot and five did not, six repeated the same
+inline truncation style that `.col .nm` already does, and the album row
+nested two more inline-styled spans on top of that. Variants are class and
+content — never a different shape.
+
+```js
+colRow({name, sub, cnt, cls, attrs, title, art, menu})
+//  <div class="col {cls}"> [albart] .nm[.two] .cnt .more[.hold] </div>
+```
+
+The menu slot is **reserved, not omitted**, when a row has no menu:
+`.more.hold` is `visibility: hidden` and keeps its 28px. That is what holds
+every count and every set of dots on the same two verticals down a pane.
+
 ### `.row` — a track
 `grid 44px / 1fr / auto / auto`, `gap 14px`, `padding 9px 10px`, `radius
 10px`, `margin-bottom 3px`.
@@ -235,9 +259,15 @@ between rows.
 
 ### `.col` — a named thing with a count
 `flex`, `gap 8px`, `padding 8px 10px`, `radius 10px`, `font 13.5px`,
-`margin-bottom 2px`. A `.cnt` on the right holds the count.
-Playlists, folders, source lists, sync-review rows. **If your new thing is a
-name plus one number, it is a `.col`.**
+`margin-bottom 2px`. Four slots, always in order: optional `.albart`, then
+`.nm`, `.cnt`, `.more`.
+Playlists, folders, smart lists, source lists, albums, sync-review rows —
+**six lists, one component.** If your new thing is a name plus one number,
+it is a `.col`, and it is built by `colRow()`.
+
+Variants: `.nm.two` carries a second line (an album's artist under its
+title) via a `.sub` span; `art:` adds the 28px thumbnail; `menu:false`
+reserves the dots slot without filling it.
 
 ### `.drow` — a menu line
 `flex`, `gap 10px`, `padding 7px 10px`, `radius 8px`, `font 13.5px`.
