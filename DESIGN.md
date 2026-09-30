@@ -98,6 +98,37 @@ rather than as a visitor.
 Every drag has a menu equivalent. Dragging is faster once you know it; a menu
 is how you find out it is possible.
 
+### 8. A control undoes itself
+
+**The same control that did a thing is the one that takes it back, and it
+says so by changing its own label.** *Buy* becomes *Don't buy*. *Want vinyl*
+becomes *Unwant vinyl*. *Remove from iPod* becomes *Don't remove*. The fold
+chevron that closed a pane opens it; the row you unticked in the sync panel
+is struck through and un-ticks with the same click.
+
+Two consequences, and they are the point:
+
+- **No separate undo affordance.** An "Undecided" row used to sit under the
+  two decisions as a third choice. It was never a thing anyone would pick —
+  it was the undo of the row above, wearing a noun.
+- **No tick either.** The flipped label *is* the state indicator. *Unwant
+  vinyl* already tells you it is wanted; a tick beside it says the same
+  thing twice, in the opposite direction.
+
+**Offer only the verb that means something here.** A track already on the
+iPod cannot be "synced" — it is there. A track that was never on it cannot
+be "removed". So the decision row is one row, chosen by where the track
+actually is:
+
+| Where the track is | The control |
+|---|---|
+| on the iPod | *Remove from iPod* / *Don't remove* |
+| owned, not on it | *Sync to iPod* / *Don't sync* |
+| not owned | *Buy* / *Don't buy* |
+
+The undo drops the object, because the row it undoes already named it:
+*Sync to iPod* → *Don't sync*, never *Don't sync to iPod*.
+
 ---
 
 ## 2. Tokens
@@ -351,6 +382,13 @@ inventing one.
 | `.err` | failed — text and mark turn `--orange` |
 | `.todo` | queued, not started |
 | `.dim` / `.unowned` | you cannot act on this yet (law 3) |
+
+There is no state word for "no decision". In the model `tier` holds
+`undecided` for 1,004 of 1,211 tracks, but **it is the null, not a choice** —
+it has no label, no tag, no filter chip and no key. You reach it by pressing
+the same control again (law 8). The filters name the three pending
+decisions instead, in the menu's own words: *to buy*, *to sync*,
+*to remove*.
 
 `.marked` deliberately uses the same blue as `.sel` at 34% rather than a
 second hue: a different colour would say "a different kind of thing", when it

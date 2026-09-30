@@ -114,7 +114,7 @@ body > * { min-width: 0; }
 h1 { margin: 0; font-size: var(--fs-mark); font-weight: 700; letter-spacing: var(--ls-face); text-transform: uppercase; }
 #q { width: 100%; height: var(--hbtn); padding: 0 12px; box-sizing: border-box; }
 /* The counts give way before the buttons do, and clip at their END: the first
-   number (tracks) matters most, the last (undecided) least. */
+   number (tracks) matters most, the last (the total) least. */
 .counts { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: var(--ls-stat); color: var(--dim); opacity: .6;
           display: flex; gap: 10px; flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
 .counts span { flex: none; }
@@ -435,6 +435,9 @@ aside.left.drop { background: rgba(106,169,244,.07); box-shadow: inset 0 0 0 2px
 
 /* ---------- right pane: buy / vinyl ---------- */
 .card { background: var(--panel); border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 6px; }
+/* the dots ride the card's title line, the same slot the buy cards use */
+.card > b { display: inline-block; max-width: calc(100% - 26px); }
+.card > .more { float: right; margin-top: -2px; }
 .card { position: relative; }
 .card b { font-size: var(--fs-text); }
 .card .more { position: absolute; top: 8px; right: 8px; }
@@ -1021,7 +1024,7 @@ async function load(){
   draw();
 }
 function counts(){
-  const c={undecided:0,sync:0,remove:0,vinyl:0,bought:0};
+  const c={undecided:0,sync:0,remove:0,vinyl:0,bought:0};   // `undecided` is the null, never shown
   ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
   // "to buy" is what you still have to go and get: marked sync, not held
   // bought, and no file for it anywhere on your drives.
@@ -1040,15 +1043,16 @@ function counts(){
 }
 function pass(t){
   if(q){const h=(t.artist+' '+t.title+' '+(t.album||'')).toLowerCase(); if(!h.includes(q))return false;}
-  if(filter==='undecided')return t.tier==='undecided';
+  // the three pending decisions, in the words the menu uses for them
+  if(filter==='to buy')   return t.tier==='sync' && !t.local && !t.device;
+  if(filter==='to sync')  return t.tier==='sync' &&  t.local && !t.device;
+  if(filter==='to remove')return t.tier==='remove';
   if(filter==='vinyl')return t.vinyl;
   if(filter==='on vinyl')return !!owned(t);
   if(filter==='on T7')return t.t7;
   // in Apple Music and nowhere you own: the work still to do
   if(filter==='rented only')return t.am&&!t.t7&&!owned(t);
   if(filter==='on iPod')return t.device;
-  if(filter==='remove')return t.tier==='remove';
-  if(filter==='sync')return t.tier==='sync';
   if(filter==='all')return true;
   return t.tier===filter;
 }
@@ -1802,7 +1806,7 @@ function drawRight(){
     const where=`<code>${esc(DISCOGS.dir||'data/discogs')}/</code>`;
     let h='';
     h+=grp('add','To add on Discogs',toAdd.length, toAdd.length
-      ? toAdd.map(f=>`<div class="card"><b>${esc(f.name)}</b><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
+      ? toAdd.map(f=>`<div class="card"><b>${esc(f.name)}</b><span class="more" data-vrel="${esc(f.name)}" title="more">&#8943;</span><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
           <div class="acts"><a href="https://www.discogs.com/search/?q=${encodeURIComponent(f.name.replace(' — ',' '))}&type=release" target="_blank">Search Discogs</a></div></div>`).join('')
       : flagged.length ? '<p class="note">Everything flagged is already wanted or owned.</p>'
       : '<p class="note">Nothing flagged. Drag a track here, or press <kbd>v</kbd> on one.</p>');
@@ -1810,6 +1814,11 @@ function drawRight(){
     h+=grp('own','Collection',C.length, C.length?C.map(rel).join(''):`<p class="note">No collection export yet — drop it at ${where}collection.csv</p>`);
     el.innerHTML=h;
     el.querySelectorAll('.vg').forEach(g=>g.onclick=()=>{VG[g.dataset.g]=!VG[g.dataset.g];drawRight();});
+    // A list you can only be added to is a trap. The buy cards have carried
+    // the dots since that was pointed out; the vinyl side had the same hole,
+    // and no way out but hunting the track down again in the centre.
+    el.querySelectorAll('[data-vrel]').forEach(m=>m.onclick=e=>{e.stopPropagation();
+      const f=toAdd.find(x=>x.name===m.dataset.vrel); if(f)openMenu(m,'vrel',f);});
   }
 }
 document.querySelectorAll('#rtabs .pill').forEach(t=>t.onclick=()=>{rtab=t.dataset.r;drawRight();});
@@ -2268,6 +2277,19 @@ function paintMenu(){
       await decide({collection:c,mode:'add'},ks); toast(`added ${ks.length} to ${c}`);};
     return;
   }
+  // A VINYL RELEASE on the buy-a-record list. Flagging is per track, the
+  // list groups by release, so unwanting works the way the list reads.
+  if(MENU.kind==='vrel'){
+    const f=MENU.payload; if(!f){closeMenu();return;}
+    const n=f.tracks.length;
+    h.innerHTML=esc(f.name);
+    b.innerHTML=menuRow('Unwant vinyl',`${n} track${n>1?'s':''}`,false,'m-vdrop');
+    b.querySelector('.m-vdrop').onclick=async()=>{closeMenu();
+      await decide({vinyl:false}, f.tracks.map(t=>t.key));
+      toast(`${esc(f.name)} off the vinyl list`);};
+    return;
+  }
+
   // AN ALBUM. It is not a container this tool owns: the Classic builds its
   // Albums menu from the tracks' tags, so putting one on the device means
   // moving its tracks and nothing else -- no playlist is made, or the record
@@ -2377,10 +2399,24 @@ function paintMenu(){
   // altogether -- out of every playlist, gone from the device on the next
   // sync. That is what "delete from library" means when the library is the
   // iPod. For a track not on the device, the same choice is Never sync this.
-  // Two decisions named for their effect, and `undecided` -- the absence of
-  // one -- as the way back out of either.
-  // With a selection, a tick means ALL of them are already there -- a tick on
-  // a mixed set would claim something untrue about most of the rows.
+  //
+  // EVERY OPTION HERE UNDOES ITSELF. `undecided` is the null answer and it
+  // has to exist in the model -- 1,004 of 1,211 tracks are unjudged, not
+  // rejected, and two states would have to call them one or the other. But
+  // it was never something to CHOOSE. It is where you land when you press
+  // the same button again, the way a strike-through comes off and a folded
+  // pane unfolds with the control that folded it. So there is no third row:
+  // each option flips its own label. "Want vinyl" becomes "Unwant vinyl".
+  //
+  // The flipped label is the whole state indicator, so these carry no tick
+  // -- "Unwant vinyl" already tells you it is wanted, and a tick beside it
+  // would be saying the same thing twice in the opposite direction.
+  //
+  // Three pairs, one grammar: Buy / Don't buy, Sync to iPod / Don't sync,
+  // Want vinyl / Unwant vinyl. Remove keeps its own pair because "don't
+  // sync" and "remove" are not the same outcome: sync leaves a track it was
+  // never told about exactly where it is, so taking something OFF the
+  // device needs its own word.
   const everyIs = v => !many ? t.tier===v : markedKeys().every(k=>(BYKEY.get(k)||{}).tier===v);
   const onPod = everyIs('sync'), offPod = everyIs('remove');
   // Being in a playlist IS the decision, so a track in one cannot be undecided:
@@ -2388,16 +2424,38 @@ function paintMenu(){
   // broken. Take it out of the playlist first; that is the row above.
   const anyCol = many ? markedKeys().some(k=>((BYKEY.get(k)||{}).collections||[]).length>0)
                       : (t.collections||[]).length > 0;
+  // Marking a track you do not own is not "sync" in any sense you can act on
+  // today -- it is a purchase decision, and the buy list is where it lands.
+  // Say so, rather than making you infer it from the absence of a file.
+  const held  = many ? markedKeys().every(k=>{const r=BYKEY.get(k)||{}; return r.local||r.device;})
+                     : !!(t.local || t.device);
+  const onDev = many ? markedKeys().some(k=>(BYKEY.get(k)||{}).device) : !!t.device;
+  const vinylOn = many ? markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl) : !!t.vinyl;
 
-  b.innerHTML=menuRow('Sync to the iPod','s',onPod,'m-want')
-    +menuRow((many?markedKeys().some(k=>(BYKEY.get(k)||{}).device):t.device)
-             ?'Remove from the iPod':'Never sync this','x',offPod,'m-skip')
-    +(anyCol?'':menuRow('Undecided','u',t.tier==='undecided','m-undo'))
+  // ONE DECISION ROW, and which one depends on where the track actually is.
+  // You cannot sync a track that is already on the device and you cannot
+  // remove one that was never there -- offering both is offering a no-op,
+  // and "Don't sync" on a track nobody has synced is a control for undoing
+  // something that has not happened.
+  //
+  //   on the iPod        Remove from iPod  /  Don't remove
+  //   owned, not on it   Sync to iPod      /  Don't sync
+  //   not owned          Buy               /  Don't buy
+  //
+  // Verb / don't-verb, and the undo drops the object because the row it is
+  // undoing already said it: "Sync to iPod" becomes "Don't sync".
+  const yesKey   = onDev ? 'x' : 's';
+  const yesCls   = onDev ? 'm-skip' : 'm-want';
+  const yesLabel = onDev ? (offPod ? "Don't remove" : 'Remove from iPod')
+                 : held  ? (onPod  ? "Don't sync"   : 'Sync to iPod')
+                         : (onPod  ? "Don't buy"    : 'Buy');
+
+  b.innerHTML=menuRow(yesLabel,yesKey,false,yesCls)
     +'<div class="sep"></div>'
     +menuRow(many?'Add all to playlist &rsaquo;':'Add to playlist &rsaquo;','c',false,'m-add')
     +(inCol?menuRow((many?`Take all ${N} out of `:'Take out of ')+esc(colPick),'',false,'m-out'):'')
     +'<div class="sep"></div>'
-    +menuRow('Vinyl','v',many?markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl):!!t.vinyl,'m-vinyl')
+    +menuRow(vinylOn?'Unwant vinyl':'Want vinyl','v',false,'m-vinyl')
     +(many?'':menuRow('Play','space',false,'m-play'));
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
@@ -2405,12 +2463,9 @@ function paintMenu(){
   on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},KS);});
   on('m-want',()=>{closeMenu();decide({tier:onPod&&!anyCol?'undecided':'sync'},KS);});
   on('m-skip',()=>{closeMenu(); offPod?decide({tier:'undecided'},KS):deleteFromIpod(t,KS);});
-  on('m-undo',()=>{closeMenu();decide({tier:'undecided'},KS);});
   // A mixed selection turns vinyl ON -- the majority intent when you picked
   // a set and reached for a flag. Everything already flagged stays flagged.
-  on('m-vinyl',()=>{closeMenu();
-    const all = many ? markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl) : !!t.vinyl;
-    decide({vinyl:!all},KS);});
+  on('m-vinyl',()=>{closeMenu();decide({vinyl:!vinylOn},KS);});
   on('m-play',()=>{closeMenu();play();});
 }
 // Off the iPod: skipped, which sync
@@ -2580,7 +2635,7 @@ dlgin.onkeydown=e=>{ e.stopPropagation(); if(e.key==='Escape')closeDlg(); else i
 dlg.onclick=e=>{if(e.target===dlg)closeDlg();};
 
 /* ---------------- keys ---------------- */
-const FILTERS=['all','undecided','sync','remove','rented only','on T7','on vinyl','on iPod'];
+const FILTERS=['all','to buy','to sync','to remove','rented only','on T7','on vinyl','on iPod'];
 const qi=$('#q');
 qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawMid();drawFoot();paintPlaying();};
 qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.blur();draw();} if(e.key==='Enter')qi.blur();};
@@ -2631,7 +2686,6 @@ document.addEventListener('keydown',e=>{
     const ks=targets(); if(!ks.length)return;
     if(colPick)decide({collection:colPick,mode:'remove'},ks);
     else decide({tier:'remove'},null,!MARK.size);}
-  else if(k==='u'){decide({tier:'undecided'});}
   else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl},targets());}
   else if(k==='c'){e.preventDefault();openDlg(null);}
   else if(k==='f'){clearMark();filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
