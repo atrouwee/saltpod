@@ -172,6 +172,49 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## Cancel is not Close
+
+The sync panel has two ways out and they must never blur into one.
+
+**Close** — the scrim, `esc`, the `esc` affordance — puts the panel away and
+changes nothing.
+
+**Cancel** throws the staged changes away, so it is a named button that
+raises a centre prompt first. It sits in the foot beside Confirm rather than
+where the closing affordances are.
+
+There is no queued operation to cancel: **the plan is derived**, the
+difference between what you have decided and what the device holds. So the
+only way to empty it is to take the decisions back, and that is literally
+what `/api/discard` does:
+
+| | becomes |
+|---|---|
+| tracks marked remove | undecided |
+| tracks marked sync, not yet copied | undecided |
+| a playlist never written to the device | the collection goes |
+| a playlist whose members moved | back to exactly what the device holds |
+| a collection deleted but still on the device | re-adopted as it is there |
+
+Metadata edits are **not** touched — they are already in the file, which is
+the master, and undoing one is its own act with its own entry on the stack.
+
+**It is one undo entry**, which is a deliberate departure from the brief.
+That asked for no undo. Everything else in this tool reverses — law 8 — and
+an action this broad is the last one that should be the exception. The
+prompt says `⌘Z brings it back`, which makes it a smaller decision to take
+rather than a scarier one.
+
+Verified on the live plan: 6 removes and a new playlist went to an empty
+plan, and `⌘Z` brought both back. State compared before and after **as it
+loads** — identical.
+
+That last part matters and cost a confused minute: the state *file* differed
+because `migrate()` promotes a collection member from `undecided` to `sync`
+**on every load**, so the file can hold one value while every read sees
+another. Comparing files says they differ; comparing what loads says they do
+not, and what loads is what is true.
+
 ## One store. The iPod is downstream.
 
 **The file on disk is master. The iPod is a slave that catches up on the

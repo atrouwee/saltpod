@@ -687,11 +687,18 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       gap: 12px; padding: 9px 14px; }
 #sp .substat .sp { flex: 1 1 auto; min-width: 0; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; }
+/* two buttons sit side by side and the note yields, rather than the
+   buttons stacking -- which is what a bare span did once there were two */
+#sp .substat > span:last-child { flex: none; display: flex; align-items: center; gap: 8px; }
 #sp .substat button { flex: none; font: inherit; font-size: var(--fs-ctrl); letter-spacing: var(--ls-ctrl);
       text-transform: uppercase; height: var(--hbtn); padding: 0 14px; border-radius: var(--r-md);
       border: 1px solid var(--faint); background: transparent; color: var(--ink);
       cursor: pointer; }
 /* the confirm is the header's Sync button, which is what it is */
+/* Cancel is not the primary action and does not pretend to be. Its weight
+   comes from the prompt it raises, not from colour -- orange means "what is
+   happening now" and a button that has not been pressed is not happening. */
+
 #sp .substat button.go { background: linear-gradient(var(--sel-hi), var(--sel-lo));
       border: 0; color: var(--on-sel); box-shadow: inset 0 1px 0 var(--on-sel-hi); }
 #sp .substat button[disabled] { opacity: .4; cursor: default; background: none;
@@ -2508,15 +2515,53 @@ function paintSyncFoot(fits){
     // The summary above already names every consequence and the rows list
     // them one by one. A button that repeats "Remove 7" is a third telling,
     // and the one place where the words should just be the commitment.
-    btn.innerHTML='<button class="go" id="spgo"'+((!n||!fits)?' disabled':'')+'>'
+    // CANCEL AND CLOSE ARE DIFFERENT ACTS and the panel must not let them
+    // blur. Clicking the scrim, pressing esc or the esc affordance all just
+    // put the panel away and change nothing. Cancel throws the staged
+    // changes away, so it is a named button that asks first -- and it sits
+    // apart from Confirm rather than beside it.
+    btn.innerHTML=(n?'<button id="spdrop">Cancel</button>':'')
+      + '<button class="go" id="spgo"'+((!n||!fits)?' disabled':'')+'>'
       + (n ? 'Confirm' : 'Nothing to do') + '</button>';
     note.textContent = !fits ? 'not enough room'
       : n ? 'nothing has changed on the device yet' : '';
     const g=$('#spgo'); if(g)g.onclick=runSync;
+    const dr=$('#spdrop'); if(dr)dr.onclick=askDiscard;
     return;
   }
   if(SP.state==='running'){ btn.innerHTML=''; note.textContent='leave the iPod plugged in'; return; }
   close();
+}
+
+/* Throwing the staged changes away. A centre prompt, because it is the one
+   action in the panel that is not about the device at all -- it rewrites
+   your decisions -- and because the panel's own foot is where Confirm
+   lives. Two destructive-adjacent buttons in one strip is how people press
+   the wrong one. */
+function askDiscard(){
+  const c = spCounts();
+  const bits = [c.rems && (c.rems+' marked to come off'),
+                c.adds && (c.adds+' marked to go on'),
+                c.pls  && (c.pls +' playlist'+(c.pls>1?'s':''))].filter(Boolean);
+  dlgMode = '__discard__';
+  $('#dlgt').textContent = 'Discard the staged changes';
+  $('#dlgp').innerHTML = 'This puts your decisions back so the next sync has '
+    + 'nothing to do — ' + esc(bits.join(', ')) + '. Nothing on the iPod changes.'
+    + '<br><br>Edits already written into your files are not touched.'
+    + '<br><br><b style="color:var(--ink)">\u2318Z brings it back</b> as one step.';
+  dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
+  $('#dlglist').innerHTML='';
+  $('#dlgbtn').innerHTML='<button class="go" id="dlgok">Discard</button>';
+  $('#dlgok').onclick=doDiscard;
+  dlg.classList.add('on');
+}
+async function doDiscard(){
+  closeDlg();
+  const r = await post('/api/discard', {});
+  if(!r.ok) return toast(r.error || 'could not discard');
+  toast((r.tracks||0)+' tracks, '+(r.playlists||0)+' playlists put back \u00b7 \u2318Z undoes it');
+  await load(); refreshUndo();
+  openSync();                      // re-plan in place; it should now be empty
 }
 
 /* Running. The server prints `@@ <id> <state>` beside its own prose; the page

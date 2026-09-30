@@ -205,6 +205,9 @@ def plan(mount=None):
             'adds': adds, 'no_source': no_source, 'removes': removes,
             'retags': retags,
             'unchanged': unchanged,
+            # what each playlist on the device holds right now, so a revert
+            # has something authoritative to revert TO
+            'dev_seq': dev_seq,
             'new_playlists': [c for c in cols if c not in existing],
             'update_playlists': [c for c in cols if c in existing and c not in unchanged],
             'delete_playlists': sorted(n for n in ours if n in existing and n not in cols)}
