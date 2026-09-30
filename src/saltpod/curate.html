@@ -633,10 +633,12 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       font-size: var(--fs-tag); letter-spacing: var(--ls-label);
       text-transform: uppercase; color: var(--dim); }
 .fld .v { flex: 1 1 auto; min-width: 0; font-size: var(--fs-row); color: var(--ink);
-      border: 0; border-bottom: 1px solid transparent; background: none;
+      border: 0; border-bottom: 1px solid var(--faint); background: none;
       padding: 2px 0; font-family: inherit; outline: none; }
 .fld .v::placeholder { color: var(--faint); }
-.fld:hover .v { border-bottom-color: var(--faint); }
+.fld:hover .v { border-bottom-color: var(--dim); }
+/* a read-only row is a fact, not a field: no rule, and law 4 says so */
+.fld.ro .v { border-bottom-color: transparent; }
 .fld .v:focus { border-bottom-color: var(--sel-hi); }
 /* EDITED IS A STATE OF THE FIELD, not a badge that appears beside it --
    the row must not change width as you type. */
@@ -1790,7 +1792,7 @@ function t7Row(r){
   return {key:r.key, artist:r.artist, title:r.title, album:r.album, seconds:r.secs,
           tier:'', vinyl:false, bought:false, collections:[], playlists:[],
           device:false, t7:true, local:true, am:false, am_owned:false, am_status:null,
-          lossless:r.lossless, origin_ext:r.ext,
+          lossless:r.lossless, origin_ext:r.ext, path:r.path||null,
           play_from:'t7', audio:false, preview:null, art:null, lean:true};
 }
 // Album view needs every track of that source, not one playlist's worth.
@@ -2123,19 +2125,32 @@ const TP = { key:null, path:null, data:null, edits:{}, busy:false };
 function tpDirty(){ return Object.keys(TP.edits).length > 0; }
 
 async function openTrack(t){
-  TP.key = t && t.key || null;
-  TP.path = null; TP.data = null; TP.edits = {};
+  // A KEY IS artist|title, SO AN UNTAGGED FILE CANNOT HAVE ONE -- it has
+  // neither, and no state record either. The path is the only identity the
+  // files this panel exists to fix actually have, so it is preferred
+  // wherever the row carries it.
+  TP.key = (t && t.key) || null;
+  TP.path = (t && t.path) || null;
+  TP.data = null; TP.edits = {};
   $('#tp').classList.add('on'); $('#spscrim').classList.add('on');
   $('#tpt').textContent = t ? (t.artist ? t.artist+' — '+t.title : (t.title||'Track')) : 'Track';
   $('#tpbody').innerHTML = '<p class="note">Reading the file…</p>';
   $('#tpbtn').innerHTML = ''; $('#tpnote').textContent = '';
-  const q = TP.key ? 'key='+encodeURIComponent(TP.key) : 'path='+encodeURIComponent(TP.path||'');
+  const q = TP.path ? 'path='+encodeURIComponent(TP.path)
+                    : 'key='+encodeURIComponent(TP.key||'');
   const d = await fetch('/api/track?'+q).then(r=>r.json()).catch(()=>null);
   if(!d || !d.ok){
     $('#tpbody').innerHTML = '<div class="month">'+esc((d&&d.error)||'could not read it')+'</div>';
     tpFoot(); return;
   }
   TP.data = d; TP.path = d.path;
+  // Name the panel from what was actually read, not from the row that
+  // opened it: a file with no state record arrives with no artist or
+  // title, and "Track" tells you nothing about which one you are looking at.
+  const nm = (d.fields.artist && d.fields.title) ? d.fields.artist+' — '+d.fields.title
+           : (d.artist && d.title) ? d.artist+' — '+d.title
+           : (d.file && d.file.name) || 'Track';
+  $('#tpt').textContent = nm;
   paintTrack();
 }
 function closeTrack(){
@@ -2162,9 +2177,9 @@ function paintTrack(){
     + (d.art ? '<img src="'+d.art+'" alt="">' : '')
     + '<span class="ph">'+(d.art?'':'no cover')+'</span></div>'
     + '<div style="flex:1 1 auto;min-width:0">'
-    + '<div class="fld" style="padding-left:0"><span class="k" style="width:0;display:none"></span>'
+    + '<div class="fld'+('title' in TP.edits?' dirty':'')+'" style="padding-left:0">'
     + '<input class="v" data-f="title" placeholder="Title" value="'+esc(tpValue('title'))+'"'+(ro?' readonly':'')+'></div>'
-    + '<div class="fld" style="padding-left:0"><span class="k" style="width:0;display:none"></span>'
+    + '<div class="fld'+('artist' in TP.edits?' dirty':'')+'" style="padding-left:0">'
     + '<input class="v" data-f="artist" placeholder="Artist" value="'+esc(tpValue('artist'))+'"'+(ro?' readonly':'')+'></div>'
     + '</div></div>';
 
@@ -2185,8 +2200,8 @@ function paintTrack(){
 
   h += '<div class="month">file</div>'
     + tpRow('Name', f.name || '—', true)
-    + tpRow('Format', [f.codec, f.ext && f.ext.slice(1), f.seconds && mmss(f.seconds)]
-            .filter(Boolean).join(' · ') || '—', true)
+    + tpRow('Format', [f.codec, (f.ext||'').slice(1) !== f.codec ? (f.ext||'').slice(1) : '',
+                       f.seconds && mmss(f.seconds)].filter(Boolean).join(' · ') || '—', true)
     + tpRow('Folder', f.folder || '—', true);
   if(d.device && d.device.on)
     h += tpRow('On the iPod', 'yes — the next sync brings it into line', true);
@@ -2250,13 +2265,14 @@ async function saveTrack(){
   TP.busy = true; tpFoot();
   const fields = {};
   for(const [k] of TP_FIELDS) fields[k] = tpValue(k);
-  const body = TP.key ? {key:TP.key, fields} : {path:TP.path, fields};
+  const body = TP.path ? {path:TP.path, fields} : {key:TP.key, fields};
   const r = await post('/api/tags', body);
   TP.busy = false;
   if(!r.ok){ toast(r.error || 'not saved'); tpFoot(); return; }
   TP.edits = {};
   toast('written to the file');
-  const q = TP.key ? 'key='+encodeURIComponent(TP.key) : 'path='+encodeURIComponent(TP.path);
+  const q = TP.path ? 'path='+encodeURIComponent(TP.path)
+                    : 'key='+encodeURIComponent(TP.key||'');
   TP.data = await fetch('/api/track?'+q).then(x=>x.json());
   paintTrack();
   await load(); refreshUndo();
@@ -2939,14 +2955,19 @@ document.addEventListener('keydown',e=>{
   if(dlg.classList.contains('on'))return;
   if($('#rsheet').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
   // With the panel up, the list behind it is not what the keyboard is for.
-  if($('#tp').classList.contains('on')){
+  // UNDO IS GLOBAL AND MUST SURVIVE THE PANELS. Putting these guards above
+  // the cmd-Z handler silently disabled undo whenever a panel was open --
+  // found by pressing it with the track panel up and watching the stack not
+  // move. A modifier chord is never "a key meant for the list behind".
+  const chord = e.metaKey || e.ctrlKey || e.altKey;
+  if(!chord && $('#tp').classList.contains('on')){
     // the panel's own fields handle their keys; this is only for the frame
     if(e.key==='Escape' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)){
       e.preventDefault(); closeTrack();
     }
     return;
   }
-  if($('#sp').classList.contains('on')){
+  if(!chord && $('#sp').classList.contains('on')){
     if(e.key==='Escape'){e.preventDefault();closeSync();}
     else if(e.key==='Enter'){const g=$('#spgo'); if(g&&!g.disabled){e.preventDefault();g.click();}}
     return;

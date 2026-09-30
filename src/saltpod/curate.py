@@ -1140,6 +1140,9 @@ def local_index():
         g['tracks'].append({
             'key': S.key_for(e.get('artist'), e.get('title')) or S.key_for('', stem),
             'artist': artist, 'title': title, 'file': parts[-1],
+            # the absolute path, because a key is artist|title and an
+            # untagged file has neither -- the panel addresses it by this
+            'path': e.get('path'),
             'album': e.get('album'), 'secs': e.get('duration_sec'),
             'ext': ext, 'lossless': ext in LOSSLESS_EXT,
             # a sub-path is worth showing: "Bought Tracks" is 1,180 files deep
