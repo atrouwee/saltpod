@@ -483,6 +483,18 @@ def plan_summary(mount=None):
             # How many tracks each playlist ends up with, so an unticked
             # playlist row can say what it is leaving alone.
             'sizes': {c: len(m) for c, m in p['collections'].items()},
+            # AND WHICH ONES. A count tells you a playlist is being written;
+            # it does not tell you what will be in it, which is the thing
+            # you are actually approving. `on` is whether the track is
+            # already on the device -- a playlist of tracks that are all
+            # there copies nothing and only builds a menu.
+            'members': {c: [{'key': k,
+                             'artist': r.get('artist') or '',
+                             'title': r.get('title') or '',
+                             'on': k in p['dev_by_key']}
+                            for k, r in m]
+                        for c, m in p['collections'].items()
+                        if c in p['new_playlists'] or c in p['update_playlists']},
         }
     except Exception as e:
         return {'ok': False, 'reason': str(e)[:300]}

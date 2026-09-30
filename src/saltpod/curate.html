@@ -243,7 +243,8 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 /* Rows float on the ground -- separated by space, not rules -- and the selected
    one takes the device's blue. */
 .row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
-       padding: 9px 10px; cursor: pointer; border-radius: var(--r-md); margin-bottom: 3px; user-select: none; }
+       padding: 9px 10px; cursor: pointer; border-radius: var(--r-md); margin-bottom: 3px;
+       user-select: none; -webkit-user-select: none; }
 .row:hover { background: var(--panel); }
 .row.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo));
        box-shadow: inset 0 1px 0 var(--on-sel-hi); }
@@ -708,6 +709,13 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 .col.out .nm { color: var(--faint); text-decoration: line-through; }
 .col.out .cnt { color: var(--faint); }
 /* the infrastructure rows: this happens, it was never yours to pick */
+/* a child of the row above: indented, quieter, and it follows its parent's
+   tick rather than carrying one of its own */
+.col.kid { cursor: default; padding-left: 26px; font-size: var(--fs-text); }
+.col.kid:hover { background: none; }
+.col.kid .nm { color: var(--dim); }
+.col.kid .cnt { color: var(--faint); }
+.col.kid.out .nm, .col.kid.out .cnt { color: var(--faint); text-decoration: line-through; }
 .col.fixed { cursor: default; }
 .col.fixed:hover { background: none; }
 .col.fixed .nm { color: var(--dim); }
@@ -1372,6 +1380,13 @@ function wireRows(){
     // The three conventions every list in every OS uses, and the reason the
     // cursor and the selection are separate: shift needs an anchor to measure
     // a range from, and that anchor is where the cursor already was.
+    // THE BROWSER EXTENDS A TEXT SELECTION ON MOUSEDOWN, before any click
+    // handler runs -- so shift-clicking a range highlighted every track name
+    // it passed over as well as marking the rows. `user-select: none` does
+    // not help: the anchor is set outside the row. The only thing that stops
+    // it is refusing the default on the way down.
+    r.onmousedown=e=>{ if(e.shiftKey){ e.preventDefault();
+      const sel=window.getSelection && window.getSelection(); if(sel)sel.removeAllRanges(); } };
     r.onclick=e=>{
       const i=+r.dataset.i;
       if(e.shiftKey){ e.preventDefault(); markRange(sel,i); sel=i; draw(); return; }
@@ -2382,8 +2397,18 @@ function buildSyncRows(){
              ...p.update.map(c=>({c:c,what:'update'}))];
   if(pls.length){
     R.push({sec:'playlists', n:pls.length, ids:pls.map(x=>'p:'+x.c)});
-    pls.forEach(x=>R.push({id:'p:'+x.c, name:x.c,
-      meta:x.what==='delete'?'delete':x.what+' · '+(((p.sizes||{})[x.c])||0)}));
+    pls.forEach(x=>{
+      R.push({id:'p:'+x.c, name:x.c,
+        meta:x.what==='delete'?'delete':x.what+' · '+(((p.sizes||{})[x.c])||0)});
+      // WHAT WILL BE IN IT. A count says a playlist is being written; it
+      // does not say what it will contain, which is the thing you are
+      // approving. These are children of the row above and are ticked with
+      // it -- a track is in a playlist or it is not, and taking one out is
+      // editing the collection, not editing this sync.
+      ((p.members||{})[x.c]||[]).forEach(t=>R.push({
+        child:'p:'+x.c, name:t.artist ? t.artist+' — '+t.title : t.title,
+        meta: t.on ? 'on the iPod' : 'copied across'}));
+    });
   }
   R.push({edge:'committed from here'});
   R.push({id:'write',  infra:true, name:'write the database'});
@@ -2392,7 +2417,7 @@ function buildSyncRows(){
   SP.rows=R;
 }
 
-const spIncluded = () => SP.rows.filter(r=>r.id&&!r.infra&&!SP.off.has(r.id));
+const spIncluded = () => SP.rows.filter(r=>r.id&&!r.infra&&!r.child&&!SP.off.has(r.id));
 function spCounts(){
   const inc=spIncluded();
   return {adds:inc.filter(r=>r.id[0]==='a').length,
@@ -2445,6 +2470,13 @@ function paintSync(){
     }
     // The state lives in the .cnt slot -- the slot that already holds a
     // count on every other row in the product. One slot, one meaning.
+    if(r.child){
+      const gone = SP.off.has(r.child);
+      return '<div class="col kid'+(gone?' out':'')+'">'
+        + '<span class="nm">'+esc(r.name)+'</span>'
+        + '<span class="cnt">'+esc(r.meta||'')+'</span>'
+        + '<span class="more hold"></span></div>';
+    }
     const st = r.infra ? (r.state||'fixed') : (r.state || (SP.off.has(r.id)?'out':''));
     const mk = {doing:'\u2026', done:'\u2713', err:'!'}[r.state] || '';
     const right = r.err ? esc(r.err) : (mk || (run?'':esc(r.meta||'')));
@@ -2473,10 +2505,11 @@ function paintSyncFoot(fits){
   if(SP.state==='review'){
     // The button names the consequence rather than the verb. "Sync" tells you
     // nothing about the seven files it is about to delete.
-    const label = !n ? 'Nothing to do'
-      : [c.rems?('Remove '+c.rems):'', c.adds?('Copy '+c.adds):'',
-         (!c.rems&&!c.adds&&c.pls)?('Write '+c.pls):''].filter(Boolean).join(' \u00b7 ');
-    btn.innerHTML='<button class="go" id="spgo"'+((!n||!fits)?' disabled':'')+'>'+esc(label)+'</button>';
+    // The summary above already names every consequence and the rows list
+    // them one by one. A button that repeats "Remove 7" is a third telling,
+    // and the one place where the words should just be the commitment.
+    btn.innerHTML='<button class="go" id="spgo"'+((!n||!fits)?' disabled':'')+'>'
+      + (n ? 'Confirm' : 'Nothing to do') + '</button>';
     note.textContent = !fits ? 'not enough room'
       : n ? 'nothing has changed on the device yet' : '';
     const g=$('#spgo'); if(g)g.onclick=runSync;
