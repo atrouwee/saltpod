@@ -172,6 +172,42 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## One store. The iPod is downstream.
+
+**The file on disk is master. The iPod is a slave that catches up on the
+next sync.** There is no such thing as "iPod metadata" to be edited, and no
+reason to ever show the two side by side.
+
+This was nearly got wrong. Reading the device turned up two stores — the
+tags in the files on the drive, and the iTunesDB's own `album artist bitrate
+composer filetype genre id location ms size title track_no visible year` for
+all 658 tracks — and the obvious next move was a panel showing both with the
+differences marked. That would have institutionalised a bug: a permanent
+control on screen for a state that should not outlive one sync.
+
+What follows from the rule:
+
+- **Editing writes the file, always and first.** Nothing is staged in an
+  overlay, nothing is written only to the device.
+- **A device entry that disagrees with its file is drift**, and ending it is
+  the plan's job, not the panel's job to display. Those rows join the sync
+  panel like any other, tickable, in execution order.
+- **Undo is forward, not backward.** Undoing after a sync rewrites the file,
+  which bumps mtime, which re-probes, which finds the reverted values, which
+  queues a fresh update. The device catches up again. This works only
+  because `plan()` compares values rather than tracking a dirty flag — a
+  flag would have been cleared by the sync and the correction would never
+  have been queued.
+- **The fallback in `sync()` retires.** `meta['title'] or r['title']` is
+  what let the device be right about tracks the drive was wrong about: an
+  untagged file copied across took its name from the state record. Useful
+  while files were unfixable; once they carry their own names it is papering
+  over the master, and it goes.
+
+The measured starting point, 30 September: 581 files on the drive with no
+artist or title, and **2 blank artists, 1 blank album, 12 blank genres out
+of 658 on the device.** The drive is the side that is wrong.
+
 ## A stored value is not a promise
 
 Every persisted enum is now read through `oneOf(value, allowed, fallback)`.
