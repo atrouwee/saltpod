@@ -129,6 +129,19 @@ actually is:
 The undo drops the object, because the row it undoes already named it:
 *Sync to iPod* → *Don't sync*, never *Don't sync to iPod*.
 
+**And when the question is already answered by the world, the control stops
+being one.** Own the record and there is nothing to want or unwant, so that
+row becomes `.inert`: it keeps its slot — the menu must not resize under the
+cursor — dims, and says *Owned on vinyl*. Same for a file you already hold:
+*Owned digitally*. That is law 4 inside the menu, a fact where a decision
+used to be.
+
+**There is no standing rule, only one-off decisions.** A track that was
+never on the iPod cannot be removed from it, and marking one "never sync"
+would be a rule about the future rather than a decision about now. So the
+negative is offered only where it means something, and the `x` key says
+*not on the iPod* rather than inventing a list nobody asked for.
+
 ---
 
 ## 2. Tokens
@@ -382,6 +395,7 @@ inventing one.
 | `.err` | failed — text and mark turn `--orange` |
 | `.todo` | queued, not started |
 | `.dim` / `.unowned` | you cannot act on this yet (law 3) |
+| `.inert` | a fact sitting in a list of choices: keeps its slot, dims, does not respond |
 
 There is no state word for "no decision". In the model `tier` holds
 `undecided` for 1,004 of 1,211 tracks, but **it is the null, not a choice** —

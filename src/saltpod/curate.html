@@ -574,6 +574,13 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 .drow.now .dn { color: var(--ink); } .drow.now .dc { color: var(--orange); }
 .drow.todo .dn, .drow.skip .dn { color: var(--faint); }
 .drow.err .dn, .drow.err .dc { color: var(--orange); }
+/* A FACT IN A LIST OF CHOICES. It keeps the slot -- nothing shifts when a
+   record arrives -- but it is not a button: no hover, no pointer, dimmed.
+   Law 4 inside the menu: a fact about the world is plain, a decision is a
+   control. */
+.drow.inert { cursor: default; opacity: .5; }
+.drow.inert:hover { background: none; }
+.drow.inert:hover .dn, .drow.inert:hover .dc { color: var(--dim); }
 .drow.done:hover, .drow.now:hover, .drow.todo:hover, .drow.skip:hover, .drow.err:hover { background: transparent; cursor: default; }
 #dlglist { max-height: 34vh; overflow: auto; margin-top: 2px; }
 #toast { position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--ground);
@@ -2431,6 +2438,12 @@ function paintMenu(){
                      : !!(t.local || t.device);
   const onDev = many ? markedKeys().some(k=>(BYKEY.get(k)||{}).device) : !!t.device;
   const vinylOn = many ? markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl) : !!t.vinyl;
+  // OWNING THE RECORD ENDS THE QUESTION. There is nothing to want and
+  // nothing to unwant, so the row stops being a control and becomes what it
+  // now is -- a fact. It keeps its slot so the menu does not resize under
+  // the cursor, and it dims so you can see at a glance it will not respond.
+  const lpOwned = many ? markedKeys().every(k=>{const r=BYKEY.get(k); return r&&owned(r);})
+                       : !!owned(t);
 
   // ONE DECISION ROW, and which one depends on where the track actually is.
   // You cannot sync a track that is already on the device and you cannot
@@ -2450,12 +2463,18 @@ function paintMenu(){
                  : held  ? (onPod  ? "Don't sync"   : 'Sync to iPod')
                          : (onPod  ? "Don't buy"    : 'Buy');
 
+  // The digital half of the same idea: once a file exists on your own drive
+  // there is nothing to buy, and the row that would have said Buy says what
+  // is true instead.
+  const digitalOnly = !onDev && held;
   b.innerHTML=menuRow(yesLabel,yesKey,false,yesCls)
+    +(digitalOnly?menuRow('Owned digitally','',false,'inert'):'')
     +'<div class="sep"></div>'
     +menuRow(many?'Add all to playlist &rsaquo;':'Add to playlist &rsaquo;','c',false,'m-add')
     +(inCol?menuRow((many?`Take all ${N} out of `:'Take out of ')+esc(colPick),'',false,'m-out'):'')
     +'<div class="sep"></div>'
-    +menuRow(vinylOn?'Unwant vinyl':'Want vinyl','v',false,'m-vinyl')
+    +(lpOwned ? menuRow('Owned on vinyl','',false,'inert')
+              : menuRow(vinylOn?'Unwant vinyl':'Want vinyl','v',false,'m-vinyl'))
     +(many?'':menuRow('Play','space',false,'m-play'));
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
@@ -2477,17 +2496,21 @@ function paintMenu(){
 // plan() now, so the membership survives -- and setting it back to sync puts
 // the track exactly where it was, which it never could before.
 async function deleteFromIpod(t,keys){
-  const ks = keys && keys.length ? keys : [t.key];
+  // A one-off decision about what is on the device right now. Nothing here
+  // marks a track as never-sync -- that standing rule does not exist.
+  const all = keys && keys.length ? keys : [t.key];
+  const ks = all.filter(k=>(BYKEY.get(k)||{}).device);
+  if(!ks.length){toast('not on the iPod');return;}
   await decide({tier:'remove'},ks);
   if(ks.length>1){
-    const onDev=ks.filter(k=>(BYKEY.get(k)||{}).device).length;
     const held=ks.filter(k=>((BYKEY.get(k)||{}).collections||[]).length).length;
-    toast(`${ks.length} tracks \u00b7 ${onDev} off the iPod on the next sync`
-          + (held?` \u00b7 ${held} still in playlists`:''));
+    toast(`${ks.length} off the iPod on the next sync`
+          + (held?` \u00b7 ${held} still in playlists`:'')
+          + (all.length>ks.length?` \u00b7 ${all.length-ks.length} were not on it`:''));
     return;
   }
-  const inCols=(t.collections||[]).length;
-  toast((t.device?'off the iPod on the next sync':'will never sync')
+  const inCols=((BYKEY.get(ks[0])||{}).collections||[]).length;
+  toast('off the iPod on the next sync'
         + (inCols?` \u00b7 still in ${inCols} playlist${inCols>1?'s':''}`:''));
 }
 document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more'))closeMenu(); });
@@ -2663,7 +2686,9 @@ document.addEventListener('keydown',e=>{
   if(k===']'){e.preventDefault();fold('R');return;}
   if(k==='.'){ const mo=document.querySelector('#list .row.sel .more'); if(mo){e.preventDefault(); if(MENU)closeMenu(); else openMenu(mo,'track',view[sel]);} return; }
   if(k==='Escape'){ if($('#sp').classList.contains('on')){closeSync();} else if(MENU){closeMenu();} else if(MARK.size){clearMark();draw();} else if(newMode){leaveNew();} else if(q){q='';qi.value='';draw();} else if(colPick||devPick){colPick=null;devPick=null;sel=0;draw();} return; }
-  if(k==='X'){ const t=view[sel]; if(t)deleteFromIpod(t); return; }
+  // Only a track that is ON the device can come off it. There is no
+  // never-sync list: a sync is a one-off decision, not a standing rule.
+  if(k==='X'){ const t=view[sel]; if(t&&t.device)deleteFromIpod(t); return; }
 
   if(k==='J'){e.preventDefault();nudge(+1);return;}
   if(k==='K'){e.preventDefault();nudge(-1);return;}
@@ -2684,8 +2709,11 @@ document.addEventListener('keydown',e=>{
   else if(k==='x'){
     // inside a collection, x takes the track out of it; it is not a verdict on the track
     const ks=targets(); if(!ks.length)return;
-    if(colPick)decide({collection:colPick,mode:'remove'},ks);
-    else decide({tier:'remove'},null,!MARK.size);}
+    if(colPick){decide({collection:colPick,mode:'remove'},ks);return;}
+    // otherwise it only means something for tracks actually on the device
+    const onDev=ks.filter(k2=>(BYKEY.get(k2)||{}).device);
+    if(!onDev.length){toast('not on the iPod');return;}
+    decide({tier:'remove'},onDev,!MARK.size);}
   else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl},targets());}
   else if(k==='c'){e.preventDefault();openDlg(null);}
   else if(k==='f'){clearMark();filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
