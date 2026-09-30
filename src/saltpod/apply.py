@@ -200,12 +200,115 @@ def plan(mount=None):
     # A collection is deletable if this tool wrote it OR adopted it from the
     # device -- both put it in synced_playlists. Smart playlists are never there.
     ours = set(st.get('synced_playlists', []))
+    retags = _metadata_drift(st, dbp, dev_by_key)
     return {'root': root, 'state': st, 'dev_by_key': dev_by_key, 'collections': cols,
             'adds': adds, 'no_source': no_source, 'removes': removes,
+            'retags': retags,
             'unchanged': unchanged,
             'new_playlists': [c for c in cols if c not in existing],
             'update_playlists': [c for c in cols if c in existing and c not in unchanged],
             'delete_playlists': sorted(n for n in ours if n in existing and n not in cols)}
+
+
+TAGGED = ('title', 'artist', 'album', 'genre')
+
+
+def _metadata_drift(st, dbp, dev_by_key):
+    """Where the file and the device disagree about what a track is called.
+
+    THE FILE IS MASTER, so the normal answer is "make the device match".
+    But a Classic cannot retag itself -- there is no keyboard -- which means
+    saltpod is the only writer on either side, and "whichever edit was last"
+    is a fact we recorded rather than a guess we make. So a device entry
+    that was edited here, against a file nobody has touched, wins.
+
+    Attribution comes from two things that cost nothing:
+
+      * the file's **mtime**, straight off the filesystem. An mtime equal to
+        the one recorded at the last sync is a RELIABLE NEGATIVE: the file
+        did not move, full stop.
+      * the tag values **as written at the last sync**, kept in the record.
+        They are the common ancestor, and they are free because they are
+        what we just wrote.
+
+    mtime alone would be wrong in one direction: a restore or a `touch`
+    bumps it without changing a tag, and last-write-wins would then let an
+    untouched file overwrite a real edit on the device. Comparing against
+    the ancestor closes that.
+
+    Returns [(key, rec, tid, winner, fields)] where winner is 'file' or
+    'device' and fields are the values to write to the loser.
+    """
+    from . import itunesdb as I, tags as T
+    out = []
+    # the proven parser, not a second reading of the same bytes
+    db = I.read(dbp)
+    rows = db['tracks'] if isinstance(db, dict) else db
+    dev_meta = {t['id']: t for t in rows}
+
+    for k, tid in dev_by_key.items():
+        r = st['tracks'].get(k) or {}
+        dev = r.get('device') or {}
+        src = dev.get('origin') or ''
+        if not src or not os.path.exists(src):
+            continue                       # nothing to compare against
+        d = dev_meta.get(tid)
+        if not d:
+            continue
+        try:
+            fil = T.read(src)
+        except Exception:
+            continue
+        # ffprobe's view is the fallback for a container we cannot read yet
+        if not fil:
+            continue
+
+        now = {f: (fil.get(f) or '').strip() for f in TAGGED}
+        was = {f: (str(d.get(f) or '')).strip() for f in TAGGED}
+        if now == was:
+            continue
+
+        winner, fields = resolve_drift(now, was, dev.get('synced') or {},
+                                       os.path.getmtime(src))
+        out.append((k, r, tid, winner, fields))
+    return out
+
+
+def resolve_drift(now, was, anc, file_mtime):
+    """Which side moved, and therefore which side wins. Pure, so it is tested.
+
+    `now` is the file's tags, `was` is the device's, `anc` is what was
+    written at the last sync -- the common ancestor -- carrying the tag
+    values and the file's mtime at that moment.
+
+    MTIME IS THE GATE, THE VALUES ARE THE TRUTH -- and getting that the
+    wrong way round is a real bug I shipped into the first draft of this
+    function. mtime decides whether the file is worth re-reading; it does
+    NOT decide whether the file changed. A restore or a `touch` bumps it
+    without altering a tag, and treating that as an edit let an untouched
+    file overwrite a genuine one on the device. Both sides are judged
+    against the ancestor by VALUE.
+
+      file moved    its tags differ from the ones recorded at last sync
+      device moved  its tags differ from the ones we wrote there.
+                    saltpod is the only thing that can have changed them,
+                    because a Classic has no keyboard.
+
+    With no ancestor recorded -- everything synced before this existed --
+    the file wins, which is the standing rule and the safe default.
+    """
+    anc_tags = {f: ((anc.get('tags') or {}).get(f) or '').strip() for f in TAGGED}
+    have_anc = bool(anc.get('tags'))
+    file_moved = (not have_anc) or now != anc_tags
+    dev_moved = have_anc and was != anc_tags
+
+    if dev_moved and not file_moved:
+        return 'device', was
+    if dev_moved and file_moved:
+        # both moved: the later one, by the clock each side actually keeps
+        later_dev = (anc.get('edited_at') or 0) > file_mtime
+        return ('device', was) if later_dev else ('file', now)
+    return 'file', now
 
 
 def print_plan(p):
@@ -255,6 +358,7 @@ def drop_excluded(p, exclude):
     if xt:
         p['adds'] = [a for a in p['adds'] if a[0] not in xt]
         p['removes'] = [r for r in p['removes'] if r[0] not in xt]
+        p['retags'] = [r for r in p.get('retags', ()) if r[0] not in xt]
     if xp:
         # An unticked playlist is left exactly as the device has it. Its
         # tracks may still be copied across -- that is honest: you said not to
@@ -271,7 +375,8 @@ def sync(mount=None, eject=True, exclude=None):
     mount = mount or MOUNT
     p = drop_excluded(plan(mount), exclude)
     print_plan(p)
-    if not (p['adds'] or p['removes'] or p['new_playlists'] or p['update_playlists'] or p['delete_playlists']):
+    if not (p['adds'] or p['removes'] or p.get('retags') or p['new_playlists']
+            or p['update_playlists'] or p['delete_playlists']):
         print('\nnothing to do'); return
     root, st = p['root'], p['state']
     # '## <phase> [i/n]' lines are for the page's progress panel; the prose
@@ -325,6 +430,33 @@ def sync(mount=None, eject=True, exclude=None):
         print('  removed %s - %s (id %d)' % (r['artist'], r['title'], tid))
         print('@@ r:%s done' % k)
 
+    # 2b. metadata the two sides disagree about
+    if p.get('retags'):
+        print('## retag %d' % len(p['retags']))
+    for k, r, tid, winner, fields in p.get('retags', ()):
+        print('@@ m:%s doing' % k)
+        try:
+            if winner == 'device':
+                # the device was edited here and the file was not: bring the
+                # file into line, which is the one direction that needs a
+                # writer and may not have one yet
+                from . import tags as T
+                src = (r.get('device') or {}).get('origin')
+                if src and T.supported(src):
+                    T.write(src, fields)
+                    print('  file    <- device  %s' % os.path.basename(src))
+                else:
+                    print('  skip    no writer for %s' % os.path.basename(src or '?'))
+                    print('@@ m:%s error no writer' % k); continue
+            else:
+                E.track_retag(root, tid, fields)
+                print('  device  <- file    %s - %s' % (fields.get('artist'), fields.get('title')))
+                changed_tracks = True
+        except Exception as e:
+            print('  !! %s' % e)
+            print('@@ m:%s error %s' % (k, e)); continue
+        print('@@ m:%s done' % k)
+
     # 3. playlists from collections
     for c in p['delete_playlists']:
         print('@@ p:%s doing' % c)
@@ -361,6 +493,26 @@ def sync(mount=None, eject=True, exclude=None):
         pc = os.path.join(mount, 'iPod_Control', 'iTunes', 'Play Counts')
         if os.path.exists(pc):
             os.remove(pc)
+    # RECORD THE ANCESTOR. What we just wrote, and the mtime of the file we
+    # wrote it from -- the two things that make the next plan able to say
+    # which side moved rather than only that they differ. Both are free.
+    from . import tags as _T
+    for k in list(p['dev_by_key']):
+        rr = st['tracks'].get(k)
+        if not rr:
+            continue
+        src = (rr.get('device') or {}).get('origin')
+        if not src or not os.path.exists(src):
+            continue
+        try:
+            snap = _T.read(src)
+        except Exception:
+            snap = {}
+        rr.setdefault('device', {})['synced'] = {
+            'at': int(time.time()),
+            'mtime': os.path.getmtime(src),
+            'tags': {f: (snap.get(f) or '') for f in TAGGED},
+        }
     st['synced_playlists'] = sorted((set(st.get('synced_playlists', [])) | set(p['collections']))
                                     - set(p['delete_playlists']))
     S.save(st)

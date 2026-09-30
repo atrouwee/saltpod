@@ -208,6 +208,32 @@ The measured starting point, 30 September: 581 files on the drive with no
 artist or title, and **2 blank artists, 1 blank album, 12 blank genres out
 of 658 on the device.** The drive is the side that is wrong.
 
+## When the only copy is on the iPod
+
+The file is master — so what happens to a track whose file is gone?
+
+**You bring it home.** The iPod is a disk:
+`iPod_Control/Music/F07/ABCD.mp3` is an ordinary file with a scrambled name,
+and everything that makes it findable lives in the database. So the copy is
+a plain copy, and the naming comes from the database entry that has been
+carrying the truth all along. Once it lands on the drive it is an ordinary
+local file and every other rule applies unchanged.
+
+That is deliberately **not** an exception to "one store" — it restores it.
+The alternative, editing the device entry directly, would create a second
+place to edit and reintroduce exactly the drift the rule exists to prevent.
+
+`POST /api/recover` copies the file to `<library root>/Recovered from iPod/`,
+names it from the database, writes those tags into the copy where a writer
+exists, records the path as the track's `origin` so the join finds it again,
+and adds it to the drive index on the spot — a recovery that needs a full
+reindex before it can be edited is a recovery you have to remember to
+finish.
+
+On this library the case is **1 track of 644**. It matters anyway: an iPod
+outliving the machine that filled it is the ordinary way these collections
+end up stranded, and the audio was never the part that went missing.
+
 ## A stored value is not a promise
 
 Every persisted enum is now read through `oneOf(value, allowed, fallback)`.

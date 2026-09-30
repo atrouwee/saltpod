@@ -589,6 +589,76 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 #toast.on { opacity: 1; }
 .warn { color: var(--dim); }
 
+/* ---------------- the track panel ----------------
+   Shares #sp's geometry: same width, same slide, same scrim. Two panels
+   that behave differently when they open would be two ideas. */
+#tp { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 94vw); z-index: 29;
+      background: var(--ground); border-left: 1px solid var(--faint);
+      display: flex; flex-direction: column; min-width: 0;
+      transform: translateX(100%); transition: transform .22s cubic-bezier(.32,.72,0,1);
+      box-shadow: -18px 0 46px rgba(7,12,19,.5); }
+#tp.on { transform: none; }
+@media (prefers-reduced-motion: reduce) { #tp { transition: none; } }
+#tp .substat { border-top: 1px solid var(--faint); display: flex; align-items: center;
+      gap: 12px; padding: 9px 14px; }
+#tp .substat .sp { flex: 1 1 auto; min-width: 0; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
+#tp .substat button { flex: none; font: inherit; font-size: var(--fs-ctrl);
+      letter-spacing: var(--ls-ctrl); text-transform: uppercase; height: var(--hbtn);
+      padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--faint);
+      background: transparent; color: var(--ink); cursor: pointer; }
+#tp .substat button.go { background: linear-gradient(var(--sel-hi), var(--sel-lo));
+      border: 0; color: var(--on-sel); box-shadow: inset 0 1px 0 var(--on-sel-hi); }
+#tp .substat button[disabled] { opacity: .4; cursor: default; background: none;
+      border: 1px solid var(--faint); color: var(--dim); box-shadow: none; }
+
+/* the identity block: a small cover beside the two lines it belongs to */
+.tpid { display: flex; gap: 12px; align-items: flex-start; margin: 10px 4px 4px; }
+.tpart { flex: none; width: 76px; height: 76px; border-radius: var(--r-sm);
+      background: var(--seam); border: 1px solid var(--faint); overflow: hidden;
+      position: relative; cursor: pointer; }
+.tpart img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tpart .ph { position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-family: var(--mono); font-size: var(--fs-tag);
+      letter-spacing: var(--ls-ctrl); text-transform: uppercase; color: var(--faint);
+      text-align: center; padding: 0 6px; }
+.tpart:hover .ph { color: var(--ink); }
+.tpart.drop { outline: 2px dashed var(--sel-hi); outline-offset: -3px; }
+
+/* a field: the label on the left the way Get Info does, the value editable */
+.fld { display: flex; align-items: baseline; gap: 12px; padding: 6px 10px;
+      border-radius: var(--r-sm); }
+.fld:hover { background: var(--panel); }
+.fld .k { flex: none; width: 88px; text-align: right; font-family: var(--mono);
+      font-size: var(--fs-tag); letter-spacing: var(--ls-label);
+      text-transform: uppercase; color: var(--dim); }
+.fld .v { flex: 1 1 auto; min-width: 0; font-size: var(--fs-row); color: var(--ink);
+      border: 0; border-bottom: 1px solid transparent; background: none;
+      padding: 2px 0; font-family: inherit; outline: none; }
+.fld .v::placeholder { color: var(--faint); }
+.fld:hover .v { border-bottom-color: var(--faint); }
+.fld .v:focus { border-bottom-color: var(--sel-hi); }
+/* EDITED IS A STATE OF THE FIELD, not a badge that appears beside it --
+   the row must not change width as you type. */
+.fld.dirty .v { border-bottom-color: var(--sel-hi); }
+.fld.dirty .k { color: var(--sel-hi); }
+.fld.ro .v { color: var(--dim); }
+
+/* the filename's guess, offered only when a field is empty and the name
+   has something to give */
+.tpguess { background: var(--seam); border-radius: var(--r-sm); padding: 10px 12px;
+      margin: 8px 4px 2px; }
+.tpguess .src { font-family: var(--mono); font-size: var(--fs-tag);
+      letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--dim); }
+.tpguess .pair { margin-top: 7px; font-size: var(--fs-row); }
+.tpguess .pair em { font-style: normal; font-family: var(--mono);
+      font-size: var(--fs-tag); letter-spacing: var(--ls-label);
+      text-transform: uppercase; color: var(--dim); display: inline-block; width: 46px; }
+.tpguess .act2 { margin-top: 9px; display: inline-block; font-family: var(--mono);
+      font-size: var(--fs-ctrl); letter-spacing: var(--ls-ctrl); text-transform: uppercase;
+      padding: 5px 11px; border-radius: var(--r-sm); cursor: pointer;
+      background: linear-gradient(var(--sel-hi), var(--sel-lo)); color: var(--on-sel); }
+
 /* ---------------- the sync panel ----------------
    Built out of the parts the rest of the page is built out of: it IS an
    aside.right that happens to be fixed. Same 46px .plabel, same .pbody,
@@ -749,6 +819,16 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   <div class="plabel seam"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
   <div class="pbody" id="spbody"></div>
   <div class="substat pstat"><span class="sp" id="spnote"></span><span id="spbtn"></span></div>
+</aside>
+
+<!-- THE TRACK PANEL. The same pane as the sync panel -- .plabel seam,
+     .pbody, .substat -- because it is another pane, not another idea. The
+     cover is small and sits with the identity it belongs to; the fields
+     below it are the form. -->
+<aside id="tp">
+  <div class="plabel seam"><span class="name" id="tpt">Track</span><span class="act" id="tpx">esc</span></div>
+  <div class="pbody" id="tpbody"></div>
+  <div class="substat pstat"><span class="sp" id="tpnote"></span><span id="tpbtn"></span></div>
 </aside>
 
 <div id="dlg"><div id="dlgbox">
@@ -1148,7 +1228,8 @@ function drawFoot(){
   $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
     <span><kbd>s</kbd> sync</span><span><kbd>v</kbd> vinyl</span>
     <span><kbd>x</kbd> ${inCol?'take out':'remove'}</span>
-    <span><kbd>c</kbd> collection</span><span><kbd>.</kbd> menu</span><span><kbd>/</kbd> search</span>
+    <span><kbd>c</kbd> collection</span><span><kbd>i</kbd> info</span>
+    <span><kbd>.</kbd> menu</span><span><kbd>/</kbd> search</span>
     <span id="undoc" class="undoc"></span><span id="saved" style="margin-left:auto"></span>`;
 }
 
@@ -1995,7 +2076,8 @@ $('#gear').onclick=()=>{ if($('#rsheet').classList.contains('on'))closeSettings(
 // the same plan / sync pair the terminal has, now with `--exclude`.
 $('#dosync').onclick=openSync;
 $('#spx').onclick=closeSync;
-$('#spscrim').onclick=closeSync;
+$('#tpx').onclick=closeTrack;
+$('#spscrim').onclick=()=>{ if($('#tp').classList.contains('on'))closeTrack(); else closeSync(); };
 
 // A job keeps being polled whether or not the overlay is open; the overlay, when
 // it is open, just shows the latest. Closing the panel used to stop the poll,
@@ -2022,6 +2104,195 @@ async function pollJob(){
   if(r.state==='running'){setTimeout(pollJob,1200);return;}
   job=null; $('#gear').classList.remove('busy');
   await load(); toast(r.state==='done'?'finished':'job failed — see the log');
+}
+
+/* ---------------- THE TRACK PANEL ----------------
+
+   The form, with the cover small and beside the identity rather than above
+   it. Leading with a large square was the first draft; it was argued out on
+   the grounds that a tended library has covers and a deficiency should not
+   shape the UI -- and then argued back in, smaller, because the form is
+   what you are here to fill in.
+
+   Everything it edits goes to the FILE. There is no second store, so there
+   is no second thing to save. What the device holds catches up on the next
+   sync, and the sync panel shows that as an ordinary row.
+*/
+const TP = { key:null, path:null, data:null, edits:{}, busy:false };
+
+function tpDirty(){ return Object.keys(TP.edits).length > 0; }
+
+async function openTrack(t){
+  TP.key = t && t.key || null;
+  TP.path = null; TP.data = null; TP.edits = {};
+  $('#tp').classList.add('on'); $('#spscrim').classList.add('on');
+  $('#tpt').textContent = t ? (t.artist ? t.artist+' — '+t.title : (t.title||'Track')) : 'Track';
+  $('#tpbody').innerHTML = '<p class="note">Reading the file…</p>';
+  $('#tpbtn').innerHTML = ''; $('#tpnote').textContent = '';
+  const q = TP.key ? 'key='+encodeURIComponent(TP.key) : 'path='+encodeURIComponent(TP.path||'');
+  const d = await fetch('/api/track?'+q).then(r=>r.json()).catch(()=>null);
+  if(!d || !d.ok){
+    $('#tpbody').innerHTML = '<div class="month">'+esc((d&&d.error)||'could not read it')+'</div>';
+    tpFoot(); return;
+  }
+  TP.data = d; TP.path = d.path;
+  paintTrack();
+}
+function closeTrack(){
+  if(TP.busy) return;
+  if(tpDirty() && !confirm('Discard the unsaved changes?')) return;
+  $('#tp').classList.remove('on');
+  if(!$('#sp').classList.contains('on')) $('#spscrim').classList.remove('on');
+  TP.edits = {};
+}
+
+const TP_FIELDS = [['title','Title'],['artist','Artist'],['album','Album'],
+                   ['album_artist','Album artist'],['genre','Genre'],
+                   ['year','Year'],['track','Track']];
+
+function tpValue(f){
+  return f in TP.edits ? TP.edits[f] : ((TP.data.fields||{})[f] || '');
+}
+
+function paintTrack(){
+  const d = TP.data, f = d.file || {};
+  const ro = !f.writable;
+  let h = '<div class="tpid">'
+    + '<div class="tpart" id="tpart" title="'+(ro?'':'drop an image, or click to choose one')+'">'
+    + (d.art ? '<img src="'+d.art+'" alt="">' : '')
+    + '<span class="ph">'+(d.art?'':'no cover')+'</span></div>'
+    + '<div style="flex:1 1 auto;min-width:0">'
+    + '<div class="fld" style="padding-left:0"><span class="k" style="width:0;display:none"></span>'
+    + '<input class="v" data-f="title" placeholder="Title" value="'+esc(tpValue('title'))+'"'+(ro?' readonly':'')+'></div>'
+    + '<div class="fld" style="padding-left:0"><span class="k" style="width:0;display:none"></span>'
+    + '<input class="v" data-f="artist" placeholder="Artist" value="'+esc(tpValue('artist'))+'"'+(ro?' readonly':'')+'></div>'
+    + '</div></div>';
+
+  // the filename's guess, only when it has something to add
+  const g = d.guess;
+  if(g && !ro && (!tpValue('artist') || !tpValue('title'))){
+    h += '<div class="tpguess"><div class="src">the name on disk suggests</div>'
+      + '<div class="pair"><em>artist</em>'+esc(g.artist)+'</div>'
+      + '<div class="pair"><em>title</em>'+esc(g.title)+'</div>'
+      + '<span class="act2" id="tpuse">Use this</span></div>';
+  }
+
+  h += '<div class="month">release</div>';
+  for(const [k,label] of TP_FIELDS.slice(2)){
+    h += '<div class="fld'+(k in TP.edits?' dirty':'')+(ro?' ro':'')+'"><span class="k">'+label+'</span>'
+      + '<input class="v" data-f="'+k+'" value="'+esc(tpValue(k))+'"'+(ro?' readonly':'')+'></div>';
+  }
+
+  h += '<div class="month">file</div>'
+    + tpRow('Name', f.name || '—', true)
+    + tpRow('Format', [f.codec, f.ext && f.ext.slice(1), f.seconds && mmss(f.seconds)]
+            .filter(Boolean).join(' · ') || '—', true)
+    + tpRow('Folder', f.folder || '—', true);
+  if(d.device && d.device.on)
+    h += tpRow('On the iPod', 'yes — the next sync brings it into line', true);
+  if(ro)
+    h += '<p class="note">'+esc(f.why||'not writable')+'</p>';
+
+  $('#tpbody').innerHTML = h;
+  wireTrack(ro);
+  tpFoot();
+}
+
+function tpRow(label, value, ro){
+  return '<div class="fld ro"><span class="k">'+esc(label)+'</span>'
+    + '<span class="v" style="font-family:var(--mono);font-size:var(--fs-meta)">'
+    + esc(value)+'</span></div>';
+}
+
+function wireTrack(ro){
+  $('#tpbody').querySelectorAll('input.v').forEach(el=>{
+    el.oninput = () => {
+      const f = el.dataset.f, was = (TP.data.fields||{})[f] || '';
+      if(el.value === was) delete TP.edits[f]; else TP.edits[f] = el.value;
+      el.closest('.fld').classList.toggle('dirty', f in TP.edits);
+      tpFoot();
+    };
+    // a field commits with the panel, never on blur: this writes a file
+    el.onkeydown = e => {
+      e.stopPropagation();
+      if(e.key === 'Escape'){ closeTrack(); }
+      if(e.key === 'Enter' && tpDirty() && !ro){ saveTrack(); }
+    };
+  });
+  const u = $('#tpuse');
+  if(u) u.onclick = () => {
+    const g = TP.data.guess;
+    if(!tpValue('artist')) TP.edits.artist = g.artist;
+    if(!tpValue('title'))  TP.edits.title  = g.title;
+    paintTrack();
+  };
+  const a = $('#tpart');
+  if(a && !ro) wireArt(a);
+}
+
+function tpFoot(){
+  const n = Object.keys(TP.edits).length;
+  const ro = !(TP.data && TP.data.file && TP.data.file.writable);
+  $('#tpnote').textContent = TP.busy ? 'writing the file…'
+    : n ? (n===1 ? '1 field changed' : n+' fields changed')
+    : (ro ? '' : 'nothing changed');
+  // SAVE APPEARS WHEN THERE IS SOMETHING TO SAVE. Finder commits on blur;
+  // that is wrong here, because the commit writes a file on your drive.
+  $('#tpbtn').innerHTML = n && !ro
+    ? '<button class="go" id="tpsave"'+(TP.busy?' disabled':'')+'>Save</button>'
+    : '<button id="tpclose">Close</button>';
+  const sv = $('#tpsave'); if(sv) sv.onclick = saveTrack;
+  const cl = $('#tpclose'); if(cl) cl.onclick = closeTrack;
+}
+
+async function saveTrack(){
+  if(TP.busy || !tpDirty()) return;
+  TP.busy = true; tpFoot();
+  const fields = {};
+  for(const [k] of TP_FIELDS) fields[k] = tpValue(k);
+  const body = TP.key ? {key:TP.key, fields} : {path:TP.path, fields};
+  const r = await post('/api/tags', body);
+  TP.busy = false;
+  if(!r.ok){ toast(r.error || 'not saved'); tpFoot(); return; }
+  TP.edits = {};
+  toast('written to the file');
+  const q = TP.key ? 'key='+encodeURIComponent(TP.key) : 'path='+encodeURIComponent(TP.path);
+  TP.data = await fetch('/api/track?'+q).then(x=>x.json());
+  paintTrack();
+  await load(); refreshUndo();
+}
+
+/* Replacing the cover. It lands in saltpod's cache immediately, which is
+   what the page reads; embedding it in the file needs the APIC half of the
+   ID3 writer, and showing it on the DEVICE needs ArtworkDB -- both surveyed,
+   neither built. The control says so rather than implying more. */
+function wireArt(el){
+  const pick = () => {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = 'image/*';
+    i.onchange = () => i.files[0] && sendArt(i.files[0]);
+    i.click();
+  };
+  el.onclick = pick;
+  el.ondragover = e => { e.preventDefault(); el.classList.add('drop'); };
+  el.ondragleave = () => el.classList.remove('drop');
+  el.ondrop = e => {
+    e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) sendArt(f);
+  };
+}
+async function sendArt(file){
+  if(!/^image\//.test(file.type)) return toast('that is not an image');
+  const buf = await file.arrayBuffer();
+  const r = await fetch('/api/art?key='+encodeURIComponent(TP.key||'')
+                        +'&path='+encodeURIComponent(TP.path||''),
+                        {method:'POST', body:buf}).then(x=>x.json()).catch(()=>null);
+  if(!r || !r.ok) return toast((r&&r.error) || 'could not save the cover');
+  toast('cover saved — in the file on the next writer, on the iPod after ArtworkDB');
+  TP.data.art = r.art + '&t=' + Date.now();
+  paintTrack();
+  await load();
 }
 
 /* ---------------- THE SYNC PANEL ----------------
@@ -2475,7 +2746,8 @@ function paintMenu(){
     +'<div class="sep"></div>'
     +(lpOwned ? menuRow('Owned on vinyl','',false,'inert')
               : menuRow(vinylOn?'Unwant vinyl':'Want vinyl','v',false,'m-vinyl'))
-    +(many?'':menuRow('Play','space',false,'m-play'));
+    +(many?'':menuRow('Play','space',false,'m-play'))
+    +(many?'':menuRow('Get info','i',false,'m-info'));
   const on=(cls,fn)=>{const x=b.querySelector('.'+cls); if(x)x.onclick=fn;};
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
   const KS = many ? markedKeys() : [t.key];
@@ -2486,6 +2758,7 @@ function paintMenu(){
   // a set and reached for a flag. Everything already flagged stays flagged.
   on('m-vinyl',()=>{closeMenu();decide({vinyl:!vinylOn},KS);});
   on('m-play',()=>{closeMenu();play();});
+  on('m-info',()=>{closeMenu();openTrack(t);});
 }
 // Off the iPod: skipped, which sync
 // reads as "take this track off the device". Nothing happens on the device
@@ -2666,6 +2939,13 @@ document.addEventListener('keydown',e=>{
   if(dlg.classList.contains('on'))return;
   if($('#rsheet').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
   // With the panel up, the list behind it is not what the keyboard is for.
+  if($('#tp').classList.contains('on')){
+    // the panel's own fields handle their keys; this is only for the frame
+    if(e.key==='Escape' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)){
+      e.preventDefault(); closeTrack();
+    }
+    return;
+  }
   if($('#sp').classList.contains('on')){
     if(e.key==='Escape'){e.preventDefault();closeSync();}
     else if(e.key==='Enter'){const g=$('#spgo'); if(g&&!g.disabled){e.preventDefault();g.click();}}
@@ -2716,6 +2996,7 @@ document.addEventListener('keydown',e=>{
     decide({tier:'remove'},onDev,!MARK.size);}
   else if(k==='v'){const t=view[sel];if(t)decide({vinyl:!t.vinyl},targets());}
   else if(k==='c'){e.preventDefault();openDlg(null);}
+  else if(k==='i'){const t=view[sel]; if(t){e.preventDefault();openTrack(t);}}
   else if(k==='f'){clearMark();filter=FILTERS[(FILTERS.indexOf(filter)+1)%FILTERS.length];sel=0;draw();}
 });
 /* ---------------- what the machine can reach ---------------- */

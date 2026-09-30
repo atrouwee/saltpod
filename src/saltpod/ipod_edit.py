@@ -183,6 +183,43 @@ def playlist_rename(root, old, new):
                 break
 
 
+def track_retag(root, tid, fields):
+    """Change what the device says a track is called.
+
+    The same move `playlist_rename` makes, on a track: find the mhod of the
+    right type and swap the string. Nothing else in the record is touched --
+    not the location, not the dbid, not the play count sitting in the header.
+
+    This exists for the iPod that outlived its library. A Classic cannot
+    retag itself (there is no keyboard), so saltpod is the only writer on
+    either side, which is what makes "whichever edit was last" a fact we
+    record rather than a guess we make.
+
+    Passing a field as None leaves it alone; passing '' clears it.
+    """
+    mhods = {'title': 1, 'album': 3, 'artist': 4, 'genre': 5, 'composer': 12}
+    t = next((x for x in tracks(root) if track_id(x) == tid), None)
+    if t is None:
+        raise KeyError('no track %r on the device' % tid)
+    changed = []
+    for name, typ in mhods.items():
+        if fields.get(name) is None:
+            continue
+        val = str(fields[name])
+        for i, c in enumerate(t.children):
+            if c.magic == b'mhod' and W.mhod_type(c) == typ:
+                t.children[i] = W.make_string_mhod(typ, val)
+                changed.append(name)
+                break
+        else:
+            # the field was never set on this track; add it before the
+            # non-mhod children so the record keeps its shape
+            at = len([c for c in t.children if c.magic == b'mhod'])
+            t.children.insert(at, W.make_string_mhod(typ, val))
+            changed.append(name)
+    return changed
+
+
 def playlist_set_tracks(root, name, track_ids):
     by_id = {track_id(t): t for t in tracks(root)}
     missing = [i for i in track_ids if i not in by_id]

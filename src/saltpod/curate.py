@@ -573,6 +573,405 @@ def _original(dev, key):
     o = (dev or {}).get('origin')
     return (o and m['path'].get(o)) or m['key'].get(key) or {}
 
+def _detail_of(key, rec, dev):
+    """Where this track's file is, and whether we can write to it.
+
+    The source file is the master (see HANDOFF, "One store"), so this resolves
+    the file FIRST and reports the device entry only as what will be brought
+    into line.
+    """
+    from . import tags as T
+    ent = _original(dev, key) or {}
+    path = ent.get('path') or ''
+    on_disk = bool(path and os.path.exists(path))
+    ext = os.path.splitext(path)[1].lower() if path else ''
+    why = ''
+    if not on_disk:
+        why = 'no file on the drive — nothing to edit yet'
+    elif not T.supported(path):
+        why = ('an id3 chunk needs the ID3v2 writer'
+               if ext == '.wav' else 'no %s writer yet' % (ext.lstrip('.') or '?'))
+    return {
+        'path': path, 'name': os.path.basename(path), 'ext': ext,
+        'folder': os.path.basename(os.path.dirname(path)) if path else '',
+        'on_disk': on_disk,
+        'writable': bool(on_disk and T.supported(path)),
+        'why': why,
+        'seconds': ent.get('duration_sec') or rec.get('seconds'),
+        'size': ent.get('size'),
+        'codec': ent.get('codec'), 'has_art': bool(ent.get('has_art')),
+    }
+
+
+def track_detail(key, path=''):
+    """Everything the details panel shows for one track.
+
+    ADDRESSED BY PATH AS WELL AS KEY, and that is not a convenience. A state
+    key is `artist|title`, so **an untagged file cannot have one** -- it has
+    neither. Zero of the 1,211 state records resolve to a WAV, while 366 of
+    the untagged files on the drive are WAVs. The population this panel
+    exists to fix is reachable only by path.
+
+    `fields` is read back from the FILE, not from the index, so what you edit
+    is what is actually there.
+    """
+    from . import tags as T
+    if not key and not path:
+        return {'ok': False, 'error': 'no key or path'}
+    rec, dev = {}, {}
+    if key:
+        with LOCK:
+            st = S.load()
+            rec = dict(st['tracks'].get(key) or {})
+        dev = rec.get('device') or {}
+    if path:
+        ent = _local_maps()['path'].get(path)
+        if not ent:
+            return {'ok': False, 'error': 'not in the drive index'}
+        det = _detail_from_entry(ent)
+    else:
+        if not rec:
+            return {'ok': False, 'error': 'no such track'}
+        det = _detail_of(key, rec, dev)
+
+    cur = {}
+    if det['on_disk']:
+        try:
+            cur = T.read(det['path'])
+        except Exception:
+            cur = {}
+        if not cur:
+            # no writer-readable tags: fall back to what ffprobe saw
+            ent = _original(dev, key) or {}
+            cur = {k: ent.get(k) or '' for k in
+                   ('title', 'artist', 'album', 'album_artist', 'genre')}
+            if ent.get('year'):
+                cur['year'] = str(ent['year'])
+
+    return {
+        'ok': True, 'key': key, 'path': det['path'],
+        'artist': rec.get('artist') or cur.get('artist') or '',
+        'title': rec.get('title') or cur.get('title') or '',
+        'fields': {f: (cur.get(f) or '') for f in T.FIELDS},
+        'guess': _guess_from_name(det['name']),
+        'file': det,
+        # What the device currently holds, shown as drift to be ended -- never
+        # as a second thing to edit.
+        'device': {'on': bool(dev.get('location')),
+                   'title': dev.get('title') or '', 'artist': dev.get('artist') or ''},
+        'art': ('/api/art?key=' + quote(key or det['path']))
+               if _art_cached_or_makeable(key or det['path'], dev) else None,
+    }
+
+
+def _detail_from_entry(ent):
+    """The same shape as _detail_of, for a file with no state record yet."""
+    from . import tags as T
+    path = ent.get('path') or ''
+    on_disk = bool(path and os.path.exists(path))
+    ext = os.path.splitext(path)[1].lower() if path else ''
+    why = ''
+    if not on_disk:
+        why = 'the file is gone'
+    elif not T.supported(path):
+        why = ('an id3 chunk needs the ID3v2 writer'
+               if ext == '.wav' else 'no %s writer yet' % (ext.lstrip('.') or '?'))
+    return {'path': path, 'name': os.path.basename(path), 'ext': ext,
+            'folder': os.path.basename(os.path.dirname(path)) if path else '',
+            'on_disk': on_disk, 'writable': bool(on_disk and T.supported(path)),
+            'why': why, 'seconds': ent.get('duration_sec'), 'size': ent.get('size'),
+            'codec': ent.get('codec'), 'has_art': bool(ent.get('has_art'))}
+
+
+def _guess_from_name(name):
+    """What the filename is willing to say. 175 of the 581 read `artist - title`.
+
+    Deliberately conservative: one separator, both halves non-empty, and a
+    leading track number stripped. A wrong guess you have to notice and undo
+    is worse than no guess, because the whole point is that nobody is reading
+    these carefully the 400th time.
+    """
+    import re as _re
+    stem = os.path.splitext(name or '')[0]
+    stem = _re.sub(r'^\s*\d{1,3}\s*[-._)]\s*', '', stem)   # 09- , 03. , 12)
+    for sep in (' - ', ' – ', ' — ', '_-_'):
+        if stem.count(sep) == 1:
+            a, t = [x.strip(' _-') for x in stem.split(sep)]
+            if a and t:
+                return {'artist': a, 'title': t, 'from': name}
+    return None
+
+
+def _art_cached_or_makeable(key, dev):
+    # the same name /api/art writes; one rule, spelled once here
+    cache = os.path.join(ROOT, 'data', 'local', 'art',
+                         re.sub(r'[^A-Za-z0-9]+', '_', key)[:120] + '.jpg')
+    if os.path.exists(cache):
+        return True
+    e = _local_maps()['key'].get(key) or _original(dev, key) or {}
+    return bool(e.get('has_art'))
+
+
+def write_tags(body):
+    """Write the fields into the file on disk. The file is the master.
+
+    One save is one undo entry -- never one per keystroke -- so the existing
+    stack stays useful across an editing session. The previous tag values are
+    what the snapshot holds, which is a complete record: only the tag block
+    changes, never the audio.
+    """
+    from . import tags as T
+    key = body.get('key') or ''
+    path = body.get('path') or ''
+    fields = body.get('fields') or {}
+    if not key and not path:
+        return {'ok': False, 'error': 'no key or path'}
+    rec = None
+    if path:
+        ent = _local_maps()['path'].get(path)
+        if not ent:
+            return {'ok': False, 'error': 'not in the drive index'}
+        det = _detail_from_entry(ent)
+    else:
+        with LOCK:
+            st = S.load()
+            rec = st['tracks'].get(key)
+            if not rec:
+                return {'ok': False, 'error': 'no such track'}
+            dev = rec.get('device') or {}
+        det = _detail_of(key, rec, dev)
+    if not det['on_disk']:
+        return {'ok': False, 'error': 'no file on the drive'}
+    if not det['writable']:
+        return {'ok': False, 'error': det['why'] or 'not writable'}
+
+    clean = {f: str(fields.get(f) or '').strip() for f in T.FIELDS}
+    try:
+        before = T.read(det['path'])
+        at, audio = T.audio_payload(det['path'])
+        T.write(det['path'], clean)
+        T.verify(det['path'], at, audio)          # the audio did not move
+    except Exception as e:
+        return {'ok': False, 'error': '%s' % e}
+
+    # ONE SAVE IS ONE UNDO ENTRY -- never one per keystroke, which is what
+    # keeps a 60-deep stack useful across an editing session. The entry holds
+    # the file's previous tags, so undo rewrites the file rather than putting
+    # a value back in state that the file would then contradict.
+    with LOCK:
+        st = S.load()
+        snap = _snapshot(st, [key] if key else [])
+        snap['files'] = {det['path']: before}
+        UNDO.append({'label': 'edit tags', 'snap': snap})
+        del UNDO[:-UNDO_MAX]
+        REDO.clear()
+        # State carries the name only so the rest of the page can find the
+        # track. The file is still the master; this is the index catching up.
+        if key:
+            r = st['tracks'].get(key) or {}
+            if clean.get('artist'):
+                r['artist'] = clean['artist']
+            if clean.get('title'):
+                r['title'] = clean['title']
+            st['tracks'][key] = r
+        S.save(st)
+    _index_patch(det['path'], clean)
+    push({'type': 'data', 'why': 'tags'})
+    return {'ok': True, 'before': before, 'after': T.read(det['path']),
+            'mtime': os.path.getmtime(det['path'])}
+
+
+IDX_LOCK = threading.Lock()     # the drive index is not state; it locks separately
+
+
+def put_art(key, path, blob):
+    """Save a cover into saltpod's own cache, keyed the way /api/art reads it.
+
+    HONEST ABOUT ITS REACH. This is the page's artwork and nothing else.
+    Embedding it in the file needs the APIC half of the ID3 writer, and
+    showing it on the device needs ArtworkDB -- both surveyed
+    (research/DEVICE-ARTWORK.md), neither built. Saving it here now means
+    the work is not lost when they are: the cache is where both will read
+    from.
+    """
+    if not blob:
+        return {'ok': False, 'error': 'no image'}
+    if len(blob) > 12 * 1024 * 1024:
+        return {'ok': False, 'error': 'that image is over 12 MB'}
+    sniff = blob[:12]
+    if not (sniff[:3] == b'\xff\xd8\xff' or sniff[:8] == b'\x89PNG\r\n\x1a\n'
+            or sniff[:4] == b'RIFF' or sniff[4:12] == b'ftypheic'):
+        return {'ok': False, 'error': 'not a jpeg, png, webp or heic'}
+    ident = key or path
+    if not ident:
+        return {'ok': False, 'error': 'no track'}
+    cache = os.path.join(ROOT, 'data', 'local', 'art')
+    os.makedirs(cache, exist_ok=True)
+    out = os.path.join(cache, re.sub(r'[^A-Za-z0-9]+', '_', ident)[:120] + '.jpg')
+    # normalised to jpeg at the size the Classic's largest thumbnail wants,
+    # so the ArtworkDB step has nothing left to decide
+    tmp = out + '.in'
+    with open(tmp, 'wb') as fh:
+        fh.write(blob)
+    try:
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', tmp,
+                        '-vf', 'scale=320:320:force_original_aspect_ratio=increase,crop=320:320',
+                        '-q:v', '3', out],
+                       check=True, timeout=60)
+    except Exception as e:
+        os.path.exists(tmp) and os.remove(tmp)
+        return {'ok': False, 'error': 'could not read that image (%s)' % e}
+    os.remove(tmp)
+    push({'type': 'data', 'why': 'art'})
+    return {'ok': True, 'art': '/api/art?key=' + quote(ident),
+            'bytes': os.path.getsize(out),
+            'note': 'saltpod only for now: the file needs APIC, the iPod needs ArtworkDB'}
+
+
+def _index_add(path):
+    """Put one new file into the drive index, without re-probing the other 4,047.
+
+    A recovered track that needs a full reindex before it can be edited is a
+    recovery you have to remember to finish. One ffprobe, one append.
+    """
+    from . import local_index as LI
+    idx_path = os.path.join(ROOT, 'data', 'local', 'index.json')
+    try:
+        ent = LI.probe(path)
+    except Exception:
+        ent = None
+    if not ent:
+        ent = {'path': path, 'ext': os.path.splitext(path)[1].lower(),
+               'size': os.path.getsize(path), 'untagged': True}
+    ent['mtime'] = os.path.getmtime(path)
+    try:
+        with IDX_LOCK:
+            idx = json.load(open(idx_path))
+            rows = idx.get('tracks')
+            if isinstance(rows, list) and not any(e.get('path') == path for e in rows):
+                rows.append(ent)
+                idx['count'] = len(rows)
+                tmp = idx_path + '.tmp'
+                json.dump(idx, open(tmp, 'w'))
+                os.replace(tmp, idx_path)
+        _LOCBYKEY['built'] = None
+        return True
+    except Exception:
+        return False
+
+
+def recover_from_ipod(body):
+    """Copy a track off the iPod and back onto the drive.
+
+    THE ANSWER TO "what if there is no source file", and it is not an
+    exception to the rule -- it restores it. The file is the master; if the
+    only copy left is the one on the device, the fix is to bring it home,
+    not to invent a second place to edit.
+
+    The iPod is a disk. `iPod_Control/Music/F07/ABCD.mp3` is an ordinary
+    file with a scrambled name; everything that makes it findable lives in
+    the database. So the copy is a plain copy, and the naming comes from the
+    database entry that has been carrying the truth all along.
+
+    Worth saying plainly: this also recovers a library. An iPod outliving
+    the machine that filled it is the ordinary way these collections end up
+    stranded, and the audio was never the part that went missing.
+    """
+    from . import apply as A, config as CFG, tags as T
+    A._cfg()
+    key = body.get('key') or ''
+    if not key:
+        return {'ok': False, 'error': 'no key'}
+    with LOCK:
+        st = S.load()
+        rec = st['tracks'].get(key)
+    if not rec:
+        return {'ok': False, 'error': 'no such track'}
+    dev = rec.get('device') or {}
+    loc = dev.get('location') or ''
+    if not loc:
+        return {'ok': False, 'error': 'not on the iPod'}
+
+    src = os.path.join(A.MOUNT, loc.lstrip(':').replace(':', os.sep))
+    if not os.path.exists(src):
+        return {'ok': False, 'error': 'the device file is missing'}
+    if _original(dev, key).get('path'):
+        return {'ok': False, 'error': 'there is already a copy on the drive'}
+
+    # config normalises to a list; the first root is where recovered files land
+    roots = (CFG.load() or {}).get('library_roots') or []
+    root = next((r for r in roots if os.path.isdir(r)), None)
+    if not root:
+        return {'ok': False, 'error': 'no library_root configured'}
+    dest_dir = os.path.join(root, 'Recovered from iPod')
+    os.makedirs(dest_dir, exist_ok=True)
+
+    # Named from the database, which is the only place the name survives.
+    artist = (rec.get('artist') or dev.get('artist') or 'Unknown artist').strip()
+    title = (rec.get('title') or dev.get('title') or 'Unknown title').strip()
+    safe = re.sub(r'[/\\:\x00-\x1f]', '_', '%s - %s' % (artist, title))[:150]
+    dst = os.path.join(dest_dir, safe + os.path.splitext(src)[1].lower())
+    n = 1
+    while os.path.exists(dst):
+        n += 1
+        dst = os.path.join(dest_dir, '%s (%d)%s' % (safe, n, os.path.splitext(src)[1].lower()))
+
+    shutil.copy2(src, dst)
+
+    # The device entry knew the name; the file did not. Write it in, so the
+    # recovered copy is a proper master rather than another nameless file.
+    wrote = False
+    if T.supported(dst):
+        try:
+            cur = T.read(dst)
+            if not (cur.get('artist') or '').strip():
+                T.write(dst, {'artist': artist, 'title': title,
+                              'album': dev.get('album') or rec.get('album') or ''})
+                wrote = True
+        except Exception:
+            pass
+
+    with LOCK:
+        st = S.load()
+        r = st['tracks'].get(key) or {}
+        r.setdefault('device', {})['origin'] = dst   # the join that finds it again
+        r.pop('orphan', None)
+        st['tracks'][key] = r
+        S.save(st)
+    _index_add(dst)
+    _LOCBYKEY['built'] = None
+    push({'type': 'data', 'why': 'recovered'})
+    return {'ok': True, 'path': dst, 'bytes': os.path.getsize(dst), 'tagged': wrote}
+
+
+def _index_patch(path, fields):
+    """Keep the drive index in step without re-probing 4,048 files.
+
+    mtime is the cheap gate everywhere else; here we know exactly what
+    changed, so write it through and move on.
+    """
+    idx_path = os.path.join(ROOT, 'data', 'local', 'index.json')
+    try:
+        with IDX_LOCK:
+            idx = json.load(open(idx_path))
+            rows = idx['tracks'] if isinstance(idx.get('tracks'), list) else []
+            for e in rows:
+                if e.get('path') == path:
+                    for k, v in fields.items():
+                        if v:
+                            e[k] = v
+                    e['untagged'] = not ((e.get('artist') or '').strip()
+                                         and (e.get('title') or '').strip())
+                    e['mtime'] = os.path.getmtime(path)
+                    break
+            tmp = idx_path + '.tmp'
+            json.dump(idx, open(tmp, 'w'))
+            os.replace(tmp, idx_path)
+        _LOCBYKEY['built'] = None          # force the next _local_maps() to rebuild
+    except Exception:
+        pass
+
+
 # ------------------------------------------------- lookup, when it is needed
 #
 # Identity, price and a lossless source are only interesting for a track you
@@ -871,6 +1270,22 @@ def _restore(st, snap):
         st['tracks'][k] = rec
     st['collections'] = list(snap['collections'])
     st['collection_order'] = snap['collection_order']
+    # A TAG EDIT IS UNDONE BY REWRITING THE FILE, not by putting a value back
+    # in state -- the file is the master. The previous tag values are a
+    # complete record because only the tag block ever changed, so this is a
+    # real restore rather than an approximation.
+    #
+    # It is also FORWARD, not backward, with respect to the device: rewriting
+    # the file bumps its mtime, the next plan() sees the device disagrees, and
+    # the sync after that corrects it.
+    from . import tags as T
+    for path, before in (snap.get('files') or {}).items():
+        try:
+            if os.path.exists(path):
+                T.write(path, before)
+                _index_patch(path, {f: (before.get(f) or '') for f in T.FIELDS})
+        except Exception:
+            pass
 
 
 def _label(body, keys):
@@ -1095,11 +1510,23 @@ class Handler(BaseHTTPRequestHandler):
             # ffmpeg and cached; no network, no API, no account -- and it
             # covers the music iTunes has never heard of, which on this drive
             # is most of it.
-            key = (parse_qs(u.query).get('key') or [''])[0]
+            # key OR path: an untagged file has no key, because a key is
+            # artist|title and it has neither. Same identity rule as put_art.
+            _q = parse_qs(u.query)
+            key = (_q.get('key') or [''])[0] or (_q.get('path') or [''])[0]
             # The T7 original first -- full quality, and the copy that
             # reliably kept its art. Resolved from the cached index maps, NOT
             # by loading state: a row of 200 covers would otherwise queue 200
             # reads of a 1.9 MB state file behind one lock.
+            #
+            # THE CACHE IS CHECKED FIRST, and that is not just a shortcut:
+            # a cover you supplied yourself lives only there, so hunting for
+            # a file with embedded art before looking would mean an uploaded
+            # cover could never be served. It 404'd exactly that way once.
+            _cache = os.path.join(ROOT, 'data', 'local', 'art')
+            _hit = os.path.join(_cache, re.sub(r'[^A-Za-z0-9]+', '_', key)[:120] + '.jpg')
+            if os.path.exists(_hit):
+                return self._send(200, open(_hit, 'rb').read(), 'image/jpeg')
             src = None
             e = _local_maps()['key'].get(key) or {}
             if e.get('path') and os.path.exists(e['path']) and e.get('has_art'):
@@ -1141,6 +1568,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if u.path == '/api/track':
+            q = parse_qs(u.query)
+            return self._send(200, json.dumps(track_detail(
+                (q.get('key') or [''])[0], (q.get('path') or [''])[0])))
         if u.path == '/api/local':
             d = local_index()
             want = (parse_qs(u.query).get('folder') or [None])[0]
@@ -1260,6 +1691,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         n = int(self.headers.get('Content-Length') or 0)
+        # A cover is bytes, not JSON, so it is routed before the parse rather
+        # than through it.
+        if u.path == '/api/art':
+            q = parse_qs(u.query)
+            return self._send(200, json.dumps(put_art(
+                (q.get('key') or [''])[0], (q.get('path') or [''])[0],
+                self.rfile.read(n))))
         try:
             body = json.loads(self.rfile.read(n) or b'{}')
         except ValueError:
@@ -1278,13 +1716,25 @@ class Handler(BaseHTTPRequestHandler):
                 entry = src.pop()
                 with LOCK:
                     st = S.load()
-                    dst.append({'label': entry['label'],
-                                'snap': _snapshot(st, entry['snap']['tracks'].keys())})
+                    other = _snapshot(st, entry['snap']['tracks'].keys())
+                    if entry['snap'].get('files'):
+                        from . import tags as _T
+                        other['files'] = {}
+                        for _p in entry['snap']['files']:
+                            try:
+                                other['files'][_p] = _T.read(_p)
+                            except Exception:
+                                pass
+                    dst.append({'label': entry['label'], 'snap': other})
                     _restore(st, entry['snap'])
                     S.save(st)
                 push({'type': 'data', 'why': ('undo ' if back else 'redo ') + entry['label']})
                 return self._send(200, json.dumps({'ok': True, 'label': entry['label'],
                                                    'can_undo': len(UNDO), 'can_redo': len(REDO)}))
+            if u.path == '/api/recover':
+                return self._send(200, json.dumps(recover_from_ipod(body)))
+            if u.path == '/api/tags':
+                return self._send(200, json.dumps(write_tags(body)))
             if u.path == '/api/action':
                 return self._send(200, json.dumps(self._action(body)))
         except Exception as e:
