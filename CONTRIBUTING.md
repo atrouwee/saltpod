@@ -4,6 +4,49 @@ This is one person's tool for one device, published because the format work
 in it is hard to find anywhere else. Contributions are welcome; here is how to
 make one that lands.
 
+## Two adapters, one implementation
+
+An operation goes in `curate.OPS` — a dict from name to a function taking a
+dict and returning a dict — and both the HTTP server and the CLI dispatch
+through it. Neither contains an operation of its own.
+
+This is the server-side half of the layer rule. The client half says *a
+client may look things up; it may not work them out.* This half says **the
+server may not hide what it works out inside a transport.** The undo
+operation lived inside `do_POST` for weeks: unreachable from the terminal,
+unreachable from the native app, untestable without a socket.
+
+**Adding a verb is not optional.** `bin/selftest.py` and
+`bin/layer_census.py --strict` fail when an entry in `OPS` has no verb,
+because a second caller is the only real proof an endpoint is a boundary
+rather than a function that happens to be addressable over HTTP.
+
+## Prefer the system, but never require it
+
+`platform.py` chooses a backend per operation and every one has a portable
+fallback. macOS-preferred, not macOS-only: a contributor on Linux runs the
+same code with ffmpeg underneath, and nothing above the adapter knows which
+ran.
+
+Two rules learned the hard way, both in `research/MACOS-ADAPTERS.md`:
+
+- **A native tool's defaults are not the other tool's defaults.** afconvert
+  writes 32-bit ALAC unless told otherwise — 2.4x the bytes, decoding to
+  the identical audio md5, so an audio-only differential passes it.
+- **Verify the event, not the setup.** A watcher that starts and stops
+  cleanly is not a watcher that fires. DiskArbitration was wired, probed,
+  and silently delivering nothing; attaching a real disk image found it.
+
+## Log the operation, never the values
+
+`observe.event()` and `observe.span()` take an operation name, counts, and
+field *names*. Not field values: that is the user's metadata, it belongs in
+the file. The device GUID is redacted by shape, because a log is a file
+people paste into an issue.
+
+Logging must never be able to fail a sync. Write errors are swallowed and
+counted.
+
 ## Read first
 
 1. **README** — what it is and how to run it.

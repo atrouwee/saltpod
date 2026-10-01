@@ -37,6 +37,8 @@ from urllib.parse import urlparse, parse_qs, quote
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 from . import state as S  # noqa: E402
+from . import observe as O  # noqa: E402
+from . import platform as P  # noqa: E402
 
 LOCK = threading.Lock()
 JOBS = {}
@@ -783,11 +785,14 @@ def write_tags(body):
             clean[f] = str(fields[f] or '').strip()
     try:
         before = T.read(det['path'])
-        at, audio = T.audio_payload(det['path'])
+        # A DIGEST, NOT THE PAYLOAD. This used to read the whole audio stream
+        # into memory to compare it afterwards -- fine at 95 MB of WAV, and
+        # 226 MB of reads per saved edit once AIFF arrived at 113 MB a file.
+        probe = T.audio_probe(det['path'])
         in_place = T.write(det['path'], clean)
         # the audio BYTES never change; the offset only holds when the new
         # tag fitted where the old one was
-        T.verify(det['path'], at, audio, in_place=in_place)
+        T.verify(det['path'], probe, in_place=in_place)
     except Exception as e:
         return {'ok': False, 'error': '%s' % e}
 
@@ -821,7 +826,57 @@ def write_tags(body):
 IDX_LOCK = threading.Lock()     # the drive index is not state; it locks separately
 
 
-def discard_plan():
+def undo_step(body=None):
+    """Undo, or redo. One operation, not a branch of an HTTP handler.
+
+    Undo and redo are the same move in opposite directions: take the top of
+    one stack, snapshot the present onto the other, then restore. That makes
+    redo free and keeps the two symmetric.
+
+    THIS USED TO LIVE INSIDE `do_POST`, and that was the one real violation
+    of the layer rule on the server side. A rule welded to a transport cannot
+    be called by the terminal, cannot be called by the native app, and cannot
+    be tested without a socket. Everything else here was already a plain
+    function taking a dict and returning one; this is now too.
+    """
+    body = body or {}
+    back = body.get('redo') is not True
+    src, dst = (UNDO, REDO) if back else (REDO, UNDO)
+    if not src:
+        return {'ok': False, 'empty': True}
+    entry = src.pop()
+    with LOCK:
+        st = S.load()
+        other = _snapshot(st, entry['snap']['tracks'].keys())
+        if entry['snap'].get('files'):
+            from . import tags as _T
+            other['files'] = {}
+            for _p in entry['snap']['files']:
+                try:
+                    other['files'][_p] = _T.read(_p)
+                except Exception:
+                    pass
+        dst.append({'label': entry['label'], 'snap': other})
+        _restore(st, entry['snap'])
+        S.save(st)
+    push({'type': 'data', 'why': ('undo ' if back else 'redo ') + entry['label']})
+    return {'ok': True, 'label': entry['label'], 'undone': back,
+            'can_undo': len(UNDO), 'can_redo': len(REDO)}
+
+
+def track_info(body=None):
+    """The track panel's payload, by key or by path.
+
+    BY PATH MATTERS. A key is `artist|title`, so a file with no tags has no
+    key -- and the files most in need of an editor are exactly the ones with
+    nothing to address them by.
+    """
+    body = body or {}
+    return track_detail(body.get('key') or '', body.get('path') or '')
+
+
+
+def discard_plan(body=None):          # body unused: there is nothing to say
     """Put the staged changes back so the next plan is empty.
 
     NOT "cancel the sync" -- there is no queued operation to cancel. The
@@ -951,15 +1006,19 @@ def put_art(key, path, blob):
     tmp = out + '.in'
     with open(tmp, 'wb') as fh:
         fh.write(blob)
-    try:
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', tmp,
-                        '-vf', 'scale=320:320:force_original_aspect_ratio=increase,crop=320:320',
-                        '-q:v', '3', out],
-                       check=True, timeout=60)
-    except Exception as e:
-        os.path.exists(tmp) and os.remove(tmp)
-        return {'ok': False, 'error': 'could not read that image (%s)' % e}
-    os.remove(tmp)
+    # SCALE TO COVER AND CROP, not resize to fit: a squashed cover is worse
+    # than a cropped one. `platform.resize_cover` prefers sips (in /usr/bin,
+    # nothing to bundle) and falls back to ffmpeg off macOS. Measured against
+    # each other on a real cover and a deliberately 900x300 one: mean absolute
+    # difference 2.0-2.7 of 255, which is resampler and JPEG noise. The naive
+    # exact-size resize differs by 61.8 of 255 on the non-square source, which
+    # is why this is its own operation rather than a size argument.
+    r = P.resize_cover(tmp, out, 320, 320)
+    os.path.exists(tmp) and os.remove(tmp)
+    if not r['ok']:
+        return {'ok': False, 'error': 'could not read that image (%s)' % r['error']}
+    O.event('info', 'art', 'cover normalised', backend=r['backend'],
+            bytes=os.path.getsize(out))
     push({'type': 'data', 'why': 'art'})
     return {'ok': True, 'art': '/api/art?key=' + quote(ident),
             'bytes': os.path.getsize(out),
@@ -1955,38 +2014,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == '/api/decide':
                 return self._send(200, json.dumps(apply_decision(body)))
-            if u.path == '/api/undo':
-                # Undo and redo are the same move in opposite directions: take
-                # the top of one stack, snapshot the present onto the other,
-                # then restore. That makes redo free and keeps them symmetric.
-                back = body.get('redo') is not True
-                src, dst = (UNDO, REDO) if back else (REDO, UNDO)
-                if not src:
-                    return self._send(200, json.dumps({'ok': False, 'empty': True}))
-                entry = src.pop()
-                with LOCK:
-                    st = S.load()
-                    other = _snapshot(st, entry['snap']['tracks'].keys())
-                    if entry['snap'].get('files'):
-                        from . import tags as _T
-                        other['files'] = {}
-                        for _p in entry['snap']['files']:
-                            try:
-                                other['files'][_p] = _T.read(_p)
-                            except Exception:
-                                pass
-                    dst.append({'label': entry['label'], 'snap': other})
-                    _restore(st, entry['snap'])
-                    S.save(st)
-                push({'type': 'data', 'why': ('undo ' if back else 'redo ') + entry['label']})
-                return self._send(200, json.dumps({'ok': True, 'label': entry['label'],
-                                                   'can_undo': len(UNDO), 'can_redo': len(REDO)}))
-            if u.path == '/api/discard':
-                return self._send(200, json.dumps(discard_plan()))
-            if u.path == '/api/recover':
-                return self._send(200, json.dumps(recover_from_ipod(body)))
-            if u.path == '/api/tags':
-                return self._send(200, json.dumps(write_tags(body)))
+            if u.path in OPS:
+                return self._send(200, json.dumps(OPS[u.path](body)))
             if u.path == '/api/action':
                 return self._send(200, json.dumps(self._action(body)))
         except Exception as e:
@@ -2079,6 +2108,77 @@ class Handler(BaseHTTPRequestHandler):
                 return {'ok': False, 'error': 'no playlists named'}
             return {'ok': True, 'job': run_job('verify', steps).id}
         return {'ok': False, 'error': 'unknown action %r' % a}
+
+
+# ------------------------------------------------------- the service surface
+#
+# ONE TABLE, TWO ADAPTERS. The HTTP server dispatches through this and so
+# does the terminal; neither contains an operation of its own. That is the
+# other half of the layer rule -- the page may not work things out, and the
+# server may not hide what it works out inside a transport.
+#
+# The rule this buys: A SECOND CALLER IS THE PROOF AN ENDPOINT IS A BOUNDARY.
+# An endpoint only the page calls is a function that happens to be reachable
+# over HTTP; one the terminal calls too has a shape that survives contact
+# with a client that is not a browser. `bin/layer_census.py --strict` fails
+# when an entry here has no verb, so the gap cannot quietly reopen.
+#
+# Every operation has the same signature: it takes a dict and returns a
+# dict. No request object, no argv, no printing, no exit codes.
+_OPS = {
+    '/api/decide': apply_decision,
+    '/api/undo': undo_step,
+    '/api/discard': discard_plan,
+    '/api/recover': recover_from_ipod,
+    '/api/tags': write_tags,
+    '/api/track': track_info,
+}
+
+
+def _observed(name, fn):
+    """Wrap one operation so it logs a start, a duration and any error.
+
+    INSTRUMENTING THE TABLE INSTRUMENTS BOTH CLIENTS. This is the dividend
+    of having one registry rather than two dispatch blocks: the page, the
+    terminal and whatever calls the API next all run through here, so there
+    is exactly one place where an operation is timed and exactly one place
+    where a failure is recorded. Had undo still lived inside do_POST, it
+    would have needed its own instrumentation and would have been the one
+    operation nobody could see.
+
+    What is logged is the operation, the keys it touched and how long it
+    took -- never the field VALUES, which are the user's metadata and belong
+    in the file rather than in a log.
+    """
+    def run(body=None):
+        body = body or {}
+        keys = body.get('keys') or ([body['key']] if body.get('key') else [])
+        op = name.rsplit('/', 1)[-1]
+        # Only what is actually there. A log line reading n=null fields=null
+        # is three quarters punctuation, and the whole value of a structured
+        # log is that you can read a hundred lines of it at a glance.
+        data = {}
+        if keys:
+            data['n'] = len(keys)
+        if body.get('fields'):
+            data['fields'] = sorted(body['fields'])
+        if body.get('path'):
+            data['path'] = body['path']
+        with O.span(op, **data) as rid:
+            out = fn(body)
+            if isinstance(out, dict) and out.get('ok') is False:
+                # A refusal is not a crash, but it is the thing you want to
+                # find afterwards: "not in the drive index" twice over is a
+                # client asking the wrong question, and nothing else records
+                # that it happened.
+                O.event('warn', op, out.get('error') or 'refused', run=rid)
+            return out
+    run.__name__ = getattr(fn, '__name__', name)
+    run.__doc__ = fn.__doc__
+    return run
+
+
+OPS = {k: _observed(k, f) for k, f in _OPS.items()}
 
 
 def main(argv=None):

@@ -681,7 +681,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       transform: translateX(100%); transition: transform .22s cubic-bezier(.32,.72,0,1);
       box-shadow: -18px 0 46px rgba(7,12,19,.5); }
 #sp.on { transform: none; }
-@media (prefers-reduced-motion: reduce) { #sp, #spscrim { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #sp, #spscrim, #toast { transition: none; } }
 
 #sp .substat { border-top: 1px solid var(--faint); display: flex; align-items: center;
       gap: 12px; padding: 9px 14px; }
@@ -763,6 +763,28 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
    the keyboard hints read as all of them. */
 @media (max-width: 1100px) { .counts { display: none; } }
 @media (max-width: 900px)  { #keys  { display: none; } }
+
+/* ---------- accessibility pass, 1 October ----------
+   Additions only -- nothing above this line changed, so nothing at rest
+   moves. */
+
+/* FOCUS-VISIBLE. The keyboard path through this page is real -- tab reaches
+   every button, input and link -- and every one of them turned its own
+   outline off on :focus, for mouse clicks that never wanted a ring. Several
+   of those rules are id-scoped and would win the cascade outright over a
+   plain :focus-visible selector, so the ring here carries !important: the
+   one place in the sheet where losing a specificity fight would put the
+   bug straight back. --sel-hi is law 2's own answer to "where you are",
+   which is exactly what a focus ring marks -- no new token needed. */
+:focus-visible { outline: 2px solid var(--sel-hi) !important; outline-offset: 2px; }
+
+/* SCREEN-READER-ONLY TEXT. Clipped to a point rather than display:none,
+   which would pull it out of the accessibility tree along with the layout.
+   One utility, reused wherever text needs to reach a screen reader without
+   taking up room on screen: the live region below, and the word "playing"
+   on the row whose state is otherwise carried by colour alone (law 2). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 </style></head><body>
 
 <header>
@@ -778,9 +800,9 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 </header>
 
 <div id="work">
-  <aside class="left" id="left">
+  <aside class="left" id="left" aria-label="iPod">
     <div class="plabel"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span></div>
-    <div class="pbody" id="colbody"></div>
+    <div class="pbody" id="colbody" role="listbox" aria-label="iPod collections"></div>
   </aside>
   <!-- The library to take from, always beside the iPod. Nothing here is edited:
        a click shows the playlist in the centre, a drag pours it into a collection. -->
@@ -790,23 +812,23 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
        what you have listened to; the drive is what you already own, grouped
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
-  <aside class="srcpane" id="src">
+  <aside class="srcpane" id="src" aria-label="Source">
     <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Library</span></span><span class="modes" id="smodes"></span></div>
-    <div class="pbody" id="srcbody"></div>
+    <div class="pbody" id="srcbody" role="listbox" aria-label="Apple Music and library"></div>
   </aside>
 
-  <section class="mid" id="mid">
+  <section class="mid" id="mid" aria-label="Track list">
     <div class="plabel"><span class="name" id="midh">Library</span>
       <span id="midacts" style="display:flex;gap:12px"></span>
       <span class="pstat" id="midstat"></span>
       <span class="modes" id="flmodes"></span></div>
     <div class="filters" id="ctl"></div>
-    <div class="pbody" id="list"></div>
+    <div class="pbody" id="list" role="listbox" aria-multiselectable="true" tabindex="0"></div>
   </section>
 
-  <aside class="right" id="right">
+  <aside class="right" id="right" aria-label="Buy and vinyl">
     <div class="plabel"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span></div>
-    <div class="pbody" id="rbody"></div>
+    <div class="pbody" id="rbody" role="listbox" aria-label="Buy and vinyl tracks"></div>
     <div class="substat pstat" id="rstat"></div>
   </aside>
 
@@ -814,7 +836,8 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
     <div class="plabel"><span class="name">New collection</span><span class="sp"></span><span class="act" id="lsheetesc">esc</span></div>
     <div class="pbody">
       <div class="ninl"><input type="text" id="newin" placeholder="name it, or pick below"></div>
-      <div class="month">from Apple Music</div><div id="seedrows"></div>
+      <div class="month">from Apple Music</div>
+      <div id="seedrows" role="listbox" aria-label="Apple Music playlists to seed from"></div>
     </div>
   </div>
   <div class="sheet" id="rsheet">
@@ -825,6 +848,12 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 
 <footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
+<!-- A decision landing has no visual home of its own -- it is a toast that
+     is easy to miss and a redraw that moved on. aria-live is polite so it
+     waits for a pause rather than cutting off whatever the screen reader
+     is already reading, and sr-only keeps it off screen without pulling it
+     out of the accessibility tree the way display:none would. -->
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 <div id="menu"><div class="plabel seam" id="menuh"></div><div class="mb" id="menub"></div></div>
 
 <!-- THE SYNC PANEL. One list, twice: the changes you are approving, and then
@@ -834,7 +863,9 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 <div id="spscrim"></div>
 <aside id="sp">
   <div class="plabel seam"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
-  <div class="pbody" id="spbody"></div>
+  <!-- A GROUP, not a listbox: its rows are checkboxes you tick off, not
+       options you choose one of. -->
+  <div class="pbody" id="spbody" role="group" aria-label="Planned changes"></div>
   <div class="substat pstat"><span class="sp" id="spnote"></span><span id="spbtn"></span></div>
 </aside>
 
@@ -855,7 +886,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
     <input id="dlgin" placeholder="Late Night">
     <div id="dlgex"></div>
     <div id="dlgsec" class="dsec" hidden>or from an Apple Music playlist</div>
-    <div id="dlglist"></div>
+    <div id="dlglist" role="listbox" aria-label="Playlists"></div>
   </div>
 </div></div>
 
@@ -1211,13 +1242,23 @@ function libRow(r){
 function rowHTML(t,i,seq){
   const dur=mmss(t.seconds||t.dev_seconds);
   const have = t.device || t.local;      // on the iPod, or a file sync can reach
-  return `<div class="row ${t.tier==='remove'?'skip':''} ${have?'':'unowned'} ${MARK.has(t.key)?'marked':''}" draggable="true" data-i="${i}" data-k="${esc(t.key)}">
+  // LAW 3 IN WORDS, NOT JUST OPACITY. ".unowned" is a 45% opacity drop and
+  // nothing else, so a title carries the same fact for anyone who cannot
+  // see the difference. Reads nothing t does not already have -- a lookup
+  // on the same `have` this row's class already turned on.
+  const unownedTitle = have ? '' : ' title="not yet available — buy it or sync the file"';
+  // role=option + aria-selected is the ARIA half of law 2's blue: the
+  // listbox's selected option IS "where you are". MARK.has(t.key) is false
+  // for every row while nothing is marked, which is the correct default --
+  // mark() below corrects the one cursor row to true when there is no
+  // multi-selection.
+  return `<div id="trk-${i}" class="row ${t.tier==='remove'?'skip':''} ${have?'':'unowned'} ${MARK.has(t.key)?'marked':''}" role="option" aria-selected="${MARK.has(t.key)}"${unownedTitle} draggable="true" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -1326,6 +1367,9 @@ function drawMid(){
   view=shown.slice(0,CAP);
 
   $('#midh').innerHTML=esc(L.title)+(L.lib?` <span style="color:var(--dim)">· ${L.lib}</span>`:'');
+  // the listbox's own name follows what it is showing -- the same title
+  // already computed for #midh, just read once more rather than decided again
+  $('#list').setAttribute('aria-label',(L.title||'Tracks')+(L.lib?' · '+L.lib:''));
 
   const acts=$('#midacts'); acts.innerHTML='';
   if(L.takeover) acts.innerHTML=`<span class="act" id="takeover" title="a collection of the same name and order; from then on it is yours to edit and sync">make it a collection</span>`;
@@ -1451,12 +1495,25 @@ function wireRows(){
 function mark(){
   if(view.length)SELMEM[listKey()]=sel;   // never record the empty loading state
 
-  document.querySelectorAll('#list .row').forEach(r=>r.classList.remove('sel'));
+  // aria-selected follows MARK when there is one -- rowHTML() already wrote
+  // that onto every row -- and the single cursor row otherwise. Touching it
+  // here only in the no-mark case is what keeps the two from fighting.
+  document.querySelectorAll('#list .row').forEach(r=>{
+    r.classList.remove('sel');
+    if(!MARK.size)r.setAttribute('aria-selected','false');
+  });
   const r=document.querySelector(`#list .row[data-i="${sel}"]`);
   // Scrolling the selected row into view is right when YOU moved the
   // selection, and wrong during a redraw -- there it fights the restore and
   // wins, dragging you back to the selected row instead of where you were.
-  if(r){r.classList.add('sel'); if(!redrawing())r.scrollIntoView({block:'nearest'});}
+  if(r){
+    r.classList.add('sel');
+    if(!MARK.size)r.setAttribute('aria-selected','true');
+    $('#list').setAttribute('aria-activedescendant',r.id);
+    if(!redrawing())r.scrollIntoView({block:'nearest'});
+  } else {
+    $('#list').removeAttribute('aria-activedescendant');
+  }
 }
 async function saveOrder(col,keys,to){
   ORDER[col]=keys; sel=to;
@@ -1760,10 +1817,31 @@ function colRow(o){
   const name = o.sub
     ? `<span class="nm two"><i>${o.name}</i><span class="sub">${o.sub}</span></span>`
     : `<span class="nm">${o.name}</span>`;
-  return `<div class="col ${o.cls||''}"${o.attrs||''}${o.title?` title="${o.title}"`:''}>`
+  // ".on" is law 2's blue, "currently chosen" (Part 7) -- the same fact a
+  // sighted reader gets from the raised fill. aria-selected reads the one
+  // class string the caller already built; it never looks at a second one.
+  const picked = /(^|\s)on(\s|$)/.test(o.cls||'');
+  // ROLE COMES FROM THE CALLER, because not every list of these rows is a
+  // list you choose ONE of. An `option` outside a `listbox` is invalid ARIA
+  // and announces worse than no role at all, and three containers here hold
+  // colRow output without being single-choice lists.
+  //
+  // The sync panel's rows are the interesting case: they are not a report,
+  // because you can click one to leave it out of this run -- so they are
+  // checkboxes, and ".out" is the unticked state. Both states read the ONE
+  // class string the caller already built, never a second fact; that is the
+  // same rule aria-selected follows above.
+  const role = o.role === null ? ''
+    : o.role === 'checkbox'
+      ? ` role="checkbox" aria-checked="${!/(^|\s)out(\s|$)/.test(o.cls||'')}"`
+      : ` role="${o.role||'option'}" aria-selected="${picked}"`;
+  const moreAttrs = o.menu
+    ? ' role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions"'
+    : ' aria-hidden="true"';   // the reserved, empty slot -- nothing to announce
+  return `<div class="col ${o.cls||''}"${role}${o.attrs||''}${o.title?` title="${o.title}"`:''}>`
     + art + name
     + `<span class="cnt">${o.cnt==null?'':o.cnt}</span>`
-    + `<span class="more${o.menu?'':' hold'}" title="more">&#8943;</span></div>`;
+    + `<span class="more${o.menu?'':' hold'}"${moreAttrs} title="more">&#8943;</span></div>`;
 }
 
 /* the drive: what is already owned, filed the way the drive files it */
@@ -1965,6 +2043,17 @@ document.querySelectorAll('#rtabs .pill').forEach(t=>t.onclick=()=>{rtab=t.datas
 /* ---------------- saving ---------------- */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');
   clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),1400);}
+// A decision's row can already be gone by the time this runs -- a filtered
+// list drops it the moment it no longer matches. One fixed phrase, not a
+// description of the patch: wording it per decision shape is a rule about
+// what a patch means, and that reads two fields where this only needs one
+// fact -- something landed. Clearing first forces a second announcement
+// even when the previous one said the same thing.
+function announce(m){
+  const el=$('#live'); if(!el)return;
+  el.textContent='';
+  setTimeout(()=>{el.textContent=m;},50);
+}
 function saved(){const s=$('#saved'); if(s)s.textContent='saved '+new Date().toLocaleTimeString();}
 async function post(url,body){
   return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1980,6 +2069,7 @@ async function decide(patch,keys,advance){
   const r=await post('/api/decide',{keys:ks,...(newborn.length?{adopt:newborn}:{}),...patch});
   if(!r.ok){toast('NOT SAVED — check the terminal');return;}
   saved();
+  announce('Decision saved.');
   // On an unfiltered list the row stays put, so step on; on a filtered list the
   // row leaves and `sel` already points at the next one. Getting this wrong means
   // every decision needs a following keypress, which ruins the rhythm.
@@ -2523,7 +2613,11 @@ function paintSync(){
     const st = r.infra ? (r.state||'fixed') : (r.state || (SP.off.has(r.id)?'out':''));
     const mk = {doing:'\u2026', done:'\u2713', err:'!'}[r.state] || '';
     const right = r.err ? esc(r.err) : (mk || (run?'':esc(r.meta||'')));
-    return colRow({name:esc(r.name), cnt:right, cls:st, attrs:' data-id="'+esc(r.id)+'"'});
+    // Only the rows you can actually click are checkboxes: infrastructure
+    // rows and every row during a run are inert, so they claim no role
+    // rather than claiming one that lies about what they do.
+    return colRow({name:esc(r.name), cnt:right, cls:st, role:(r.infra||run)?null:'checkbox',
+                   attrs:' data-id="'+esc(r.id)+'"'});
   }).join('');
   if(SP.log.length) h+='<div id="splog">'+esc(SP.log.slice(-8).join('\n'))+'</div>';
   $('#spbody').innerHTML=h;
@@ -2657,7 +2751,8 @@ function menuRow(label,key,tick,cls){
   return `<div class="drow ${cls||''}"><span class="dn">${label}</span>${tick?'<span class="dc">&#10003;</span>':''}${key?`<span class="dk">${key}</span>`:''}</div>`;
 }
 function openMenu(anchor,kind,payload){
-  MENU={kind,payload};
+  MENU={kind,payload,anchor};
+  anchor.setAttribute('aria-expanded','true');
   paintMenu();
   menu.classList.add('on');
   const a=anchor.getBoundingClientRect(), m=menu.getBoundingClientRect();
@@ -2667,7 +2762,13 @@ function openMenu(anchor,kind,payload){
   if(y<8)y=8;
   menu.style.left=x+'px'; menu.style.top=y+'px';
 }
-function closeMenu(){ menu.classList.remove('on'); MENU=null; }
+function closeMenu(){
+  menu.classList.remove('on');
+  // the anchor may already be gone -- draw() replaces the row it belonged
+  // to before this runs -- and setAttribute on a detached node is a no-op
+  if(MENU&&MENU.anchor)MENU.anchor.setAttribute('aria-expanded','false');
+  MENU=null;
+}
 function paintMenu(){
   if(!MENU)return;
   const h=$('#menuh'), b=$('#menub');

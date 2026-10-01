@@ -172,9 +172,97 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## One implementation, two adapters
+
+Every operation lives once, in `curate.OPS`: a table from name to function,
+each taking a dict and returning a dict. No request object, no argv, no
+printing, no exit codes.
+
+```
+                    curate.OPS
+          decide  undo  discard  recover  tags  track
+                  /              \
+          HTTP handler        saltpod <verb>
+       (four lines of        (argv -> dict,
+        dispatch)             dict -> receipt)
+```
+
+**A second caller is the proof an endpoint is a boundary.** An operation
+only the page can reach is a function that happens to be addressable over
+HTTP; one the terminal reaches too has a shape that survived contact with a
+client that is not a browser. Five operations had no verb and they were the
+five newest, which is how the gap always opens: the page needs something,
+the endpoint gets written, and the terminal is what nobody remembers. The
+native app would have been the first client to find out.
+
+Adding five argparse branches would have been five *second
+implementations* — the same mistake the layer rule forbids on the client
+side. Hence the table. Getting there meant lifting the undo operation out
+of `do_POST`, where its whole implementation lived: a rule welded to a
+transport cannot be called by the terminal, cannot be called by the native
+app, and cannot be tested without a socket.
+
+`bin/selftest.py` and `bin/layer_census.py --strict` both fail when an
+entry in `OPS` has no verb, and the check caught one the hour it was
+written.
+
+### What that bought immediately
+
+Instrumenting the table instrumented both clients at once. `observe.py`
+wraps every operation in a span, so there is exactly one place an operation
+is timed and one place a failure is recorded — the page, the terminal and
+whatever calls the API next all run through it. Had undo still lived inside
+the HTTP handler, it would have been the one operation nobody could see.
+
+## The event log
+
+`data/logs/events.jsonl`, one JSON object per line: `ts`, `level`, `op`,
+`run`, `ms`, `msg`, `data`. A `span()` times an operation and records errors
+with a trimmed traceback before re-raising; one `run` id ties every event of
+one sync together. Rotates at 5 MB, three generations. Thread-safe, because
+the server is threaded. The FireWire GUID is redacted by shape, because it
+is a secret and a log is a file people paste.
+
+**Logging failing is never a reason for a sync to fail** — write errors are
+swallowed internally and counted, and `observe.dropped()` says how many.
+
+`saltpod log` reads it back, with `--op`, `--run`, `--level` and
+`--summary`, so the log has a second caller and not only a writer. Every
+sync failure so far has been something nobody could see afterwards: a track
+in two states at once, a playlist that could never settle, a track id
+invalidated by an earlier removal. Each cost an evening of re-running the
+whole thing to watch it happen again.
+
+## Accessibility: what is done, and what is not
+
+Done, with no visible change to the page at rest (checked by loading it):
+
+| | |
+|---|---|
+| `:focus-visible` | a ring on the keyboard path, which was real and invisible. Reuses `--sel-hi`, law 2's own token for "where you are" |
+| roles | listbox/option, generated inside `colRow()` so it is one place rather than hand-attached per row; panes and list bodies named |
+| live region | one polite region, announced from `decide()` — the single function all 23 decision call sites funnel through |
+| second channel | law 2's orange (playing) and law 3's opacity gap (unowned) both get a text channel; `aria-selected` carries law 2's blue |
+| motion | the one unwrapped transition now respects `prefers-reduced-motion` |
+
+**The role comes from the caller.** `colRow()` first emitted
+`role="option"` unconditionally, including into three containers that are
+not single-choice lists — and an `option` outside a `listbox` is invalid
+ARIA that announces *worse* than no role. The sync panel's rows are
+**checkboxes**, not a report, because you click one to leave it out of the
+run. Both `aria-selected` and `aria-checked` read the one class string the
+caller already built, never a second fact, which is why the layer census
+did not move.
+
+Still open, and deliberately: no roving tabindex on the left, source and
+right panes (they are click-and-drag only today, and wiring arrow keys
+there is a real redesign); the gear's busy dot and the folded-filter dot
+are still colour-only; and nobody has run a screen reader against this
+page.
+
 ## TODO — the front end has no behavioural test, and no accessibility one
 
-`bin/selftest.py` is a **server** suite. Of its sixteen checks only three
+`bin/selftest.py` is a **server** suite. Of its eighteen checks only three
 touch the page, and all three are static:
 
 | | what it proves |
@@ -193,14 +281,13 @@ those.
 And accessibility has never been looked at once. What is already known to
 be missing, from the code as it stands:
 
-- no focus-visible styling — the keyboard path is real and invisible
-- no ARIA roles on the list, the panels or the menu; a screen reader meets
-  1,200 anonymous `div`s
-- colour is load-bearing in two laws (blue is space, orange is time) with
-  no second channel
-- `.row.unowned` is a 45% opacity difference doing semantic work
-- the centre list has no live region, so nothing announces that a decision
-  landed
+- ~~no focus-visible styling~~ — done, see above
+- ~~no ARIA roles~~ — done for the four panes and the row builder; the
+  dialogs' own controls are still bare
+- colour in two laws now has a second channel; the gear's busy dot and the
+  folded-filter dot do not
+- ~~`.row.unowned`'s opacity doing semantic work~~ — it carries a title now
+- ~~no live region~~ — done; one polite region, announced from `decide()`
 
 **Shape it would take when it is time:** drive the real page headlessly,
 assert behaviour rather than markup — a shift-range marks N rows and

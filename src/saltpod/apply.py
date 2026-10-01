@@ -33,6 +33,8 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+from . import observe as O
+from . import platform as P
 from . import state as S            # noqa: E402
 from . import itunesdb_write as W   # noqa: E402
 from . import ipod_edit as E        # noqa: E402
@@ -87,12 +89,49 @@ def probe(path):
 
 
 def convert_to_alac(src, dst):
-    # -vn -map 0:a:0: these AIFFs carry cover art as an mjpeg stream and ffmpeg
-    # will otherwise mux it into the output (see curate.py). -movflags faststart
-    # so the iPod's parser finds the moov atom without reading the whole file.
-    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src, '-vn', '-map', '0:a:0',
-                    '-c:a', 'alac', '-map_metadata', '0', '-movflags', '+faststart', dst],
-                   check=True, env=FF_ENV, timeout=600)
+    """Make the ALAC the iPod plays, then put the tags on OURSELVES.
+
+    WHY NOT `-map_metadata 0` ANY MORE. ffmpeg's reader and ffmpeg's metadata
+    mapping disagree with each other, measured on a real file:
+
+        AIFF NAME chunk    "Galore feat. Stephen Simmons (Album Version)"
+        AIFF ID3 TIT2      "Galore feat. Stephen Simmonds (Original Mix)"
+        ffprobe, source    the TIT2 -- which agrees with our reader
+        ffmpeg, converted  the NAME chunk
+
+    So the converted file carried a title ffmpeg itself would not have
+    reported for the source: on 21 of the 809 AIFFs here, the raw download
+    filename instead of the actual title. Writing the tags with OUR writer
+    instead means the file on the device and the index agree BY
+    CONSTRUCTION, because the same code reads and writes them, rather than
+    agreeing by two tools happening to make the same choice.
+
+    `platform.to_alac` prefers /usr/bin/afconvert, which produces identical
+    audio and is 36 MB of homebrew dylibs lighter, and falls back to ffmpeg
+    off macOS or when afconvert is missing. afconvert carries no metadata at
+    all, which is the better starting point: nothing to disagree with.
+    """
+    from . import tags as T
+    r = P.to_alac(src, dst)
+    if not r['ok']:
+        raise RuntimeError('could not convert %s: %s'
+                           % (os.path.basename(src), r['error']))
+    want = {}
+    try:
+        want = T.read(src) or {}
+    except Exception:
+        # No reader for this container yet. ffmpeg's mapping is then the only
+        # metadata there is, so leave whatever it carried rather than wiping
+        # the file clean.
+        want = {}
+    if want and T.supported(dst):
+        try:
+            T.write(dst, {k: (want.get(k) or '') for k in T.FIELDS})
+        except Exception as e:
+            O.event('warn', 'convert', 'tags not written to the converted file',
+                    path=os.path.basename(dst), err=str(e))
+    O.event('info', 'convert', 'converted to alac', backend=r['backend'],
+            src=os.path.basename(src), fields=sorted(want))
 
 
 def new_location(mount, ext):
@@ -108,6 +147,11 @@ def new_location(mount, ext):
 # ----------------------------------------------------------------- plan
 
 def plan(mount=None):
+    with O.span('plan', mount=mount or MOUNT):
+        return _plan(mount)
+
+
+def _plan(mount=None):
     _cfg()
     mount = mount or MOUNT
     st = S.load()
@@ -432,6 +476,17 @@ def drop_excluded(p, exclude):
 
 
 def sync(mount=None, eject=True, exclude=None):
+    # THE ONE OPERATION WHERE A LOG IS NOT A LUXURY. A sync writes to the
+    # device, and the failures that mattered were all things nobody could see
+    # afterwards: a track in two states at once, a playlist that could never
+    # settle, a track id invalidated by an earlier removal. Each cost an
+    # evening of re-running the whole thing to watch it happen again. One run
+    # id now ties every step of one sync together.
+    with O.span('sync', mount=mount or MOUNT, eject=bool(eject)):
+        return _sync(mount, eject, exclude)
+
+
+def _sync(mount=None, eject=True, exclude=None):
     _cfg()
     mount = mount or MOUNT
     p = drop_excluded(plan(mount), exclude)

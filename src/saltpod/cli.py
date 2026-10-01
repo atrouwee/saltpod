@@ -12,6 +12,120 @@ from . import __version__
 from .console import receipt, step, note, fail
 
 
+def _ident(v):
+    """A key or a path, told apart by looking rather than by a flag.
+
+    A key is `artist|title` and a path is a path. Asking the user which one
+    they are holding is a question the program can answer itself.
+    """
+    return {"path": v} if (os.sep in v or os.path.exists(v)) else {"key": v}
+
+
+def _service(a):
+    """Every service verb, through the one registry the HTTP server uses.
+
+    THE POINT IS THAT THERE IS NO LOGIC HERE. This function turns argv into a
+    dict, calls the operation, and prints the dict it gets back. If a rule
+    appeared in this function it would be a second implementation of that
+    rule, drifting quietly from the one the page gets -- which is exactly
+    what the layer rule forbids on the other side of the boundary.
+    """
+    import json as _json
+    from . import curate as C, tags as T
+
+    body, op = {}, "/api/" + a.cmd
+    if a.cmd == "track":
+        body = _ident(a.ident)
+    elif a.cmd == "tags":
+        fields = {}
+        for pair in a.set:
+            if "=" not in pair:
+                fail("--set wants FIELD=VALUE", "got %r" % pair)
+            f, _, v = pair.partition("=")
+            f = f.strip()
+            if f not in T.FIELDS:
+                fail("no field called %r" % f, "one of: " + " ".join(T.FIELDS))
+            fields[f] = v
+        if not fields:
+            fail("nothing to write", "add --set artist=... ; `saltpod track` shows the current values")
+        body = dict(_ident(a.ident), fields=fields)
+    elif a.cmd == "undo":
+        if a.list:
+            # The stacks live in the SERVER process, so a separate `saltpod
+            # undo --list` sees its own empty ones. Said plainly rather than
+            # printing a confident zero: two processes, two stacks, and the
+            # one that matters is the one holding the page's session.
+            state = {"can_undo": len(C.UNDO), "can_redo": len(C.REDO),
+                     "next": C.UNDO[-1]["label"] if C.UNDO else None}
+            if a.json:
+                print(_json.dumps(state))
+            else:
+                receipt("can undo", state["next"] or "nothing")
+                receipt("can redo", C.REDO[-1]["label"] if C.REDO else "nothing")
+                note("this process has its own stack; a running `saltpod curate` "
+                     "holds the session's")
+            return 0
+        body = {"redo": True} if a.redo else {}
+    elif a.cmd == "discard":
+        if not a.yes:
+            fail("discard takes back every staged change and cannot be undone",
+                 "run it again with --yes if that is what you want")
+    elif a.cmd == "decide":
+        body = {"keys": a.keys}
+        if a.tier:
+            body["tier"] = a.tier
+        if a.collection:
+            body["collection"] = a.collection
+            body["mode"] = a.mode
+        for flag in ("vinyl", "bought"):
+            v = getattr(a, flag)
+            if v is not None:
+                body[flag] = (v == "yes")
+        if len(body) == 1:
+            fail("nothing decided",
+                 "add --tier sync, --collection NAME, --vinyl yes or --bought yes")
+    elif a.cmd == "recover":
+        body = {"key": a.key}
+
+    out = C.OPS[op](body)
+    if a.json:
+        print(_json.dumps(out, indent=2, default=str))
+        return 0 if out.get("ok", True) else 1
+
+    if out.get("error"):
+        fail(out["error"], "")
+    if a.cmd == "track":
+        # RENDERED FROM THE PAYLOAD'S OWN SHAPE, not from a guess about it.
+        # The first version of this read flat keys, found no `writable`, and
+        # printed "no" for a file it had just successfully written -- a client
+        # inventing an answer the server had already given, two lines away.
+        for f, v in (out.get("fields") or {}).items():
+            if v:
+                receipt(f.replace("_", " "), str(v))
+        fi = out.get("file") or {}
+        for k, label in (("ext", "container"), ("codec", "codec"),
+                         ("seconds", "seconds"), ("size", "bytes")):
+            if fi.get(k) not in (None, ""):
+                receipt(label, str(fi[k]))
+        receipt("artwork", "yes" if fi.get("has_art") else "none")
+        receipt("writable", "yes" if fi.get("writable") else (fi.get("why") or "no"),
+                tone="good" if fi.get("writable") else "bad")
+        dev = out.get("device") or {}
+        receipt("on the iPod", "yes" if dev.get("on") else "no")
+        if fi.get("path"):
+            receipt("path", fi["path"])
+        return 0
+    for k, v in out.items():
+        if k == "ok" or isinstance(v, (dict, list)):
+            continue
+        receipt(k.replace("_", " "), str(v))
+    if out.get("ok") is False:
+        return 1
+    note("the file on disk is the master; the iPod catches up on the next sync"
+         if a.cmd == "tags" else "")
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -66,9 +180,102 @@ def main(argv=None):
     p = sub.add_parser("discogs", help="what the Discogs exports hold, and what is flagged but not yet on either list")
     p.add_argument("what", choices=["status", "wantlist", "collection"], nargs="?", default="status")
 
+    # ------------------------------------------------- the service verbs
+    #
+    # FIVE ENDPOINTS HAD NO VERB, and they were the five newest -- which is
+    # how the gap always opens: the page needs something, the endpoint gets
+    # written, and the terminal is the thing nobody remembers. These do not
+    # reimplement anything. Each one calls the SAME function the HTTP handler
+    # calls, through `curate.OPS`, so there is one implementation and two
+    # ways in. `bin/layer_census.py --strict` fails if that stops being true.
+
+    p = sub.add_parser("track", help="everything known about one track: the panel's payload, in the terminal")
+    p.add_argument("ident", help="a key (artist|title) or a path to a file on the drive")
+    p.add_argument("--json", action="store_true", help="the payload as the clients see it")
+
+    p = sub.add_parser("tags", help="write tags into the file on disk; the iPod picks them up on the next sync")
+    p.add_argument("ident", help="a key (artist|title) or a path to a file on the drive")
+    p.add_argument("--set", action="append", default=[], metavar="FIELD=VALUE",
+                   help="repeatable: --set artist=Lamb --set 'title=Gorecki'. "
+                        "Only the fields you name are touched.")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("undo", help="step the undo stack back, or forward with --redo")
+    p.add_argument("--redo", action="store_true", help="go the other way")
+    p.add_argument("--list", action="store_true", help="say what is on the stack and change nothing")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("discard", help="take back every staged change so the next plan is empty; no undo")
+    p.add_argument("--yes", action="store_true", help="required: this cannot be undone")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("decide", help="mark tracks: sync, remove, buy, want the vinyl, or put them in a collection")
+    p.add_argument("keys", nargs="+", help="one or more track keys (artist|title)")
+    p.add_argument("--tier", choices=["sync", "remove", "undecided"],
+                   help="sync it, take it off, or take the decision back")
+    p.add_argument("--collection", help="the collection to add to or remove from")
+    p.add_argument("--mode", choices=["add", "remove", "toggle"], default="toggle",
+                   help="what to do with --collection; default toggle, because a "
+                        "control that undoes itself is the product's rule")
+    p.add_argument("--vinyl", choices=["yes", "no"], help="want the record")
+    p.add_argument("--bought", choices=["yes", "no"], help="own the digital")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("recover", help="copy a track off the iPod back onto the drive, named from the database")
+    p.add_argument("key", help="the track key, as `saltpod state stats` lists them")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
+    p.add_argument("-n", type=int, default=25, help="how many recent events (default 25)")
+    p.add_argument("--level", choices=["debug", "info", "warn", "error"],
+                   help="only this level and above")
+    p.add_argument("--op", help="only this operation, e.g. sync, plan, tags")
+    p.add_argument("--run", help="every event of one run, by its id")
+    p.add_argument("--summary", action="store_true",
+                   help="counts by operation and level, and the slowest ops")
+    p.add_argument("--json", action="store_true")
+
     sub.add_parser("version", help="print the version and exit")
 
     a = parser.parse_args(argv)
+
+    if a.cmd in ("track", "tags", "undo", "discard", "recover", "decide"):
+        return _service(a)
+
+    if a.cmd == "log":
+        import json as _json
+        from . import observe as O
+        if a.summary:
+            out = O.summary()
+            if a.json:
+                print(_json.dumps(out, indent=2, default=str)); return 0
+            for k, v in out.items():
+                if isinstance(v, dict):
+                    step(k.replace("_", " "))
+                    for kk, vv in v.items():
+                        receipt(kk, str(vv))
+                elif isinstance(v, list):
+                    step(k.replace("_", " "))
+                    for row in v:
+                        receipt(str(row.get("op", "?")) if isinstance(row, dict) else str(row),
+                                ("%.0f ms" % row["ms"]) if isinstance(row, dict) and row.get("ms") is not None else "")
+                else:
+                    receipt(k.replace("_", " "), str(v))
+            return 0
+        rows = O.tail(a.n, level=a.level, op=a.op, run=a.run)
+        if a.json:
+            print(_json.dumps(rows, indent=2, default=str)); return 0
+        if not rows:
+            note("nothing logged yet; %s" % O.current_path()); return 0
+        for r in rows:
+            ms = ("%7.1f ms" % r["ms"]) if r.get("ms") is not None else " " * 10
+            mark = {"error": "!!", "warn": " ~", "info": "  ", "debug": "  "}.get(r.get("level"), "  ")
+            print(" %s %s  %-8s %-9s %s %s"
+                  % (mark, (r.get("ts") or "")[11:23], r.get("op", "")[:8],
+                     r.get("run", ""), ms, r.get("msg", "")[:60]))
+        note("%d events from %s" % (len(rows), O.current_path()))
+        return 0
+
     if a.cmd == "version":
         print(__version__); return 0
     if a.cmd == "curate":
