@@ -172,6 +172,45 @@ Folding is outside-in by window width: the drive folds below 1500px, Apple
 Music below 1250, the outer two below 860. Five panes need about 1500px
 before the list stops being the thing that suffers.
 
+## TODO — the front end has no behavioural test, and no accessibility one
+
+`bin/selftest.py` is a **server** suite. Of its sixteen checks only three
+touch the page, and all three are static:
+
+| | what it proves |
+|---|---|
+| inline script parses | it is syntactically valid |
+| no literals outside `:root` | it conforms to the design tokens |
+| front end does not decide | it is within the layer-rule budget |
+
+**None of them proves anything works.** Every behavioural bug in the page
+so far was caught by a person clicking, or by me driving the browser by
+hand — shift-click dragging a text selection, `⌘Z` swallowed whenever a
+panel was open, the track panel unable to open the 581 files it exists
+for, fields that did not look like fields. A parser cannot see any of
+those.
+
+And accessibility has never been looked at once. What is already known to
+be missing, from the code as it stands:
+
+- no focus-visible styling — the keyboard path is real and invisible
+- no ARIA roles on the list, the panels or the menu; a screen reader meets
+  1,200 anonymous `div`s
+- colour is load-bearing in two laws (blue is space, orange is time) with
+  no second channel
+- `.row.unowned` is a 45% opacity difference doing semantic work
+- the centre list has no live region, so nothing announces that a decision
+  landed
+
+**Shape it would take when it is time:** drive the real page headlessly,
+assert behaviour rather than markup — a shift-range marks N rows and
+selects no text, a save writes the file and leaves one undo entry, Escape
+closes a panel without discarding edits — plus an axe-style audit pass. It
+belongs beside `selftest.py`, not inside it: different runner, different
+speed, different failure modes.
+
+Deliberately not built yet.
+
 ## Cancel is not Close
 
 The sync panel has two ways out and they must never blur into one.
