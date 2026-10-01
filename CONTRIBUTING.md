@@ -33,6 +33,45 @@ AppleScript, and reaches two public HTTP endpoints you can see in the source
 (the iTunes Search API and Bandcamp release pages). Nothing else, and nothing
 needs a model.
 
+## The layer rule
+
+**A client may look things up. It may not work them out.**
+
+The page is one client. The native app is a second, and anything that ever
+talks to the HTTP API is a third. A rule spelled out in the page is a rule
+that has to be spelled out again in Swift and once more after that — three
+implementations of one sentence, drifting apart quietly.
+
+So the server answers the questions and the clients render the answers:
+
+| The client asks | and gets |
+|---|---|
+| which lists is this track in? | `lists: ['to buy', 'on T7']` |
+| what album does it belong to? | `album_key` |
+| do I own this on vinyl? | `vinyl_owned` |
+| do I have a file for it? | `held` |
+| how many to buy, and for how much? | `totals` |
+
+Membership of a named list is a **lookup**. Deciding what belongs in that
+list is a **rule**. `filter === 'to buy'` becomes
+`t.lists.includes('to buy')`, and the client gains nothing by knowing why.
+
+Two things are deliberately left client-side, and both are about the view
+rather than the library: the sum of whatever the centre pane is currently
+showing, and the "is there a file for this" check that decides full ink
+versus dim. The server has no opinion about what you are looking at.
+
+`python3 bin/layer_census.py` counts the rule-shaped expressions left in
+the page against a budget, each with a reason. The numbers only go down.
+It is the same instrument as the design system's token census: it does not
+prove the boundary holds, it notices when it moves.
+
+**And the other half: if the page can do it, the terminal must be able to
+as well.** That is not a style preference — it is what made the first
+hardware test possible when the browser dropped out, and it is the same
+surface the native app will use. `bin/layer_census.py` prints both lists so
+the gap is visible.
+
 ## The shape of a good change
 
 - **One file, no build, nothing fetched** for the page. It is served from disk

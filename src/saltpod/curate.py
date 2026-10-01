@@ -480,6 +480,12 @@ def plan_summary(mount=None):
                           for k, r in p['no_source']],
             'removes': [{'key': k, 'artist': r['artist'], 'title': r['title']}
                         for k, r, t in p['removes']],
+            # metadata the two sides disagree about. `winner` says which one
+            # is right; 'file' is the ordinary direction.
+            'retags': [{'key': k, 'artist': r.get('artist') or '',
+                        'title': r.get('title') or '', 'winner': w,
+                        'fields': {kk: vv for kk, vv in f.items() if vv}}
+                       for k, r, tid, w, f in (p.get('retags') or [])],
             # How many tracks each playlist ends up with, so an unticked
             # playlist row can say what it is leaving alone.
             'sizes': {c: len(m) for c, m in p['collections'].items()},
@@ -488,10 +494,14 @@ def plan_summary(mount=None):
             # you are actually approving. `on` is whether the track is
             # already on the device -- a playlist of tracks that are all
             # there copies nothing and only builds a menu.
+            # `off` means: in this playlist, and also marked to come off the
+            # device. A contradiction worth showing rather than resolving
+            # quietly -- the sync skips it, and you can see why.
             'members': {c: [{'key': k,
                              'artist': r.get('artist') or '',
                              'title': r.get('title') or '',
-                             'on': k in p['dev_by_key']}
+                             'on': k in p['dev_by_key'],
+                             'off': r.get('tier') == 'remove'}
                             for k, r in m]
                         for c, m in p['collections'].items()
                         if c in p['new_playlists'] or c in p['update_playlists']},
@@ -757,12 +767,27 @@ def write_tags(body):
     if not det['writable']:
         return {'ok': False, 'error': det['why'] or 'not writable'}
 
-    clean = {f: str(fields.get(f) or '').strip() for f in T.FIELDS}
+    # PATCH THE FIELDS YOU CHANGED, do not rewrite the set. Sending all
+    # seven every time means any field the reader could not see comes back
+    # as empty and its frame is dropped -- which silently deleted a genre
+    # the device still had. Only keys actually present in the request are
+    # touched; everything else keeps whatever the file says.
+    current = {}
+    try:
+        current = T.read(det['path'])
+    except Exception:
+        pass
+    clean = {f: str(current.get(f) or '') for f in T.FIELDS}
+    for f in T.FIELDS:
+        if f in fields:
+            clean[f] = str(fields[f] or '').strip()
     try:
         before = T.read(det['path'])
         at, audio = T.audio_payload(det['path'])
-        T.write(det['path'], clean)
-        T.verify(det['path'], at, audio)          # the audio did not move
+        in_place = T.write(det['path'], clean)
+        # the audio BYTES never change; the offset only holds when the new
+        # tag fitted where the old one was
+        T.verify(det['path'], at, audio, in_place=in_place)
     except Exception as e:
         return {'ok': False, 'error': '%s' % e}
 
@@ -1286,6 +1311,105 @@ def local_keys():
         return set()
 
 
+# ---------------------------------------------------------------- answers
+#
+# THE SERVER ANSWERS THE QUESTIONS; A CLIENT RENDERS THE ANSWERS.
+#
+# The payload used to be 37 facts and no answers, so "is this on the buy
+# list" was worked out in the page from three of them -- and would have been
+# worked out again, separately, in the native app, and a third time in
+# anything else that ever talked to this. Three implementations of one rule
+# is three places for it to drift.
+#
+# So the rule is: **a client may look things up; it may not work them out.**
+# Membership of a named list is a lookup. Deciding what belongs in that list
+# is a rule, and rules live here.
+
+LISTS = ('to buy', 'to sync', 'to remove', 'on iPod', 'on T7', 'on vinyl',
+         'rented only', 'owned digitally')
+
+
+_LP = {'built': None, 'own': set(), 'want': set()}
+
+
+def _vinyl_sets():
+    """The Discogs collection and wantlist, as release keys.
+
+    Cached on the file timestamps, because this is asked once per track and
+    there are 1,211 of them.
+    """
+    from . import discogs as D
+    stamp = tuple(os.path.getmtime(os.path.join(D.DIR, fn))
+                  if os.path.exists(os.path.join(D.DIR, fn)) else 0
+                  for fn in D.FILES.values())
+    if _LP['built'] != stamp:
+        pay = D.payload()
+        _LP['own'] = {x['key'] for x in (pay.get('collection') or []) if x.get('key')}
+        _LP['want'] = {x['key'] for x in (pay.get('wantlist') or []) if x.get('key')}
+        _LP['built'] = stamp
+    return _LP
+
+
+def _release_key(artist, album):
+    """The same key discogs.py builds, so the two sides can be compared.
+
+    It lived in the page as `vkey()` -- which meant the matching rule for
+    "do I own this record" existed twice, in two languages, and would have
+    existed a third time in Swift.
+    """
+    from . import discogs as D
+    a, b = D.norm(artist or ''), D.norm(album or '')
+    return (a + '|' + b) if (a and b) else None
+
+
+def _answers(t):
+    """The questions the interface asks, answered once.
+
+    `lists` is the whole filter model: every chip in the centre pane, the
+    buy pane and the vinyl pane is membership of one of these. A client
+    filters by `name in t['lists']`, which is a lookup, and gains nothing by
+    knowing why.
+    """
+    held = bool(t.get('local') or t.get('device'))
+    rk = _release_key(t.get('artist'), t.get('album') or t.get('dev_album'))
+    lp = _vinyl_sets()
+    owned_lp = bool(rk and rk in lp['own'])
+    wanted_lp = bool(rk and rk in lp['want'])
+    lists = []
+    if t.get('tier') == 'sync' and not held:
+        lists.append('to buy')
+    if t.get('tier') == 'sync' and t.get('local') and not t.get('device'):
+        lists.append('to sync')
+    # ONLY WHAT WILL ACTUALLY HAPPEN. `remove` stays on a track after the
+    # sync that carried it out -- nothing resets it, and nothing should,
+    # because the decision is still true. But a list called "to remove"
+    # that counts five tracks already off the device is answering a
+    # different question from the one the name asks. plan() says a removal
+    # is pending only when the track is still there; this agrees with it.
+    if t.get('tier') == 'remove' and t.get('device'):
+        lists.append('to remove')
+    if t.get('device'):
+        lists.append('on iPod')
+    if t.get('t7'):
+        lists.append('on T7')
+    if owned_lp:
+        lists.append('on vinyl')
+    if t.get('am') and not t.get('t7') and not owned_lp:
+        lists.append('rented only')
+    if held:
+        lists.append('owned digitally')
+    return {
+        'lists': lists,
+        'vinyl_owned': owned_lp, 'vinyl_wanted': wanted_lp, 'release_key': rk,
+        # the one grouping rule, settled once: album NAME alone. Keying on
+        # artist+album shattered every compilation -- 389 "albums" out of
+        # 466 tracks -- because only 904 of this drive's 4,048 files carry
+        # an album_artist tag.
+        'album_key': (t.get('album') or '').strip().lower() or None,
+        'held': held,
+    }
+
+
 def tracks_payload(scope=''):
     st = S.load()
     am_keys = set(am_index().get('keys') or [])
@@ -1339,12 +1463,22 @@ def tracks_payload(scope=''):
             'bandcamp': (r.get('bandcamp') or {}).get('url'),
             'bc_verdict': (r.get('bandcamp') or {}).get('verdict'),
         })
+        out[-1].update(_answers(out[-1]))
     order = {p: i for i, p in enumerate(sorted({p for t in out for p in t['playlists']}))}
     out.sort(key=lambda t: (order.get(t['playlists'][0], 99) if t['playlists'] else 99,
                             t['artist'].lower(), t['title'].lower()))
+    # THE TOTALS, ANSWERED HERE. Two places in the page added these up and
+    # a third would have in Swift. A sum over rows the server already has
+    # is not something a client should be doing.
+    buy = [t for t in out if 'to buy' in t['lists']]
+    totals = {'to_buy': len(buy),
+              'to_buy_eur': round(sum(t.get('price') or 0 for t in buy), 2),
+              'to_sync': sum(1 for t in out if 'to sync' in t['lists']),
+              'to_remove': sum(1 for t in out if 'to remove' in t['lists']),
+              'on_ipod': sum(1 for t in out if 'on iPod' in t['lists'])}
     st_cols = sorted(st.get('collections', []))
     order = {c: S.order_for(st, c) for c in st_cols}
-    return {'tracks': out, 'collections': st_cols, 'order': order,
+    return {'tracks': out, 'collections': st_cols, 'order': order, 'totals': totals,
             'synced': st.get('synced_playlists') or [],
             'slugs': playlist_slugs(), 'updated': st.get('updated')}
 

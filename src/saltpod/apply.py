@@ -193,30 +193,57 @@ def plan(mount=None):
     for c, members in cols.items():
         if c not in existing:
             continue
-        if any(k not in dev_by_key for k, r in members):
-            continue                      # something in it still has to be copied across
-        if [dev_by_key[k] for k, r in members] == dev_seq.get(c):
+        # MIRROR THE WRITER EXACTLY. It writes the members that are on the
+        # device and silently drops the rest, so the comparison has to do
+        # the same -- and "something still has to be copied across" must
+        # only count members that CAN still land. A track marked to come
+        # off stays in its collection on purpose, is never an add
+        # candidate, and so would otherwise hold the playlist in
+        # "out of date" forever: every sync rewriting it to the same two
+        # tracks, every next plan asking again.
+        would_write = [dev_by_key[k] for k, r in members if k in dev_by_key]
+        pending = [k for k, r in members
+                   if k not in dev_by_key and r.get('tier') != 'remove']
+        if not pending and would_write == dev_seq.get(c):
             unchanged.append(c)
     # A collection is deletable if this tool wrote it OR adopted it from the
     # device -- both put it in synced_playlists. Smart playlists are never there.
     ours = set(st.get('synced_playlists', []))
-    retags = _metadata_drift(st, dbp, dev_by_key)
+    # Resolve it ONCE and hand the answer around. Three places needed
+    # "where is this track's file" -- the adds, the drift detector and the
+    # ancestor snapshot -- and two of them had grown their own version that
+    # only knew about `device.origin`. That field is recorded when saltpod
+    # copies a file across and absent for everything iTunes put there, so
+    # both quietly skipped a third of the library. Same bug, found twice.
+    origin_of = {}
+    for k in dev_by_key:
+        r = st['tracks'].get(k)
+        if r:
+            src = source_for(k, r)
+            if src:
+                origin_of[k] = src
+    retags = _metadata_drift(st, dbp, dev_by_key, origin_of)
     return {'root': root, 'state': st, 'dev_by_key': dev_by_key, 'collections': cols,
             'adds': adds, 'no_source': no_source, 'removes': removes,
             'retags': retags,
             'unchanged': unchanged,
             # what each playlist on the device holds right now, so a revert
             # has something authoritative to revert TO
-            'dev_seq': dev_seq,
+            'dev_seq': dev_seq, 'origin_of': origin_of,
             'new_playlists': [c for c in cols if c not in existing],
             'update_playlists': [c for c in cols if c in existing and c not in unchanged],
             'delete_playlists': sorted(n for n in ours if n in existing and n not in cols)}
 
 
-TAGGED = ('title', 'artist', 'album', 'genre')
+# WHAT COUNTS AS DRIFT. Genre is deliberately not in here. It is the field
+# every encoder and importer spells differently -- "(5)Funk" against "Funk",
+# "Alt. Rock" against "AlternRock" -- and including it reported 12 tracks as
+# disagreeing when nobody had touched them. It is still editable and still
+# written; it is just not evidence that the two sides have diverged.
+TAGGED = ('title', 'artist', 'album')
 
 
-def _metadata_drift(st, dbp, dev_by_key):
+def _metadata_drift(st, dbp, dev_by_key, origin_of):
     """Where the file and the device disagree about what a track is called.
 
     THE FILE IS MASTER, so the normal answer is "make the device match".
@@ -252,7 +279,13 @@ def _metadata_drift(st, dbp, dev_by_key):
     for k, tid in dev_by_key.items():
         r = st['tracks'].get(k) or {}
         dev = r.get('device') or {}
-        src = dev.get('origin') or ''
+        # THE SAME RESOLVER THE REST OF plan() USES. This asked only for
+        # `origin`, which is recorded when saltpod copies a file across and
+        # absent for everything iTunes put there -- 178 of 644 tracks. So a
+        # retag on any of those was written to the file and then invisible
+        # to the plan, because the panel found the file by one rule and the
+        # drift detector by another. One question, one answer.
+        src = origin_of.get(k)
         if not src or not os.path.exists(src):
             continue                       # nothing to compare against
         d = dev_meta.get(tid)
@@ -429,6 +462,14 @@ def sync(mount=None, eject=True, exclude=None):
         if os.path.exists(f):
             os.remove(f)
         st['tracks'][k]['on_ipod'] = False
+        # THE MAP IS NOW STALE FOR THIS TRACK and the playlist writer reads
+        # it. A track can be in a collection AND marked to come off -- the
+        # membership deliberately survives a removal -- so without this the
+        # next step asks for a track id that was deleted a moment ago and
+        # the whole sync dies with `unknown track ids`. It died exactly
+        # there on the first hardware run, above the commit boundary, which
+        # is the only reason that was a bug report rather than an incident.
+        p['dev_by_key'].pop(k, None)
         changed_tracks = True
         print('  removed %s - %s (id %d)' % (r['artist'], r['title'], tid))
         print('@@ r:%s done' % k)
@@ -500,12 +541,12 @@ def sync(mount=None, eject=True, exclude=None):
     # wrote it from -- the two things that make the next plan able to say
     # which side moved rather than only that they differ. Both are free.
     from . import tags as _T
-    for k in list(p['dev_by_key']):
+    for k in list(p.get('origin_of') or {}):
         rr = st['tracks'].get(k)
         if not rr:
             continue
-        src = (rr.get('device') or {}).get('origin')
-        if not src or not os.path.exists(src):
+        src = p['origin_of'][k]
+        if not os.path.exists(src):
             continue
         try:
             snap = _T.read(src)

@@ -870,6 +870,7 @@ const mmss = s => { if(!s) return ''; const n=Math.round(s);
 const $=s=>document.querySelector(s), au=$('#au');
 
 let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', job=null;
+let TOTALS={};              // answered by the server, never recomputed here
 
 /* MULTI-SELECT. `sel` stays what it was -- the cursor, an index into `view`,
    which everything from scroll memory to nudge to play depends on. The
@@ -916,7 +917,12 @@ let HEALTH=null;
 let DISCOGS={wantlist:[],collection:[],files:{},dir:'data/discogs'}, OWN=new Map(), WANT=new Map();
 const norm=s=>(s||'').toLowerCase().replace(/\s*[\(\[].*?[\)\]]/g,'').replace(/^(the|a)\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();
 const vkey=t=>{const a=norm(t.artist), b=norm(t.album||t.dev_album||''); return a&&b ? a+'|'+b : null;};
-const owned=t=>{const k=vkey(t); return k?OWN.get(k):undefined;}, wanted=t=>{const k=vkey(t); return k?WANT.get(k):undefined;};
+/* The matching RULE moved to the server -- it lived here as vkey() and in
+   discogs.py as norm(), which is the same rule twice in two languages.
+   The page now asks whether the server said yes, and only reaches for the
+   release row itself to show its label and year. */
+const owned=t=>t.vinyl_owned?(OWN.get(t.release_key)||true):undefined,
+      wanted=t=>t.vinyl_wanted?(WANT.get(t.release_key)||true):undefined;
 let VG={add:true,want:true,own:false};     // which vinyl groups are open
 // Apple Music: its playlists, and whether the left pane's section is open.
 // A collection is where a track is GOING and is the only thing edited; an
@@ -1121,7 +1127,7 @@ async function load(){
   if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
   SYNCED=r.synced||[];
-  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs;
+  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs; TOTALS=r.totals||{};
   BYKEY=new Map(ALL.map(t=>[t.key,t]));
   COLS.forEach(c=>PENDING.delete(c));                    // it exists now
   if(colPick&&!COLS.includes(colPick)&&!PENDING.has(colPick))colPick=null;   // renamed or deleted under us
@@ -1132,8 +1138,7 @@ function counts(){
   ALL.forEach(t=>{c[t.tier]++; if(t.vinyl)c.vinyl++; if(t.bought)c.bought++;});
   // "to buy" is what you still have to go and get: marked sync, not held
   // bought, and no file for it anywhere on your drives.
-  const todo=ALL.filter(t=>t.tier==='sync'&&!t.bought&&!t.local);
-  const eur=todo.reduce((a,t)=>a+(t.price||0),0);
+  const todo={length:(TOTALS.to_buy||0)}, eur=TOTALS.to_buy_eur||0;
   // what the next sync would do, as far as the page can know without the device
   const offs=ALL.filter(t=>t.device&&t.tier==='remove').length;
   const ons=ALL.filter(t=>!t.device&&t.local&&t.collections.length).length;
@@ -1147,18 +1152,13 @@ function counts(){
 }
 function pass(t){
   if(q){const h=(t.artist+' '+t.title+' '+(t.album||'')).toLowerCase(); if(!h.includes(q))return false;}
-  // the three pending decisions, in the words the menu uses for them
-  if(filter==='to buy')   return t.tier==='sync' && !t.local && !t.device;
-  if(filter==='to sync')  return t.tier==='sync' &&  t.local && !t.device;
-  if(filter==='to remove')return t.tier==='remove';
-  if(filter==='vinyl')return t.vinyl;
-  if(filter==='on vinyl')return !!owned(t);
-  if(filter==='on T7')return t.t7;
-  // in Apple Music and nowhere you own: the work still to do
-  if(filter==='rented only')return t.am&&!t.t7&&!owned(t);
-  if(filter==='on iPod')return t.device;
   if(filter==='all')return true;
-  return t.tier===filter;
+  // MEMBERSHIP, NOT A PREDICATE. Every one of these used to be a rule
+  // spelled out here -- and so would have been spelled out again in Swift,
+  // and once more in anything else that ever read this API. The server
+  // decides what belongs in a list; this looks the answer up.
+  if(filter==='vinyl')return t.vinyl;        // the flag you set, not a list
+  return (t.lists||[]).includes(filter);
 }
 const filtered=()=>!!q||filter!=='all';
 // what a click would actually play, named rather than left to be guessed
@@ -1188,7 +1188,7 @@ function srcStrip(t){
 }
 function tagsFor(t){
   const g=[];
-  if(t.tier==='sync'&&!t.local&&!t.device)g.push('<span class="tag buy">buy</span>');
+  if((t.lists||[]).includes('to buy'))g.push('<span class="tag buy">buy</span>');
   if(t.tier==='remove')g.push('<span class="tag skip">remove</span>');
 
   if(t.vinyl)g.push('<span class="tag vinyl">vinyl</span>');
@@ -1670,7 +1670,11 @@ function drawAM(){
 // 389 "albums" from 466 tracks, nearly all of them holding one. The device
 // groups by album too, and shows Various Artists when the performers differ,
 // which is what this now does.
+/* The grouping rule now arrives with the track as `album_key`; this is the
+   fallback for rows the payload has not reached (an Apple Music row the
+   library has not been read for). */
 function albumKey(t){
+  if(t.album_key !== undefined) return t.album_key || '';
   return (t.album||'').toLowerCase().replace(/\s+/g,' ').trim();
 }
 const ICON_LIST='<svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true">'
@@ -1844,13 +1848,15 @@ function drawRight(){
   document.querySelectorAll('#rtabs .pill').forEach(t=>t.classList.toggle('on',t.dataset.r===rtab));
   const el=$('#rbody');
   if(rtab==='buy'){
-    const short=ALL.filter(t=>t.tier==='sync');
+    const short=ALL.filter(t=>t.tier==='sync');   // the decision; the stages below are server-answered
     // Three stages, in the direction they move: still to buy; bought -- a file
     // exists on your drive, found by the index -- and waiting for a sync; and
     // already on the iPod. "Bought" is not a button you have to remember; the
     // index finding the file is what bought means.
-    const todo=short.filter(t=>!t.bought&&!t.local), ready=short.filter(t=>t.local&&!t.device), done=short.filter(t=>t.device);
-    const eur=todo.reduce((a,t)=>a+(t.price||0),0);
+    const todo = ALL.filter(t=>(t.lists||[]).includes('to buy'));
+    const ready= ALL.filter(t=>(t.lists||[]).includes('to sync'));
+    const done = short.filter(t=>t.device);
+    const eur=TOTALS.to_buy_eur||0;
     const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
     $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> synced`;
     let h='';
@@ -2175,12 +2181,28 @@ async function openTrack(t){
   $('#tpt').textContent = nm;
   paintTrack();
 }
-function closeTrack(){
+function closeTrack(force){
   if(TP.busy) return;
-  if(tpDirty() && !confirm('Discard the unsaved changes?')) return;
+  // NEVER A NATIVE confirm(). It blocks the renderer -- every timer, every
+  // fetch, every event -- until someone clicks it, and a page driven from
+  // anywhere but the mouse simply stops. It took the whole tab out once.
+  // The product has its own centre prompt and this is what it is for.
+  if(!force && tpDirty()){ askDropEdits(); return; }
   $('#tp').classList.remove('on');
   if(!$('#sp').classList.contains('on')) $('#spscrim').classList.remove('on');
   TP.edits = {};
+}
+function askDropEdits(){
+  const n = Object.keys(TP.edits).length;
+  dlgMode = '__dropedits__';
+  $('#dlgt').textContent = 'Unsaved changes';
+  $('#dlgp').innerHTML = esc(n===1?'One field has':n+' fields have')
+    + ' been changed and not written to the file yet.';
+  dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
+  $('#dlglist').innerHTML='';
+  $('#dlgbtn').innerHTML='<button class="go" id="dlgok">Discard</button>';
+  $('#dlgok').onclick=()=>{ closeDlg(); closeTrack(true); };
+  dlg.classList.add('on');
 }
 
 const TP_FIELDS = [['title','Title'],['artist','Artist'],['album','Album'],
@@ -2285,8 +2307,10 @@ function tpFoot(){
 async function saveTrack(){
   if(TP.busy || !tpDirty()) return;
   TP.busy = true; tpFoot();
+  // only what you actually changed -- the server patches those fields and
+  // leaves the rest of the tag exactly as the file has it
   const fields = {};
-  for(const [k] of TP_FIELDS) fields[k] = tpValue(k);
+  for(const k of Object.keys(TP.edits)) fields[k] = TP.edits[k];
   const body = TP.path ? {path:TP.path, fields} : {key:TP.key, fields};
   const r = await post('/api/tags', body);
   TP.busy = false;
@@ -2400,6 +2424,14 @@ function buildSyncRows(){
     R.push({sec:'take off the iPod', n:p.removes.length, ids:p.removes.map(r=>'r:'+r.key)});
     p.removes.forEach(r=>R.push({id:'r:'+r.key, name:r.artist+' — '+r.title}));
   }
+  if((p.retags||[]).length){
+    R.push({sec:'bring the metadata into line', n:p.retags.length,
+            ids:p.retags.map(x=>'m:'+x.key)});
+    p.retags.forEach(x=>R.push({id:'m:'+x.key,
+      name:(x.artist?x.artist+' \u2014 ':'')+x.title,
+      meta:(x.winner==='device' ? 'file \u2190 iPod' : 'iPod \u2190 file')
+           + ' \u00b7 ' + Object.keys(x.fields).join(', ')}));
+  }
   const pls=[...p.delete.map(c=>({c:c,what:'delete'})), ...p.new.map(c=>({c:c,what:'create'})),
              ...p.update.map(c=>({c:c,what:'update'}))];
   if(pls.length){
@@ -2413,8 +2445,10 @@ function buildSyncRows(){
       // it -- a track is in a playlist or it is not, and taking one out is
       // editing the collection, not editing this sync.
       ((p.members||{})[x.c]||[]).forEach(t=>R.push({
-        child:'p:'+x.c, name:t.artist ? t.artist+' — '+t.title : t.title,
-        meta: t.on ? 'on the iPod' : 'copied across'}));
+        child:'p:'+x.c, name:t.artist ? t.artist+' \u2014 '+t.title : t.title,
+        conflict: t.off,
+        meta: t.off ? 'also marked to come off \u00b7 left out'
+            : t.on  ? 'on the iPod' : 'copied across'}));
     });
   }
   R.push({edge:'committed from here'});
@@ -2430,6 +2464,7 @@ function spCounts(){
   return {adds:inc.filter(r=>r.id[0]==='a').length,
           rems:inc.filter(r=>r.id[0]==='r').length,
           pls: inc.filter(r=>r.id[0]==='p').length,
+          tags:inc.filter(r=>r.id[0]==='m').length,
           bytes:inc.reduce((a,r)=>a+(r.bytes||0),0)};
 }
 
@@ -2444,6 +2479,7 @@ function paintSync(){
   if(c.rems) bits.push('<s>'+c.rems+'</s> off the iPod');
   if(c.adds) bits.push('<s>'+c.adds+'</s> copied across');
   if(c.pls)  bits.push('<s>'+c.pls+'</s> playlist'+(c.pls>1?'s':''));
+  if(c.tags) bits.push('<s>'+c.tags+'</s> retagged');
   const same=(p.unchanged||[]).length;
   let sum = bits.length ? bits.join(' \u00b7 ') : 'Nothing selected';
   if(!run){
@@ -2478,7 +2514,7 @@ function paintSync(){
     // The state lives in the .cnt slot -- the slot that already holds a
     // count on every other row in the product. One slot, one meaning.
     if(r.child){
-      const gone = SP.off.has(r.child);
+      const gone = SP.off.has(r.child) || r.conflict;
       return '<div class="col kid'+(gone?' out':'')+'">'
         + '<span class="nm">'+esc(r.name)+'</span>'
         + '<span class="cnt">'+esc(r.meta||'')+'</span>'
@@ -2508,7 +2544,7 @@ function paintSyncFoot(fits){
   const close=()=>{btn.innerHTML='<button id="spdone">Close</button>';
     const d=$('#spdone'); if(d)d.onclick=closeSync;};
   if(SP.state==='blocked'){ note.textContent=''; close(); return; }
-  const c=spCounts(), n=c.adds+c.rems+c.pls;
+  const c=spCounts(), n=c.adds+c.rems+c.pls+(c.tags||0);
   if(SP.state==='review'){
     // The button names the consequence rather than the verb. "Sync" tells you
     // nothing about the seven files it is about to delete.
@@ -2799,8 +2835,7 @@ function paintMenu(){
   // Marking a track you do not own is not "sync" in any sense you can act on
   // today -- it is a purchase decision, and the buy list is where it lands.
   // Say so, rather than making you infer it from the absence of a file.
-  const held  = many ? markedKeys().every(k=>{const r=BYKEY.get(k)||{}; return r.local||r.device;})
-                     : !!(t.local || t.device);
+  const held  = many ? markedKeys().every(k=>!!(BYKEY.get(k)||{}).held) : !!t.held;
   const onDev = many ? markedKeys().some(k=>(BYKEY.get(k)||{}).device) : !!t.device;
   const vinylOn = many ? markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl) : !!t.vinyl;
   // OWNING THE RECORD ENDS THE QUESTION. There is nothing to want and
