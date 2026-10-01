@@ -98,6 +98,28 @@ the gap is visible.
   are probably solving a spacing problem with a new number instead of with
   the container.
 
+## Run the selftest, and diff before you swap
+
+```
+python3 bin/selftest.py            # 16 checks, under four seconds
+python3 bin/selftest.py --device   # include the iPod, read-only
+```
+
+It writes nothing to your library or your device: tag tests run on copies
+in a temp directory, device tests read only.
+
+**And when you replace something that works, run the old path and the new
+one over the same input and diff every field — before the new one becomes
+the default.** This is not caution for its own sake. A Spotlight-based
+index looked correct and was 8× faster; the diff against `ffprobe` showed
+it losing the artist on 103 files of 300. Chasing that turned up an AIFF
+writer that had been wrong for two days and had simply never been called.
+Neither was findable by reading.
+
+The pattern to copy: both implementations, the same inputs, every field
+compared, and a count of what disagreed. Keep the loser behind a flag with
+the reason written beside it rather than deleting it.
+
 ## Before opening a pull request
 
 - Run the verbs you touched. There is no test suite for the format code

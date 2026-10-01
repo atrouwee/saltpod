@@ -242,6 +242,34 @@ def plan(mount=None):
 # written; it is just not evidence that the two sides have diverged.
 TAGGED = ('title', 'artist', 'album')
 
+# MTIME IS THE GATE, AND HERE IS WHERE IT FINALLY EARNS ITS KEEP. The drift
+# detector reads the tag span of every file on the device, once per plan --
+# 638 files over USB, and a profile says 2,513 ms of plan()'s 2,677 ms is
+# that read, waiting on the drive. The work itself is 164 ms.
+#
+# A stat is 0.001 ms against a read's 3.7 ms: the gate is three thousand
+# times cheaper than the read it avoids. Cache the tags against the file's
+# mtime and a file nobody has touched is never opened again.
+_TAGCACHE = {}
+
+
+def _tags_cached(path):
+    """The file's tags, re-read only when the file has actually changed."""
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return None
+    hit = _TAGCACHE.get(path)
+    if hit and hit[0] == mt:
+        return hit[1]
+    from . import tags as T
+    try:
+        val = T.read(path)
+    except Exception:
+        val = {}
+    _TAGCACHE[path] = (mt, val)
+    return val
+
 
 def _metadata_drift(st, dbp, dev_by_key, origin_of):
     """Where the file and the device disagree about what a track is called.
@@ -291,10 +319,7 @@ def _metadata_drift(st, dbp, dev_by_key, origin_of):
         d = dev_meta.get(tid)
         if not d:
             continue
-        try:
-            fil = T.read(src)
-        except Exception:
-            continue
+        fil = _tags_cached(src)
         # ffprobe's view is the fallback for a container we cannot read yet
         if not fil:
             continue

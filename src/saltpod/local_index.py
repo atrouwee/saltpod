@@ -81,6 +81,132 @@ def probe(path):
     }
 
 
+# ---------------------------------------------------------------- spotlight
+#
+# macOS HAS ALREADY READ THESE FILES. The index spawned ffprobe once per
+# file -- 4,048 of them, about 130 seconds -- to learn things Spotlight
+# indexed when the file landed on the drive. One `mdls` call over 600 real
+# files came back in 0.32 s, which is 0.53 ms each against ffprobe's 32.
+#
+# It is a FAST PATH, NOT A REPLACEMENT, and the gaps are specific:
+# Spotlight has no album_artist, no codec and no has_art for anything, and
+# reads no tags at all out of a WAV because it does not look at LIST/INFO.
+# So the tags come from our own readers -- the same ones that WRITE them,
+# which is why the index and the editor now agree by construction instead
+# of being two readings of one file -- and ffprobe is kept for the rest.
+
+# SCALAR ATTRIBUTES ONLY, and that is load-bearing. `mdls` given many files
+# prints their attribute blocks back to back with NO separator between
+# them, so the only way to map a block to its file is to count lines -- and
+# that only works while every attribute is exactly one line. A scalar is,
+# including when it is `(null)`. An array is not: `kMDItemAuthors` spans
+# three. Asking for it silently shifted every file's data onto the one
+# before it, which is how the first version of this read one track's album
+# off another's.
+#
+# No loss: the artist comes from our own tag reader, which is also the one
+# that writes it.
+_MD = {
+    'kMDItemDurationSeconds': 'duration_sec',
+    'kMDItemAudioSampleRate': 'sample_rate',
+    'kMDItemAudioChannelCount': 'channels',
+    'kMDItemBitsPerSample': 'bit_depth',
+    'kMDItemFSSize': 'size',
+    'kMDItemTitle': 'title',
+    'kMDItemAlbum': 'album',
+}
+
+
+def _mdls_batch(paths):
+    """{path: {field: value}} for as many as Spotlight knows about.
+
+    mdls prints one block per file in the order given, separated by a line
+    of dashes, so the blocks map back positionally.
+    """
+    if not paths:
+        return {}
+    args = ['mdls']
+    for k in _MD:
+        args += ['-name', k]
+    try:
+        out = subprocess.run(args + paths, capture_output=True, text=True,
+                             timeout=120).stdout
+    except Exception:
+        return {}
+    lines = [l for l in out.split('\n') if l.strip()]
+    n = len(_MD)
+    if len(lines) != n * len(paths):
+        return {}            # the shape is not what we assumed: take none of it
+    got = {}
+    for i, path in enumerate(paths):
+        rec = {}
+        for line in lines[i * n:(i + 1) * n]:
+            k, _, v = line.partition('=')
+            k, v = k.strip(), v.strip()
+            if k not in _MD or v == '(null)':
+                continue
+            field = _MD[k]
+            v = v.strip('"')
+            if field in ('sample_rate', 'channels', 'bit_depth', 'size'):
+                try:
+                    rec[field] = int(float(v))
+                except ValueError:
+                    pass
+            elif field == 'duration_sec':
+                try:
+                    rec[field] = round(float(v), 2)
+                except ValueError:
+                    pass
+            elif v:
+                rec[field] = v
+        got[path] = rec
+    return got
+
+
+def probe_fast(path, md):
+    """An index entry from Spotlight plus our own tag reader, no subprocess.
+
+    Returns None when Spotlight knows too little to be trusted -- then the
+    caller falls back to ffprobe rather than writing a half-built record.
+    """
+    from . import tags as T
+    if not md or not md.get('duration_sec'):
+        return None
+    ext = os.path.splitext(path)[1].lower()
+    tg = {}
+    if T.supported(path) or ext in ('.mp3', '.aiff', '.aif', '.wav'):
+        try:
+            tg = T.read(path) or {}
+        except Exception:
+            tg = {}
+    title = tg.get('title') or md.get('title')
+    artist = tg.get('artist') or md.get('artist')
+    return {
+        'path': path, 'ext': ext,
+        'title': title, 'artist': artist,
+        'album': tg.get('album') or md.get('album'),
+        'album_artist': tg.get('album_artist'),
+        'duration_sec': md.get('duration_sec'),
+        'size': md.get('size') or (os.path.getsize(path) if os.path.exists(path) else None),
+        # Spotlight does not report a codec and the container settles it for
+        # everything this tool handles.
+        'codec': _CODEC_BY_EXT.get(ext),
+        'sample_rate': md.get('sample_rate'),
+        'bit_depth': md.get('bit_depth'),
+        'channels': md.get('channels'),
+        # the one thing nothing cheap can answer; filled in by the art pass
+        'has_art': None,
+        'ipod_ready': ext in IPOD_NATIVE,
+        'needs_convert': ext in NEEDS_CONVERT,
+        'untagged': not (title and artist),
+        'mtime': (os.path.getmtime(path) if os.path.exists(path) else None),
+    }
+
+
+_CODEC_BY_EXT = {'.mp3': 'mp3', '.m4a': 'aac', '.aac': 'aac', '.alac': 'alac',
+                 '.flac': 'flac', '.ogg': 'vorbis'}
+
+
 def build(roots, workers=6):
     """ffprobe is IO-bound, so threads help a lot; 7k files serial takes an hour.
 
@@ -101,17 +227,65 @@ def build(roots, workers=6):
                     continue
                 if os.path.splitext(fn)[1].lower() in AUDIO_EXT:
                     paths.append(os.path.join(dirpath, fn))
-    print("probing %d files with %d workers..." % (len(paths), workers))
     entries, skipped, done = [], 0, 0
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        for e in ex.map(probe, paths):
-            done += 1
-            if done % 250 == 0:
-                print("  %d/%d" % (done, len(paths)), flush=True)
-            if e is None:
-                skipped += 1
-                continue
+
+    # SPOTLIGHT IS OFF BY DEFAULT, and the reason is worth keeping.
+    #
+    # It looked right and it was 8x faster. Running both paths over the
+    # same 300 files and diffing every field said otherwise: 103 of 300
+    # lost their artist, 114 their codec, 21 their bit depth. Spotlight
+    # has no album_artist, no codec and no has_art for anything, and reads
+    # no tags at all from a WAV because it never looks at LIST/INFO -- and
+    # our own readers only cover wav and mp3, so an AIFF or FLAC falls
+    # through both.
+    #
+    # Keep it here, behind a flag, because the 60x is real for the fields
+    # it does know and the remaining gap is a reader away. Do not make it
+    # the default until the differential comes back clean.
+    if os.environ.get('SALTPOD_SPOTLIGHT') != '1':
+        print("probing %d files with ffprobe (%d workers)..." % (len(paths), workers), flush=True)
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for e in ex.map(probe, paths):
+                done += 1
+                if done % 250 == 0:
+                    print("  %d/%d" % (done, len(paths)), flush=True)
+                if e is None:
+                    skipped += 1
+                    continue
+                e['mtime'] = (os.path.getmtime(e['path'])
+                              if os.path.exists(e['path']) else None)
+                entries.append(e)
+        os.makedirs(os.path.dirname(INDEX), exist_ok=True)
+        with open(INDEX, "w") as f:
+            json.dump({"roots": roots, "count": len(entries), "tracks": entries}, f, indent=1)
+        return entries, skipped
+
+    print("asking spotlight about %d files..." % len(paths), flush=True)
+    md_all = {}
+    for i in range(0, len(paths), 500):
+        md_all.update(_mdls_batch(paths[i:i + 500]))
+    fell_back = []
+    for path in paths:
+        e = probe_fast(path, md_all.get(path))
+        if e is None:
+            fell_back.append(path)
+        else:
             entries.append(e)
+    print("  spotlight answered %d, ffprobe needed for %d"
+          % (len(entries), len(fell_back)), flush=True)
+
+    if fell_back:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for e in ex.map(probe, fell_back):
+                done += 1
+                if done % 250 == 0:
+                    print("  %d/%d" % (done, len(fell_back)), flush=True)
+                if e is None:
+                    skipped += 1
+                    continue
+                e['mtime'] = (os.path.getmtime(e['path'])
+                              if os.path.exists(e['path']) else None)
+                entries.append(e)
     os.makedirs(os.path.dirname(INDEX), exist_ok=True)
     with open(INDEX, "w") as f:
         json.dump({"roots": roots, "count": len(entries), "tracks": entries}, f, indent=1)
