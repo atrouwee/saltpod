@@ -302,8 +302,9 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("smartlists", help="the smart playlists on the device: their rules, and whether we agree with iTunes about what is in them")
-    p.add_argument("what", choices=["show", "check"], nargs="?", default="show",
-                   help="show: the rules, decoded; check: evaluate them and diff against what iTunes materialised")
+    p.add_argument("what", choices=["show", "check", "rehearse", "write"], nargs="?", default="show",
+                   help="show: the rules, decoded; check: evaluate them and diff against what iTunes materialised; "
+                        "rehearse: work out the new membership and write nothing; write: put it on the device")
     p.add_argument("--mount")
     p.add_argument("--json", action="store_true")
 
@@ -824,6 +825,34 @@ def main(argv=None):
             mount, "iPod_Control", "iTunes", "iTunesDB")
         if not os.path.exists(dbp):
             fail("no iPod database at " + dbp, "plug it in and put it in Disk Mode")
+
+        if a.what in ("rehearse", "write"):
+            from . import hash58 as H
+            guid = CFG.load()["firewire_guid"]
+            if a.what == "rehearse" or os.path.isfile(mount):
+                r = W.parse(open(dbp, "rb").read())
+                moved = SL.refresh_membership(r)
+                bad = E.invariants(None, W.serialise(r, guid), guid)
+            else:
+                # guarded: refuses before writing if an invariant breaks,
+                # and restores the original bytes itself if one breaks after
+                moved = E.guarded_write(mount, SL.refresh_membership, guid,
+                                        label="smart playlist membership")
+                bad = []
+            if not moved:
+                note("every understood smart playlist already matches its rules"); return 0
+            seen = set()
+            for typ, name, before, after in moved:
+                if name in seen:
+                    continue
+                seen.add(name)
+                receipt(name, "%d -> %d" % (before, after), tone="good")
+            note("written to both playlist sections" if a.what == "write"
+                 else "a rehearsal: nothing was written")
+            if bad:
+                note("invariants: " + "; ".join(bad))
+                return 1
+            return 0
 
         root = W.parse(open(dbp, "rb").read())
         found = []

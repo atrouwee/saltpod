@@ -756,6 +756,68 @@ def why_not(parsed, track, now=None):
             if not _eval_rule(r, track, now)]
 
 
+def refresh_membership(root):
+    """Rewrite each understood smart playlist's members from its own rules.
+
+    THE IPOD DOES NOT EVALUATE THESE. iTunes did it on the desktop and wrote
+    the result as plain mhips, so on a device synced without iTunes they go
+    stale and stay stale -- Recently Added showed zero with 178 qualifying.
+    This writes what the rules say, now.
+
+    The gate this had to pass first: on the owner's device the evaluator
+    reproduces what iTunes itself wrote into Top 25 Most Played -- 24 of
+    24, in order, 0 misses. A list whose rules are not fully understood is
+    left exactly as it is; a half-applied rule gives a wrong list that
+    looks right.
+
+    BOTH SECTIONS. A playlist lives in mhsd type 2 and type 3, and the
+    podcast work on 2 October showed what happens when only one copy is
+    changed. Each list is evaluated ONCE and the same ids go to both copies,
+    which matters for a random-limited list that would otherwise come out
+    different twice.
+
+    Type 5 is skipped on purpose: those are the firmware's own media lists,
+    shipped with rules and zero members by design.
+
+    Returns [(section, name, before, after), ...] for the lists that moved.
+    """
+    tracks = load_tracks(root)
+    by_id = {E.track_id(t): t for t in E.tracks(root)}
+    result, changed = {}, []
+    for typ in (2, 3):
+        sect = W.section(root, typ)
+        if sect is None:
+            continue
+        for pl in E.playlists(root, sect):
+            if not E.is_smart(pl):
+                continue
+            name = E.pl_name(pl)
+            if name not in result:
+                try:
+                    parsed = parse_rules(pl)
+                except ValueError:
+                    result[name] = None
+                    continue
+                if not parsed.get('understood'):
+                    result[name] = None
+                    continue
+                result[name] = [t['id'] for t in evaluate(parsed, tracks)]
+            ids = result[name]
+            if ids is None:
+                continue
+            old = materialized_ids(pl)
+            if old == ids:
+                continue
+            _tid, gid = E._next_ids(root)
+            pl.children = [c for c in pl.children if c.magic != b'mhip']
+            for pos, tid in enumerate(ids, 1):
+                pl.children.append(E._make_mhip(root, tid, E.track_dbid(by_id[tid]), pos, gid))
+                gid += 1
+            pl.set32(0x10, len(ids))
+            changed.append((typ, name, len(old), len(ids)))
+    return changed
+
+
 def describe_rule(r):
     aname = r['action_name'] or ('action %#010x (unrecognised)' % r['action'])
     if r['field_type'] == 'string':

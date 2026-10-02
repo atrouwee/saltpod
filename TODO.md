@@ -1,142 +1,133 @@
 # What is still to do
 
-**Status: a list, kept honest.** Opened 2 October 2026 after the owner
-pointed out the obvious: *"feels like you keep on missing things that you
-could have also done, like mark those podcasts as actual podcasts."*
+**Status: a list, kept honest.** Rewritten 2–3 October 2026 after a long
+night on the device, because the previous version still listed Sound
+Check and podcasts as unbuilt.
 
-He is right, and the reason is worth naming so it stops happening. Work
-went depth-first on whatever was in front of it. The iPod was mounted for
-an hour and the only thing written to it was artwork -- while the podcast
-media type, the play-count merge and the smart playlists all needed that
-same connected device and were all already decided. **Device-dependent
-work has to be batched while the device is there.**
+Three patterns are worth naming, because each one has cost something:
 
-A second pattern, just as costly: a module gets built and verified and
-then nothing can call it. Seven of them, below.
+1. **Device-dependent work has to be batched while the device is there.**
+   (The original reason this file exists.)
+2. **A module gets built and verified, and then nothing can call it.**
+   `bin/layer_census.py` now walks the import graph from both adapters and
+   names any shipped module neither can reach. Five remain, below.
+3. **A write is not verified by reading it back.** On 2 October two writes
+   verified from the page cache, the iPod was unplugged without an eject,
+   and the device showed an empty library — Sound Check had reached 619 of
+   653 tracks. Every device write now goes through `ipod_edit.write_db`
+   (fsync the file *and* the directory, re-read from a fresh descriptor),
+   and unsupervised ones through `guarded_write`, which restores the
+   original bytes itself if any invariant fails.
 
 ---
 
-## 1. Built and verified, but NOTHING CAN CALL IT
+## 0. OPEN AND BLOCKING: the Podcasts menu will not open
 
-**CLOSED 2 October**, and the census that was supposed to catch this has
-been fixed so it closes for good.
+The main menu shows **Podcasts (10)**. Clicking it does nothing — the
+screen stays on the main menu. Three fixes have been written and failed:
 
-| module | verb | state |
+| tried | matched | result |
 |---|---|---|
-| `smartlists` | `saltpod smartlists show\|check` | DONE -- `check` diffs our evaluation against what iTunes materialised |
-| `loudness` | `saltpod loudness show\|scan\|import\|track` | DONE -- the write path is still open, see section 2 |
-| `rockbox` | `saltpod rockbox plan\|write` | DONE -- needed a translation layer that did not exist, below |
-| `devprefs` | `saltpod devprefs show\|check` | DONE |
-| `podcasts` | `saltpod podcasts status\|rehearse\|write` | DONE -- the device write last session went through a throwaway script, which is the same bug one layer along |
-| `playcounts` | `saltpod plays` | DONE -- merge has now run, 324 plays across 168 tracks |
-| `artwork` / `artworkdb` | `saltpod art` | DONE |
+| mediatype 4 + podcast flag on the type-3 copy | the format doc | counts 10, will not open |
+| a show header mhip, episodes grouped under it | libgpod `write_one_podcast_group` exactly | will not open |
+| podcast flag on the type-2 copy too | libgpod `write_playlist` exactly | will not open |
 
-Three things only became visible once someone tried to write the verbs.
+**The leading lead, not yet tested:** libgpod's source says *"podcasts do
+not show up in the MPL"* (itdb_itunesdb.c:5891). All ten episodes are
+members of the master playlist in both sections, because they were added
+as music first. "Does nothing" fits a show list that comes up empty after
+the firmware filters out master members.
 
-**`rockbox` was unreachable for a deeper reason than a missing verb.** It
-takes `{name: [(device_path, title, seconds)]}`; `state.py` holds
-`collection_order` as `{name: [track_key]}` and keeps the path as iPod
-colon-notation (`:iPod_Control:Music:F46:VXBJ.m4a`) on the track record.
-No caller could have satisfied that interface without a translation
-nobody had written. It is now `rockbox.collections_from_state()`, and all
-three collections render.
+**Not touched on a hunch.** A full taxonomy sweep is running against
+libgpod's source, the pristine 27 September database and the current
+device, with the podcast diagnosis checked adversarially from two angles.
+It lands in `research/TAXONOMY.md`.
 
-**The 19-minute loudness scan was invisible to its own module.** It was
-written to `data/local/loudness_scan.json` by a one-off script;
-`analyse_cached` reads `data/local/loudness_cache.json`. Every one of
-those 4,044 files would have been re-measured. `saltpod loudness import`
-folds one into the other -- the scan carries `size` and `mtime`, which are
-exactly the two keys the cache tests for freshness, so an imported entry
-is indistinguishable from one measured here and goes stale on the same
-evidence.
+---
 
-**The census was asking the wrong question.** `bin/layer_census.py`
-compared `curate.OPS` against `cli.py`'s verbs and said *"every operation
-has a verb"* -- true, and useless, because a module nothing had registered
-was never a candidate to be missing. It now walks the import graph from
-both adapters and names any shipped module neither can reach. It found
-six on the first run, `podcasts` among them.
+## 1. Done since the last version of this file
 
-Five remain, named in the source with a budget that only goes down:
-`buy_lossless`, `verify_bandcamp`, `spectrum` and `verify_quality` are
-research one-offs that ship without a verb. **`itunesdb_patch` is the one
-to settle** -- it describes itself as *"the safest way to write"* and
-nothing writes through it.
+| | |
+|---|---|
+| Sound Check | 653/653 tracks, −18 LUFS, from the cached scan; two that would clip if raised get 1000 instead |
+| File size | 344 tracks wrong, in **two** fields — `0x24` and its undocumented mirror at `0x12C` — both repaired |
+| Podcasts | 10 tracks at mediatype 4, flagged list in both sections, show header written. **Menu still will not open** — see §0 |
+| Multiple sources | `saltpod sources list/add/remove`; one track in two places is one track with `copies`, resolved to whichever is mounted |
+| Health strip | one slot per removable *volume*, not per source; library reach moved to the library pane |
+| Row states | owned-and-ready / owned-but-drive-offline (a dot on the drive badge) / not owned; "needs a drive" filter; Sync counts only what it can write |
+| Verbs | `smartlists` `loudness` `rockbox` `devprefs` `podcasts` `sources` `repair` |
+| Key, tempo, ISRC, label | `tags.read_extra`, read-only; 36/36/36/53 agree with ffprobe on the local files |
+| WAV writing | 368 WAVs with an id3 chunk are writable; unmanaged INFO entries (NITR on 11 files) and `adtl` cue labels are no longer stripped |
+| ID3v2.2 | converted to v2.3, every frame or none; 11 of 11 frames and the cover survive |
+| Untagged MP3s | writable — `supported()` had a branch that could never run |
+| `pagetest.py` | inside `selftest.py`; 25 passing |
 
-## 2. DECIDED, DESIGNED, NOT BUILT
+---
 
-**Podcast media type.** The scope changed this morning -- everything that
-goes on the iPod, with audiobooks filed as podcasts. The design is settled
-(a collection named Podcasts whose effect is a `mediatype`, seeded from
-the files that already declare themselves). The classification question
-answered itself: 11 files still carry `PCST`/`WFED` from a 2011 RSS feed.
-Every one of the 653 tracks on the device is still `mediatype 0x1`, and
-the ten DeepCast episodes still only appear under Artists.
+## 2. Found on 2 October, and what it changes
 
-**Sound Check.** Target decided and derived (-18 LUFS, the first level at
-which nothing in this library needs amplifying). The full-library scan is
-now DONE -- 4,044 files measured in 19 minutes. Not one value has been
-written to a track.
+**The 12:31 write was Apple's.** Music.app or Finder synced the device that
+lunchtime: iTunes' signature flags and a populated hash72 appeared, the
+album list was rebuilt 245 → 338, track ids were renumbered on 612 tracks,
+and 178 records were re-stamped from a donor (the bogus size, its mirror,
+an inherited Genius id). Earlier commits blamed `track_add`; that was wrong.
+**Keep Music.app closed while the iPod is mounted** — `devprefs` cannot read
+the auto-sync setting, so nothing warns about it.
 
-**Smart playlist membership.** The evaluator reproduces iTunes exactly --
-all 24 Top 25 members in order -- and independently computed the same 178
-Recently Added tracks the device itself later materialised. It writes
-nothing.
+**hash72 is stale.** Since 12:31 every database carries flags saying hash72
+is present, with a hash72 over Apple's content; saltpod re-signs only
+hash58. Not visibly breaking anything. Before 12:31 both were zero and
+everything worked, so zeroing both is the known-good state — waiting on
+the sweep's integrity slice.
 
-**Rockbox `.m3u8` output.** Written and tested against a simulated device
-root. Never wired into a sync, and never run against a real Rockbox iPod
-because there is not one here.
+**Genius is local.** `mhit+0x1E4` holds the `genius_id` that joins a track
+to its row in `Extras.itdb` (64 hits at that offset; 63 random integers
+give none). The similarity graph itself is gone — it referenced 937 ids
+this library does not own — but a mix built from our own data could be
+written as ordinary playlists.
 
-## 3. BUILT, NEVER RUN against real state
+---
 
-**`plays adopt`.** 69 tracks on the device carry a play count, 197 plays
-reaching back to 2018. State has zero. One command, never run.
+## 3. Open, needs the iPod
 
-**The Play Counts merge.** Seven sidecars sit in `backups/`, and the
-oldest holds **124 plays across 100 tracks** from before saltpod first
-touched the device -- listening history nothing has ever collected. The
-merge ledger is empty.
+- **Podcasts** — §0, waiting on the sweep
+- **Zero hash72 and the signature flags** — waiting on the sweep
+- **Smart playlist membership write** — the gate passed (Top 25 matches
+  what iTunes wrote, 0 misses); the write path is not built
+- **Ratings to the device** — `mhit+0x1F`; 0 of 653 carry one
+- **On-The-Go playlists** — made on the device, silently dropped by a sync
+- **Bitrate** — wrong on 390 tracks (224 MP3s at the constant 60928; 166
+  ALAC files at 160 and labelled "AAC"). Display-only: the fourcc routing
+  field is right and the firmware plays them. Low priority.
 
-## 4. FOUND IN RESEARCH, NEVER ACTED ON
+## 4. Open, needs the library drive
 
-| finding | scale | what it is worth |
-|---|---|---|
-| `TKEY`/`TKY2` musical key | 1,058 files | sequencing by key, for a DJ library |
-| `TBPM` tempo | 1,022 files | the same |
-| `iTunNORM` | 214 files | Apple's own Sound Check value, free, currently discarded |
-| `TSRC` ISRC | 790 files | a global recording identifier -- better matching than artist+title |
-| `TPUB` label | 1,253 files | browsing by label |
-| WAV `id3 ` chunks | 368 files | now READ; still refused for WRITING |
-| ID3v2.2 tags | 47 files | refused for writing, needs a converter |
+- **Re-index** — repairs the 118 rows restored with null timestamps after
+  the fold bug, and carries key/tempo/ISRC/label for all 4,050
+- **Differential on the real files** for the WAV writer (368) and the v2.2
+  converter (47) — both are proven on built files only
+- **Verify `soundcheck_from_itunnorm`** against a track whose iTunes-written
+  Sound Check is known
+- **Art for the 44 local MP3s** — every local AIFF has a cover, no MP3 does
 
-## 5. NOT STARTED
+## 5. Open, no hardware
 
-- **On-The-Go playlists** -- made on the device, silently dropped by a sync
-- **Recordings/** -- the same, for voice memos
-- **Ratings to the device** -- read, cannot be set; one byte at `mhit`+0x1F
-- `total tracks` / `total discs` / `disc number` -- cosmetic
-- **Gapless data** -- unmeasured whether the Classic needs it
+- **Genius-style mixes** — cluster on genre, era, key and tempo; write as
+  playlists and as `.m3u8`
+- **`.m3u8` into sync** — the writer is built and wired to real collections
+- **Five unreachable shipped modules** — four research one-offs, and
+  `itunesdb_patch`, which calls itself "the safest way to write" and
+  nothing writes through
+- **Per-module selftests** that fail rather than skip without a device
+- **Accessibility**: no screen reader has ever been run; no roving tabindex
+  on the left, source and right panes; the gear's busy dot and the folded
+  filter dot are colour-only
 
-## 6. TESTING AND QUALITY
+## 6. Unknowns
 
-- `bin/pagetest.py` is **not wired into `bin/selftest.py`** -- it has to be
-  run by hand, which means it will stop being run
-- **No screen reader has ever been run** against the page
-- No roving tabindex on the left, source and right panes
-- The gear's busy dot and the folded-filter dot are still colour-only
-- Three of the seven new modules' selftests need a device and FAIL rather
-  than SKIP when it is absent
-
-## 7. THE DEVICE-DEPENDENT BATCH
-
-When the iPod is next connected, these should go together in one session
-rather than one per reconnection:
-
-1. `plays adopt` and the sidecar merge  (reads, then writes state only)
-2. the podcast media type on the 11 declared files
-3. Sound Check values from the completed scan
-4. smart playlist membership -- with the gate that Top 25 must come out
-   matching what iTunes wrote
-5. a re-read afterwards to confirm all four survived
-
-Each is reversible, each has a backup, and all four need the same cable.
+| | how to find out |
+|---|---|
+| Whether the master playlist's 390 timestamp-shaped positions matter | the format doc says menu order follows mhip order, not the value — compare on-screen order against both |
+| What `mhit+0x1F4` is (track id + 1 on 653 of 653) | change it on a copy for one track, see whether anything on the device moves |
+| Why a 28-byte block at `0x0DC` reappears at `0x1B0` | diff the two across tracks that iTunes wrote and tracks Apple's sync rewrote |
+| Whether the Classic reads the `0x12C` size mirror at all | set them deliberately different on one track in a copy, play it |
