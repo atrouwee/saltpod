@@ -900,6 +900,46 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_track_add_identity():
+    """A track added to the device gets its own identity, not its template's.
+
+    track_add clones a real track's header, and three identity fields used
+    to arrive with that track's values: one artist id (0x1E0) ended up
+    covering about a hundred artists, two tracks shared 0x1F4, and new
+    tracks were left out of the album list -- the 89 extra albums the
+    taxonomy sweep counted. Also pins the collision this fix nearly
+    reintroduced: a "fresh" artist id has to be above every id in use, not
+    above the per-artist map, or it lands on someone else's.
+    """
+    import glob
+    from saltpod import itunesdb_write as W, ipod_edit as E, config as CFG
+    src = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-2026-10-0*', 'iTunesDB')))
+    if not src:
+        return ('skip', 'no backup to build on')
+    root = W.parse(open(src[-1], 'rb').read())
+    ref = next((t for t in E.tracks(root) if E._mhod_str(t, 22) and t.get32(0x120)), None)
+    if ref is None:
+        return ('skip', 'no linked track with an album artist in the backup')
+    base = dict(ext='.mp3', title='T', genre='G', size=1, ms=1, bitrate=320,
+                samplerate=44100, track_no=1, year=2024)
+    used_before = {t.get32(0x1E0) for t in E.tracks(root)}
+    t1 = E.track_add(root, dict(base, artist=E._mhod_str(ref, 4), album=E._mhod_str(ref, 3),
+                                album_artist=E._mhod_str(ref, 22)), ':iPod_Control:Music:F00:A.mp3')
+    t2 = E.track_add(root, dict(base, artist='Nobody Yet', album='Nowhere',
+                                album_artist='Nobody Yet'), ':iPod_Control:Music:F00:B.mp3')
+    by = {E.track_id(t): t for t in E.tracks(root)}
+    a, b = by[t1], by[t2]
+    assert a.get32(0x1E0) == ref.get32(0x1E0), 'a known artist did not reuse its id'
+    assert a.get32(0x120) == ref.get32(0x120), 'a known album was not linked'
+    assert a.get32(0x1F4) == t1 + 1 and b.get32(0x1F4) == t2 + 1, '0x1F4 is not id + 1'
+    assert b.get32(0x1E0) not in used_before, 'a new artist got an id already in use'
+    assert b.get32(0x120) == 0, 'an album that does not exist was linked'
+    assert a.hdr[0xB2] == 2 and a.get32(0x1E4) == 0, 'unplayed mark or Genius id inherited'
+    assert E._mhod_str(a, 22) == E._mhod_str(ref, 22), 'album artist not written'
+    assert E._fold('Beyoncé') == E._fold('BEYONCE')
+    return 'artist id, album link, 0x1F4, no collision'
+
+
 def t_sync_merges_plays_first():
     """Sync reads the Play Counts sidecar BEFORE it replaces the database
     the sidecar belongs to, and only then removes it.
@@ -1233,6 +1273,7 @@ def main():
     check('a WAV with an id3 chunk retags, losing nothing', t_wav_id3_write)
     check('ID3v2.2 converts, every frame or none', t_id3v22_converts)
     check('sync merges plays before it replaces the database', t_sync_merges_plays_first)
+    check('an added track gets its own identity', t_track_add_identity)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

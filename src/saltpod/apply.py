@@ -79,6 +79,10 @@ def probe(path):
     return {
         'title': tags.get('title'), 'artist': tags.get('artist'),
         'album': tags.get('album'), 'genre': tags.get('genre'),
+        # album artist and compilation decide which album entry a track
+        # joins; without them every compilation track split into its own.
+        'album_artist': tags.get('album_artist') or tags.get('albumartist'),
+        'compilation': (tags.get('compilation') or '').strip() in ('1', 'true', 'yes'),
         'ms': int(float(fmt.get('duration') or 0) * 1000),
         'bitrate': int(int(fmt.get('bit_rate') or 0) / 1000),
         'samplerate': int(aud.get('sample_rate') or 44100),

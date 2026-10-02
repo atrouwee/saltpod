@@ -258,6 +258,52 @@ def _drop_master_indexes(root):
                               if not (c.magic == b'mhod' and W.mhod_type(c) in (52, 53))]
 
 
+def _fold(s):
+    """Case- and accent-folded, the way the device keys artists: on this
+    device "Beyonce" and "Beyoncé" share one artist id (295 keys, 295 ids)."""
+    import unicodedata
+    s = unicodedata.normalize('NFKD', s or '')
+    return ''.join(c for c in s if not unicodedata.combining(c)).casefold().strip()
+
+
+def _mhod_str(node, typ):
+    for c in node.children:
+        if c.magic == b'mhod' and W.mhod_type(c) == typ:
+            return W.mhod_string(c)
+    return ''
+
+
+def _artist_ids(root):
+    """folded (album artist, else artist) -> the artist id at mhit+0x1E0,
+    the most common one where tracks disagree."""
+    seen = {}
+    for t in tracks(root):
+        v = t.get32(0x1E0) if len(t.hdr) > 0x1E4 else 0
+        if not v:
+            continue
+        k = _fold(_mhod_str(t, 22) or _mhod_str(t, 4))
+        seen.setdefault(k, {})
+        seen[k][v] = seen[k].get(v, 0) + 1
+    return {k: max(c, key=c.get) for k, c in seen.items()}
+
+
+def _album_ids(root):
+    """(folded album, folded album artist or artist) -> mhia id. The same
+    key the album list itself groups by (libgpod :5793-5815; 338 of 338
+    entries match it on this device)."""
+    out = {}
+    s4 = W.section(root, 4)
+    if s4 is None or not s4.children:
+        return out
+    for a in s4.children[0].children:
+        if a.magic != b'mhia':
+            continue
+        alb = _mhod_str(a, 200)
+        who = _mhod_str(a, 201) or _mhod_str(a, 202)
+        out.setdefault((_fold(alb), _fold(who)), a.get32(0x10))
+    return out
+
+
 def _mhit_template(root, ext):
     """Clone from a track of the same container, chosen by its location's
     extension. That way fourcc (0x18), type1/type2 (0x1C) and the
@@ -321,6 +367,27 @@ def track_add(root, meta, location):
         m.set32(0x120, 0)                     # album-list link: none
     if len(m.hdr) > 0x160:
         m.set32(0x160, 0)                     # ArtworkDB mhii link: none
+    # IDENTITY, NOT INHERITANCE. The template is a real track, and every
+    # field below used to arrive with that track's value on it -- one artist
+    # id ended up covering about a hundred artists, two tracks shared a
+    # 0x1F4, and new tracks were left out of the album list entirely, which
+    # is the 89 extra albums the taxonomy sweep counted.
+    if len(m.hdr) > 0x1F8:
+        m.set32(0x1F4, tid + 1)               # track id + 1 on 653 of 653
+    who = _fold(meta.get('album_artist') or meta.get('artist') or '')
+    if len(m.hdr) > 0x1E4:
+        ids = _artist_ids(root)
+        # A FRESH id is one above EVERY id in use, not above the per-artist
+        # map: a track can carry a minority id that the map does not keep,
+        # and allocating under it would hand a new artist someone else's id
+        # -- the pollution this exists to stop. Caught by its own test.
+        used = [t.get32(0x1E0) for t in tracks(root) if len(t.hdr) > 0x1E4]
+        m.set32(0x1E0, ids.get(who) or (max(used or [0]) + 1))
+    if len(m.hdr) > 0x124:
+        m.set32(0x120, _album_ids(root).get((_fold(meta.get('album') or ''), who), 0))
+    m.hdr[0xB2] = 2                           # unplayed: iTunes' value on 443 of 481
+    if meta.get('compilation'):
+        m.hdr[0x1E] = 1
     if len(m.hdr) > GENIUS_ID:
         # A NEW TRACK HAS NO GENIUS IDENTITY. 0x1E4 holds the genius_id
         # that joins a track to its row in Extras.itdb -- measured, by
@@ -340,6 +407,8 @@ def track_add(root, meta, location):
         W.make_string_mhod(5, meta.get('genre') or ''),
         W.make_string_mhod(6, FILETYPE_STR[ext]),
     ]
+    if meta.get('album_artist'):
+        m.children.append(W.make_string_mhod(22, meta['album_artist']))
     tracks(root).append(m)
     # every track belongs to the master playlist, in both sections
     for sect in playlist_sections(root):
