@@ -681,6 +681,25 @@ _TESTS_JS = r'''
   });
 
   // ---------------------------------------------------------------- mark()
+  record('the busy dot and the filter dot are spoken, not only coloured', () => {
+    // Both were colour alone: the gear's busy marker is a CSS pseudo-element,
+    // and the filter toggle was a span with a click handler, no role, and no
+    // way to reach it from the keyboard.
+    gearBusy(true);
+    const g = document.getElementById('gear');
+    assert(g.getAttribute('aria-busy') === 'true', 'aria-busy not set while a job runs');
+    assert(/job is running/.test(g.getAttribute('aria-label') || ''), 'the gear does not say a job is running');
+    gearBusy(false);
+    assert(g.getAttribute('aria-busy') === 'false', 'aria-busy stayed true');
+    assert(!/running/.test(g.getAttribute('aria-label') || ''), 'the label still says running');
+    paintFilterToggle();
+    const t = document.getElementById('fltoggle');
+    assert(t && t.getAttribute('role') === 'button', 'the filter toggle has no button role');
+    assert(t.getAttribute('tabindex') === '0', 'the filter toggle cannot be reached from the keyboard');
+    assert(/filter: showing/.test(t.getAttribute('aria-label') || ''), 'the filter state is not in its name');
+    return 'aria-busy, labels, role and tabindex';
+  });
+
   record('owned-but-offline is its own state, not unowned', () => {
     // Three states, because "buy it" and "plug the drive in" are different
     // instructions. Before this, a track on an unplugged drive rendered at
@@ -966,6 +985,7 @@ def _run_all():
     check('pass() honors a real search input', node_check('pass() honors a real search input'))
     check('mark() tracks the cursor, leaves MARK alone', node_check('mark() tracks the cursor without touching a MARKed row'))
     check('owned-but-offline is its own state', node_check('owned-but-offline is its own state, not unowned'))
+    check('busy and filter dots are spoken', node_check('the busy dot and the filter dot are spoken, not only coloured'))
     check('the strip shows volumes, not sources', node_check('the health strip shows volumes, not sources'))
 
     section('tokens (see bin/selftest.py -- not duplicated here)')

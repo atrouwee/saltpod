@@ -1167,8 +1167,14 @@ try{ if(localStorage['saltpod.filters']==='1')MID.classList.add('fx'); }catch(e)
 function paintFilterToggle(){
   const open=MID.classList.contains('fx'), on=filter!=='all';
   const el=$('#flmodes'); if(!el)return;
+  // A span with a click handler had no role and could not be reached from
+  // the keyboard, and its "a filter is on" dot was colour alone. It is now a
+  // button by role, focusable, with the state in its name and aria-pressed.
+  const flabel=on?'filter: showing '+filter:'filter: showing everything';
   el.innerHTML=`<span class="${open||on?'on':''}${on?' act':''}" id="fltoggle"
-     title="${on?'filtered: '+filter:'filter'}">${ICON_FILTER}</span>`;
+     role="button" tabindex="0" aria-pressed="${open?'true':'false'}"
+     aria-label="${esc(flabel)}" title="${on?'filtered: '+filter:'filter'}">${ICON_FILTER}</span>`;
+  $('#fltoggle').onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#fltoggle').click(); } };
   $('#fltoggle').onclick=()=>{
     MID.classList.toggle('fx');
     try{ localStorage['saltpod.filters']=MID.classList.contains('fx')?'1':'0'; }catch(e){}
@@ -2293,10 +2299,22 @@ function paintJob(r){
   $('#joblog').textContent=(r.log||[]).join('\n');
   $('#joblog').scrollTop=1e6;
 }
+// LAW 3 IN WORDS, NOT JUST A DOT. The busy marker is a CSS pseudo-element,
+// so to anyone who cannot see its colour the gear looked identical whether
+// a job was running or not. The same fact now goes into the button's own
+// name and aria-busy, from every place that sets the dot; nothing visible
+// changes.
+function gearBusy(on){
+  const g=$('#gear'); if(!g)return;
+  g.classList.toggle('busy',on);
+  g.setAttribute('aria-busy',on?'true':'false');
+  const label=on?'settings and data jobs — a job is running':'settings and data jobs';
+  g.setAttribute('aria-label',label); g.title=label;
+}
 async function startJob(body){
   const r=await post('/api/action',body);
   if(!r.ok)return toast(r.error||'failed');
-  if(r.job){job=r.job;$('#gear').classList.add('busy');pollJob();}else{await load();toast('done');}
+  if(r.job){job=r.job;gearBusy(true);pollJob();}else{await load();toast('done');}
 }
 async function pollJob(){
   if(!job)return;
@@ -2304,7 +2322,7 @@ async function pollJob(){
   if(!r){setTimeout(pollJob,2000);return;}
   lastJob=r; paintJob(r);
   if(r.state==='running'){setTimeout(pollJob,1200);return;}
-  job=null; $('#gear').classList.remove('busy');
+  job=null; gearBusy(false);
   await load(); toast(r.state==='done'?'finished':'job failed — see the log');
 }
 
@@ -2789,14 +2807,14 @@ async function runSync(){
   const r=await post('/api/action',{action:'sync',exclude:ex});
   if(!r.ok||!r.job){ SP.state='error'; SP.log=[r.error||'could not start the sync'];
     $('#spt').textContent='Sync stopped'; paintSync(); return; }
-  job=r.job; $('#gear').classList.add('busy');
+  job=r.job; gearBusy(true);
   const id=r.job;
   const tick=async()=>{
     const j=await fetch('/api/job?id='+id).then(x=>x.json()).catch(()=>null);
     if(!j){setTimeout(tick,1500);return;}
     lastJob=j; readSyncLog(j);
     if(j.state==='running'){paintSync();setTimeout(tick,800);return;}
-    job=null; $('#gear').classList.remove('busy');
+    job=null; gearBusy(false);
     SP.state = j.state==='done' ? 'done' : 'error';
     $('#spt').textContent = j.state==='done' ? 'Synced' : 'Sync stopped';
     // Anything still waiting when the run ends never happened. Say so rather
