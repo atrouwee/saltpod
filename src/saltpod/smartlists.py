@@ -938,8 +938,16 @@ def selftest(mount_or_path='/Volumes/IPOD'):
     try:
         data = open(path, 'rb').read()
     except OSError as e:
+        # NO DEVICE IS A SKIP, NOT A FAILURE. These checks compare the
+        # evaluator against what iTunes materialised on a real device, so
+        # without one there is nothing to compare -- and a selftest that
+        # reports FAILED for a missing cable teaches everyone to ignore it.
+        # A database that is present but unreadable still fails, below.
+        if getattr(e, 'errno', None) == 2 and not os.path.exists(os.path.dirname(path)):
+            print('selftest SKIPPED: no device at %s' % os.path.dirname(os.path.dirname(os.path.dirname(path))))
+            return True
         print('cannot read %s: %s' % (path, e))
-        print('selftest FAILED: device not available')
+        print('selftest FAILED: the database is there but could not be read')
         return False
 
     root = W.parse(data)

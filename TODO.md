@@ -137,7 +137,6 @@ written as ordinary playlists.
 - **Five unreachable shipped modules** — four research one-offs, and
   `itunesdb_patch`, which calls itself "the safest way to write" and
   nothing writes through
-- **Per-module selftests** that fail rather than skip without a device
 - **Accessibility**: no screen reader has ever been run; no roving tabindex
   on the left, source and right panes; the gear's busy dot and the folded
   filter dot are colour-only
