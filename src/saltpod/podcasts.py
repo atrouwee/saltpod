@@ -167,6 +167,148 @@ def show_of(mhit):
     return _mhod(mhit, 3) or _mhod(mhit, 4) or 'Podcast'
 
 
+def _position_mhod(template_row, position):
+    pos = template_row.children[0]
+    return W.Node(b'mhod', bytes(pos.hdr), struct.pack('<I', position) + pos.body[4:])
+
+
+def rebuild_lists(root, name=PLAYLIST_NAME):
+    """Both copies of the podcast list, rebuilt to libgpod's layout and
+    Apple's invariants, from whatever state they are in.
+
+    research/TAXONOMY.md section 1, steps 1-3, which came out of a sweep of
+    libgpod's source against the pristine iTunes database after three fixes
+    had failed:
+
+      1. The show header's 0x3C is ZERO, as libgpod writes it. It used to be
+         cloned from episode 1's row, so the header and episode 1 carried
+         the same 64-bit id -- the only structurally invalid element in the
+         whole database, and nowhere else on the timeline.
+      2. The header id is the SMALLEST, then the episodes in order, each
+         pointing back at it, each position equal to its own id -- libgpod's
+         write_one_podcast_group exactly.
+      3. The type-2 copy is flat and each row is BYTE-IDENTICAL to its
+         type-3 counterpart except the group ref, which is Apple's
+         invariant for every playlist. 0 of 10 rows matched before.
+
+    Episode order is taken from the type-3 copy and kept.
+    """
+    sect3, sect2 = W.section(root, 3), W.section(root, 2)
+    p3 = E.find_playlist(root, sect3, name)
+    p2 = E.find_playlist(root, sect2, name)
+    rows3 = [c for c in p3.children if c.magic == b'mhip']
+    members = [c for c in rows3 if c.get32(GROUP_FLAG) != GROUP_HEADER and c.get32(0x18)]
+    if not members:
+        raise PodcastError('no episodes in the type-3 %s list' % name)
+    by_id = {E.track_id(t): t for t in E.tracks(root)}
+    shows = {show_of(by_id[m.get32(0x18)]) for m in members}
+    if len(shows) > 1:
+        # One header for several shows would file every episode under the
+        # first one's name. group_episodes handles several; this does not.
+        raise PodcastError('rebuild_lists handles one show; found %d' % len(shows))
+    show = shows.pop()
+
+    base = min(c.get32(GROUP_ID) for c in rows3)
+    # the ids must not collide with anything else in the database
+    _tid, nxt = E._next_ids(root)
+    taken = {c.get32(GROUP_ID) for sect in E.playlist_sections(root)
+             for pl in E.playlists(root, sect) if pl is not p3 and pl is not p2
+             for c in pl.children if c.magic == b'mhip'}
+    if any(i in taken for i in range(base, base + len(members) + 1)):
+        base = nxt
+
+    template = members[0]
+    head = W.Node(b'mhip', bytes(template.hdr))
+    head.set32(0x0C, 1)
+    head.set16(GROUP_FLAG, GROUP_HEADER)
+    head.set32(GROUP_ID, base)
+    head.set32(0x18, 0)
+    head.set32(0x1C, 0)
+    head.set32(GROUP_REF, 0)
+    head.set64(0x2C, 0)
+    head.set64(0x3C, 0)
+    head.children = [W.make_string_mhod(1, show)]
+
+    new3, new2 = [head], []
+    for i, m in enumerate(members, 1):
+        rid = base + i
+        row = W.Node(b'mhip', bytes(m.hdr))
+        row.set16(GROUP_FLAG, 0)
+        row.set32(GROUP_ID, rid)
+        row.set32(GROUP_REF, base)
+        if not int.from_bytes(row.hdr[0x3C:0x44], 'little'):
+            row.set64(0x3C, E.rand64())
+        row.children = [_position_mhod(m, rid)]
+        new3.append(row)
+        twin = W.Node(b'mhip', bytes(row.hdr))
+        twin.set32(GROUP_REF, 0)
+        twin.children = [_position_mhod(m, rid)]
+        new2.append(twin)
+
+    p3.children = [c for c in p3.children if c.magic != b'mhip'] + new3
+    p3.set32(0x10, len(new3))
+    p2.children = [c for c in p2.children if c.magic != b'mhip'] + new2
+    p2.set32(0x10, len(new2))
+    return {'show': show, 'header': base, 'episodes': len(members)}
+
+
+def episode_fields(root, name=PLAYLIST_NAME):
+    """research/TAXONOMY.md section 1, steps 4-5: what podcast writers set on
+    the episodes themselves, and one album for one show.
+
+      skip when shuffling (0xA5), remember position (0xA6), flag4 (0xA7) = 1
+        gtkpod's gp_track_set_flags_podcast; bare libgpod leaves them 0, so
+        this is a convention rather than a requirement
+      played mark (0xB2) = 2, the "unplayed" bullet; none has been played
+      release date (0x8C) = the date at 0x20, which on the iTunes-era
+        episode is 2011-04-05, the episode's own date
+      album link (0x120) = the album entry most episodes already use. One
+        show was spread across three album entries, with one episode
+        claiming "Various" as album artist and one with no artist at all.
+    """
+    p3 = E.find_playlist(root, W.section(root, 3), name)
+    ids = [c.get32(0x18) for c in p3.children
+           if c.magic == b'mhip' and c.get32(GROUP_FLAG) != GROUP_HEADER and c.get32(0x18)]
+    by_id = {E.track_id(t): t for t in E.tracks(root)}
+    eps = [by_id[i] for i in ids]
+    links = {}
+    for t in eps:
+        links[t.get32(0x120)] = links.get(t.get32(0x120), 0) + 1
+    album = max(links, key=links.get)
+    s4 = W.section(root, 4)
+    known = {a.get32(0x10) for a in s4.children[0].children if a.magic == b'mhia'}
+    if album not in known:
+        raise PodcastError('album entry %d does not resolve' % album)
+    artist = next((_mhod(t, 4) for t in eps if _mhod(t, 4)), '')
+    for t in eps:
+        t.hdr[0xA5] = 1
+        t.hdr[0xA6] = 1
+        t.hdr[0xA7] = 1
+        if not t.get32(0x50):
+            t.hdr[0xB2] = 2
+        if not t.get32(0x8C):
+            t.set32(0x8C, t.get32(0x20))
+        t.set32(0x120, album)
+        fix = {}
+        if artist and not _mhod(t, 4):
+            fix['artist'] = artist
+        if artist and _mhod(t, 22) and _mhod(t, 22) != artist:
+            fix['album_artist'] = artist
+        if fix:
+            E.track_retag(root, E.track_id(t), fix)
+    return {'episodes': len(eps), 'album': album, 'artist': artist}
+
+
+def structural_fix(root, name=PLAYLIST_NAME):
+    """Steps 1-5 together, as one change -- the sweep's recommendation, since
+    only the device can say whether the menu opens and every test needs the
+    owner there to look."""
+    flag_every_copy(root, name)
+    a = rebuild_lists(root, name)
+    b = episode_fields(root, name)
+    return dict(a, **b)
+
+
 def flag_every_copy(root, name=PLAYLIST_NAME):
     """Set the podcast flag on the playlist in every section it appears in.
 
@@ -247,6 +389,13 @@ def group_episodes(root, name=PLAYLIST_NAME):
         head.set32(GROUP_REF, 0)
         if len(head.hdr) > 0x34:
             head.set64(0x2C, 0)             # track dbid: none, this is not a track
+        # AND 0x3C. The header is cloned from an episode row, and leaving
+        # this behind gave the show row and episode 1 the same 64-bit id --
+        # the one structurally invalid element in the database. libgpod
+        # writes zero here, and so does the timestamp.
+        if len(head.hdr) > 0x44:
+            head.set64(0x3C, 0)
+        head.set32(0x1C, 0)
         head.children = [W.make_string_mhod(1, sh)]
         out.append(head)
         for c in grouped[sh]:

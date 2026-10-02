@@ -197,7 +197,8 @@ def track_retag(root, tid, fields):
 
     Passing a field as None leaves it alone; passing '' clears it.
     """
-    mhods = {'title': 1, 'album': 3, 'artist': 4, 'genre': 5, 'composer': 12}
+    mhods = {'title': 1, 'album': 3, 'artist': 4, 'genre': 5, 'composer': 12,
+             'album_artist': 22}
     t = next((x for x in tracks(root) if track_id(x) == tid), None)
     if t is None:
         raise KeyError('no track %r on the device' % tid)
@@ -225,15 +226,26 @@ def playlist_set_tracks(root, name, track_ids):
     missing = [i for i in track_ids if i not in by_id]
     if missing:
         raise KeyError('unknown track ids: %s' % missing)
+    # ONE ROW, ONE IDENTITY, IN BOTH SECTIONS. Apple writes every playlist's
+    # type-2 and type-3 rows byte-identical -- same group id, timestamp,
+    # dbid and the 64-bit value at 0x3C (481 of 481 master rows on the
+    # pristine database). This used to keep incrementing the group id across
+    # sections and draw a fresh random 0x3C per row per section, so the two
+    # copies of every list it wrote disagreed. Each row is now made once and
+    # the same bytes go to both.
     _, gid = _next_ids(root)
+    made = []
+    for pos, tid in enumerate(track_ids, 1):
+        made.append(_make_mhip(root, tid, track_dbid(by_id[tid]), pos, gid))
+        gid += 1
     for sect in playlist_sections(root):
         p = find_playlist(root, sect, name)
         if is_master(p) or is_smart(p):
             raise ValueError('refusing to rewrite a master or smart playlist')
         p.children = [c for c in p.children if c.magic != b'mhip']
-        for pos, tid in enumerate(track_ids, 1):
-            p.children.append(_make_mhip(root, tid, track_dbid(by_id[tid]), pos, gid))
-            gid += 1
+        for m in made:
+            p.children.append(W.Node(b'mhip', bytes(m.hdr), m.body,
+                                     [W.Node(c.magic, bytes(c.hdr), c.body) for c in m.children]))
 
 
 # ---------------------------------------------------------------- tracks

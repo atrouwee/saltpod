@@ -38,10 +38,29 @@ members of the master playlist in both sections, because they were added
 as music first. "Does nothing" fits a show list that comes up empty after
 the firmware filters out master members.
 
-**Not touched on a hunch.** A full taxonomy sweep is running against
-libgpod's source, the pristine 27 September database and the current
-device, with the podcast diagnosis checked adversarially from two angles.
-It lands in `research/TAXONOMY.md`.
+**The master-playlist lead is dead** — the sweep ported libgpod's reader
+and ran it on the device's database: to libgpod it is a correct podcast
+database, and neither libgpod path excludes podcasts from the master. So
+the firmware checks something libgpod never reads.
+
+**Fourth attempt, written 3 October while the owner was away**, through
+`guarded_write`, rehearsed against all fifteen checks in
+`research/TAXONOMY.md` §1 first:
+
+- the show header's `0x3C` zeroed — it had been cloned from episode 1, so
+  the two rows shared a 64-bit id, the one structurally invalid element in
+  the database
+- libgpod's layout: header id smallest, positions equal to row ids
+- the type-2 copy rebuilt byte-identical to type 3 except the group ref
+  (Apple's invariant; 0 of 10 rows matched)
+- on the episodes: skip-when-shuffling, remember-position and flag4 set,
+  unplayed mark, a release date, and one album entry instead of three
+
+**To test:** click Podcasts. If it opens, the parts get reverted one at a
+time to find which mattered. If it does not, the next step is Apple ground
+truth — let Finder write ONE podcast episode and diff its bytes against
+ours — which needs the owner's go-ahead, because Apple's sync renumbers
+ids and restamps records (it did at 12:31).
 
 ---
 
