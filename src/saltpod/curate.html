@@ -2180,7 +2180,7 @@ function openSettings(){
       <div class="box"><div class="dsec">the music drive</div>
         <div style="color:var(--dim);font-size:12px">
           ${HEALTH&&HEALTH.index?`<b style="color:var(--ink)">${HEALTH.index.tracks}</b> files indexed, ${HEALTH.index.built}`:'<span class="warn">never indexed</span>'} ·
-          ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' · ')||'no drive configured'}<br>
+          ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)}${x.kind==='folder'?' <span class="w">folder</span>':''} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' · ')||'no source configured'}<br>
           Walks the folders in <code>library_roots</code> and remembers every audio file. Run it after you buy something.</div>
         <div class="brow"><button id="doIndex">Index the drive</button></div></div>
       <div class="box"><div class="dsec">the iPod</div>
@@ -3295,7 +3295,20 @@ function paintHealth(){
   }
   const mu={ok:['ok','Music',''],closed:['off','Music','closed'],wedged:['warn','Music','not answering']}[h.music]||['off','Music',''];
   g.push(dot(...mu));
-  (h.sources||[]).forEach(s=>g.push(dot(s.online?'ok':'off',s.name,s.online?'':'offline')));
+  // ONLY WHAT CAN GO AWAY GETS A SLOT. A folder on this disk is always
+  // there, so a dot for it is a dot that never changes -- and the strip is
+  // read by glancing at what is different. The server says which is which
+  // (`kind`); the page is not working it out from the path.
+  (h.sources||[]).filter(s=>s.kind==='drive')
+                 .forEach(s=>g.push(dot(s.online?'ok':'off',s.name,s.online?'':'offline')));
+  // And the question the drives were always standing in for: how much of
+  // the library can actually be read right now. With a track reachable from
+  // more than one source, "the drive is out" no longer answers it.
+  if(h.library&&h.library.tracks){
+    const L=h.library, all=L.reachable>=L.tracks;
+    if(!all)g.push(dot(L.reachable?'warn':'off','library',
+                       L.reachable.toLocaleString()+' of '+L.tracks.toLocaleString()+' readable'));
+  }
   if(h.tools&&!(h.tools.ffmpeg&&h.tools.ffprobe))g.push(dot('warn','ffmpeg','missing'));
   if(h.config)g.push(dot('warn','config','missing'));
   el.innerHTML=g.join('');

@@ -681,6 +681,39 @@ _TESTS_JS = r'''
   });
 
   // ---------------------------------------------------------------- mark()
+  record('the health strip shows drives, not folders', () => {
+    // A folder on the internal disk cannot be unplugged, so a dot for it is
+    // a dot that never changes -- and this strip is read by glancing at
+    // what is different. Added when a second source went in and the strip
+    // grew a permanent green light.
+    HEALTH.sources = [
+      {name:'Music Drive', path:'/Volumes/Music Drive/Music', online:false, kind:'drive'},
+      {name:'local copies', path:'/home/user/local copies', online:true, kind:'folder'},
+    ];
+    HEALTH.library = {tracks: 4050, reachable: 80};
+    paintHealth();
+    let html = document.getElementById('hstrip').innerHTML;
+    assert(html.includes('Music Drive'), 'the drive lost its slot in the strip');
+    assert(!html.includes('local copies'), 'a folder took a slot it cannot ever change');
+    assert(html.includes('offline'), 'an unmounted drive did not read as offline');
+    // the question the drives were standing in for
+    assert(/80 of 4,050 readable/.test(html),
+      'the strip did not say how much of the library can be read: ' + html);
+
+    // everything reachable: no readable label at all, it would be noise
+    HEALTH.library = {tracks: 4050, reachable: 4050};
+    HEALTH.sources[0].online = true;
+    paintHealth();
+    html = document.getElementById('hstrip').innerHTML;
+    assert(!/readable/.test(html), 'the readable count stayed up when nothing was missing');
+    assert(!html.includes('offline'), 'a mounted drive still read as offline');
+
+    // no sources configured at all must not throw
+    HEALTH.sources = []; HEALTH.library = null; paintHealth();
+    HEALTH.sources = []; HEALTH.library = {tracks:0, reachable:0}; paintHealth();
+    return 'drive shown, folder hidden, reach reported';
+  });
+
   record('mark() tracks the cursor without touching a MARKed row', () => {
     ORDER['DayClub'] = ['t1', 't2', 't3', 't4'];
     colPick = 'DayClub'; active = 'ipod'; clearMark(); draw();
@@ -889,6 +922,7 @@ def _run_all():
     check('pass() honors a real filter-pill click', node_check('pass() honors a real filter-pill click'))
     check('pass() honors a real search input', node_check('pass() honors a real search input'))
     check('mark() tracks the cursor, leaves MARK alone', node_check('mark() tracks the cursor without touching a MARKed row'))
+    check('the strip shows drives, not folders', node_check('the health strip shows drives, not folders'))
 
     section('tokens (see bin/selftest.py -- not duplicated here)')
     check('no colour/radius/font-size literal outside :root', t_token_census_ref)

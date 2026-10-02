@@ -735,6 +735,27 @@ def evaluate(parsed, tracks, now=None):
 
 # ===================================================================== describe
 
+def why_not(parsed, track, now=None):
+    """Which rules reject this track -- the explanation behind a `check`
+    miss.
+
+    A MISS IS NO LONGER AUTOMATICALLY OUR BUG. The device's `mhip` list is
+    a snapshot iTunes materialised at some past moment, and saltpod now
+    WRITES to the device as well as reading it. The first real run of
+    `smartlists check` reported "Recently Added: FAIL, 9 misses" -- and
+    all nine were the podcast episodes saltpod itself had filed the day
+    before, correctly excluded by that playlist's own `Podcast IS_NOT 1`
+    rule. The evaluator was right and the diff was describing it as
+    broken.
+
+    So the useful output is not a count but a reason. Returns the list of
+    rules that rejected the track, as described strings.
+    """
+    now = time.time() if now is None else now
+    return [describe_rule(r) for r in parsed['rules']
+            if not _eval_rule(r, track, now)]
+
+
 def describe_rule(r):
     aname = r['action_name'] or ('action %#010x (unrecognised)' % r['action'])
     if r['field_type'] == 'string':

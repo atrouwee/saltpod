@@ -779,6 +779,17 @@ def main(argv=None):
                     ordered = bool(parsed["limit"] and parsed["limit"].get("enabled"))
                     common = [i for i in got if i in set(expected)]
                     order_ok = (not ordered) or common == list(expected)
+                    # WHY a miss happened decides whether it is a bug. The
+                    # device's list is a snapshot from before saltpod's own
+                    # writes, so a track excluded by a rule reading a field
+                    # saltpod changed is the evaluator being right.
+                    by_id = {t["id"]: t for t in tracks}
+                    reasons = {}
+                    for i in misses:
+                        t = by_id.get(i)
+                        for line in (SL.why_not(parsed, t) if t else ["not on the device"]):
+                            reasons[line] = reasons.get(line, 0) + 1
+                    row["why"] = sorted(reasons.items(), key=lambda kv: -kv[1])
                     row.update({"evaluated": len(got), "misses": len(misses),
                                 "extras": len(extras), "order_checked": ordered,
                                 "order_ok": order_ok})
@@ -810,7 +821,9 @@ def main(argv=None):
             receipt("  saltpod evaluates", str(row["evaluated"]),
                     tone="good" if row["verdict"] == "agrees" else "warn")
             if row["misses"]:
-                note("%d tracks iTunes has that we do not -- our bug" % row["misses"])
+                note("%d tracks iTunes has that we do not" % row["misses"])
+                for line, n in (row.get("why") or []):
+                    note("   %d of them rejected by: %s" % (n, line))
             if row["extras"]:
                 note("%d we find that iTunes does not -- expected, the device is stale"
                      % row["extras"])
@@ -819,10 +832,10 @@ def main(argv=None):
         print()
         if a.what == "check":
             if failed:
-                receipt("verdict", "%d of %d disagree with iTunes" % (failed, len(out)),
+                receipt("verdict", "%d of %d differ from what iTunes materialised" % (failed, len(out)),
                         tone="warn")
             else:
-                receipt("verdict", "every understood playlist agrees with iTunes",
+                receipt("verdict", "every understood playlist matches what iTunes materialised",
                         tone="good")
         return 1 if failed else 0
 

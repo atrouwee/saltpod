@@ -72,6 +72,45 @@ def _osa(argv, timeout):
     return r
 
 
+def _source_kind(root):
+    """'drive' if this source can be unplugged, 'folder' if it cannot.
+
+    Decided by the device id, not by the path spelling: a source on any
+    volume other than the boot volume can go away, whatever it is called
+    and wherever it is mounted. `/Volumes/...` is only the fallback for a
+    root that is not there to be stat'd -- and an absent path under
+    /Volumes is a drive that is out, which is precisely the case the strip
+    exists to show.
+    """
+    try:
+        return 'drive' if os.stat(root).st_dev != os.stat('/').st_dev else 'folder'
+    except OSError:
+        return 'drive' if root.startswith('/Volumes/') else 'folder'
+
+
+def _library_reach():
+    """{'tracks', 'reachable'} -- how much of the library can be read now.
+
+    Cached against the index's mtime like the count above it, because this
+    walks every entry and the strip polls. `resolve` is the same function
+    every verb uses, so the number on screen is the number sync would get.
+    """
+    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
+    if not os.path.exists(idx):
+        return None
+    mt = os.path.getmtime(idx)
+    if _INDEX_CACHE.get('reach_mtime') != mt:
+        try:
+            from . import local_index as LI
+            rows = LI.load(resolved=False).get('tracks', [])
+            n = sum(1 for e in rows if os.path.exists(LI.resolve(e)))
+            _INDEX_CACHE.update(reach_mtime=mt, reach=n, reach_total=len(rows))
+        except Exception:
+            return None
+    return {'tracks': _INDEX_CACHE.get('reach_total'),
+            'reachable': _INDEX_CACHE.get('reach')}
+
+
 def health():
     """What the tool can reach right now. Every check here is a filesystem
     stat or a pgrep -- never an Apple event, which is the one thing that can
@@ -113,7 +152,16 @@ def health():
         # That is the thing that gets unplugged, and the word you would use.
         parts = root.rstrip('/').split('/')
         name = parts[2] if len(parts) > 2 and parts[1] == 'Volumes' else (parts[-1] or root)
-        out['sources'].append({'name': name, 'path': root, 'online': os.path.isdir(root)})
+        out['sources'].append({'name': name, 'path': root,
+                               'online': os.path.isdir(root),
+                               'kind': _source_kind(root)})
+    # WHAT THE STRIP IS ACTUALLY FOR is "can I work right now", and with
+    # sources in more than one place that is no longer the same question as
+    # "is the drive in". A track the drive holds may be readable from a
+    # folder on this disk, so the honest figure is how many of the library's
+    # tracks resolve to a file that exists -- counted here, because working
+    # it out is exactly what a client may not do.
+    out['library'] = _library_reach()
     out['tools'] = {'ffmpeg': bool(shutil.which('ffmpeg')), 'ffprobe': bool(shutil.which('ffprobe'))}
     idx = os.path.join(ROOT, 'data', 'local', 'index.json')
     if os.path.exists(idx):

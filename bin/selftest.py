@@ -900,6 +900,27 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_pagetest():
+    """The page's BEHAVIOURAL suite, run as part of this one.
+
+    bin/pagetest.py has existed for a while and nothing ran it, which is
+    the same failure as a module with no verb: a test that is not in the
+    suite does not protect anything. It needs node; where there is none it
+    skips rather than fails, because the rest of this suite is stdlib
+    Python and must stay runnable without a JS runtime.
+    """
+    import shutil as _sh
+    if not _sh.which('node'):
+        return ('skip', 'node not installed')
+    pt = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pagetest.py')
+    r = subprocess.run([sys.executable, pt], capture_output=True, text=True)
+    last = [l for l in r.stdout.strip().splitlines() if 'passed' in l]
+    if r.returncode != 0:
+        bad = [l.strip() for l in r.stdout.splitlines() if l.strip().startswith('!!')]
+        raise AssertionError('; '.join(bad[:3]) or (last[-1] if last else 'pagetest failed'))
+    return last[-1].strip() if last else 'ok'
+
+
 def main():
     print('saltpod selftest   %s%s'
           % (time.strftime('%Y-%m-%d %H:%M'),
@@ -940,6 +961,7 @@ def main():
     check('inline script parses', t_js_parses)
     check('no literals outside :root', t_token_census)
     check('front end does not decide', t_layer_census)
+    check('the page behaves (pagetest.py)', t_pagetest, slow=True)
 
     section('http — the contract both clients use')
     check('the API answers questions', t_api)
