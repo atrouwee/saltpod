@@ -23,6 +23,16 @@ def _local_index():
     return _json.load(open(p))["tracks"] if os.path.exists(p) else []
 
 
+def _mhod_of(node, typ):
+    """One mhod string off a parsed node -- the three-line walk several verbs
+    were each about to write for themselves."""
+    from . import itunesdb_write as W
+    for c in node.children:
+        if c.magic == b"mhod" and W.mhod_type(c) == typ:
+            return W.mhod_string(c)
+    return ""
+
+
 def _ident(v):
     """A key or a path, told apart by looking rather than by a flag.
 
@@ -251,6 +261,45 @@ def main(argv=None):
                         "adopt: take the counts iTunes left in the iTunesDB; "
                         "merge: add the Play Counts delta (the file is never deleted)")
     p.add_argument("--mount")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("loudness", help="Sound Check: how loud each track really is, and what the iPod should be told about it")
+    p.add_argument("what", choices=["show", "scan", "import", "track"], nargs="?", default="show",
+                   help="show: what the measurements say (no drive needed); "
+                        "scan: measure the library (slow, needs the drive); "
+                        "import: fold a finished scan file into the cache; "
+                        "track: measure one file")
+    p.add_argument("path", nargs="?", help="for `track` the audio file; for `import` the scan json")
+    p.add_argument("--target", type=float, default=-18.0,
+                   help="the loudness to normalise to, in LUFS (default -18, the measured iTunes target)")
+    p.add_argument("--workers", type=int, default=6)
+    p.add_argument("--limit", type=int, default=0, help="only this many files (0 = all)")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("devprefs", help="the device settings that decide whether saltpod may write at all")
+    p.add_argument("what", choices=["show", "check"], nargs="?", default="show",
+                   help="show: everything that could be read; check: just the findings")
+    p.add_argument("--mount")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("rockbox", help="write the collections as .m3u8 playlists a Rockbox iPod can read")
+    p.add_argument("what", choices=["plan", "write"], nargs="?", default="plan",
+                   help="plan: what would change on the device, touching nothing; write: do it")
+    p.add_argument("--mount")
+    p.add_argument("--dir", help="playlist directory on the device (default .rockbox/Playlists)")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("smartlists", help="the smart playlists on the device: their rules, and whether we agree with iTunes about what is in them")
+    p.add_argument("what", choices=["show", "check"], nargs="?", default="show",
+                   help="show: the rules, decoded; check: evaluate them and diff against what iTunes materialised")
+    p.add_argument("--mount")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("podcasts", help="file episodes as podcasts so the iPod resumes them instead of restarting")
+    p.add_argument("what", choices=["status", "rehearse", "write"], nargs="?", default="status",
+                   help="status: what declares itself a podcast and what the device thinks; "
+                        "rehearse: do it against a COPY and verify; write: do it for real, after a backup")
+    p.add_argument("--mount", help="the device, or an iTunesDB file to rehearse against")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
@@ -492,6 +541,388 @@ def main(argv=None):
                   % (str(r["artist"])[:28], str(r["title"])[:28], r.get("plays") or "",
                      "*" * (r.get("rating") or 0), lp))
         note("%d tracks carry a count or a rating" % len(got))
+        return 0
+
+    if a.cmd == "loudness":
+        import json as _json
+        from . import loudness as L
+
+        if a.what == "track":
+            if not a.path:
+                fail("which file?", "saltpod loudness track '/path/to/a track.mp3'")
+            r = L.analyse(a.path, a.target)
+            if r is None:
+                fail("could not measure that file", "ffmpeg could not decode it; `saltpod loudness track` needs a readable audio file")
+            if a.json:
+                print(_json.dumps(r, indent=2)); return 0
+            receipt("integrated loudness", "%.1f LUFS" % r["lufs"])
+            receipt("true peak", "%+.1f dBTP" % r["true_peak"])
+            receipt("gain to reach %.0f LUFS" % a.target, "%+.1f dB" % r["gain_db"])
+            receipt("Sound Check raw", str(r["raw"]), tone="good")
+            if r["clips_after"]:
+                note("this would clip once that gain is applied -- the device should not be told to raise it")
+            return 0
+
+        if a.what == "import":
+            src = a.path or os.path.join(_repo_root(), "data", "local", "loudness_scan.json")
+            if not os.path.exists(src):
+                fail("no scan file at " + src, "run `saltpod loudness scan` first, or name the file")
+            r = L.import_scan(src)
+            if a.json:
+                print(_json.dumps(r, indent=2)); return 0
+            receipt("rows in the scan", str(r["read"]))
+            receipt("folded into the cache", str(r["imported"]), tone="good" if r["imported"] else None)
+            receipt("already there", str(r["already"]))
+            if r["skipped"]:
+                note("%d skipped -- no measurement to fold (ffmpeg could not read them)" % r["skipped"])
+            return 0
+
+        if a.what == "scan":
+            from . import local_index as LI
+            paths = [e["path"] for e in _local_index() if e.get("path")]
+            if a.limit:
+                paths = paths[:a.limit]
+            if not paths:
+                fail("nothing indexed", "run `saltpod index` first")
+            missing = [p for p in paths if not os.path.exists(p)]
+            if missing:
+                fail("%d of %d indexed files are not on disk" % (len(missing), len(paths)),
+                     "the library drive is probably unplugged -- `saltpod loudness show` reads what was already measured")
+            seen = [0]
+
+            def _tick(done, total):
+                seen[0] = done
+                if done % 100 == 0 or done == total:
+                    sys.stderr.write("\r  measured %d/%d" % (done, total)); sys.stderr.flush()
+
+            step("measuring %d files with %d workers" % (len(paths), a.workers))
+            res = L.scan(paths, a.target, workers=a.workers, progress=_tick)
+            sys.stderr.write("\n")
+            ok = [r for r in res.values() if r]
+            receipt("measured", "%d of %d" % (len(ok), len(paths)), tone="good")
+            return 0
+
+        # show -- deliberately reads the cache alone, so it works with the
+        # library drive unplugged. A report that needs the drive to say what
+        # was already measured is a report nobody can read.
+        rows = L.cached_rows()
+        if not rows:
+            fail("nothing measured yet",
+                 "`saltpod loudness import` folds in a finished scan, `saltpod loudness scan` makes one")
+        lufs = sorted(r["lufs"] for r in rows.values() if r.get("lufs") is not None)
+        raws = [L.soundcheck_for(v, a.target) for v in lufs]
+        louder = sum(1 for v in lufs if v > a.target)
+        quieter = len(lufs) - louder
+        peaks = [r.get("true_peak") for r in rows.values() if r.get("true_peak") is not None]
+        clip = sum(1 for r in rows.values()
+                   if r.get("lufs") is not None and r.get("true_peak") is not None
+                   and (r["true_peak"] + (a.target - r["lufs"])) > -1.0)
+        if a.json:
+            print(_json.dumps({"measured": len(lufs), "target": a.target,
+                               "louder_than_target": louder, "quieter_than_target": quieter,
+                               "would_clip_after_gain": clip,
+                               "lufs_min": lufs[0], "lufs_median": lufs[len(lufs) // 2],
+                               "lufs_max": lufs[-1],
+                               "raw_min": min(raws), "raw_max": max(raws)}, indent=2))
+            return 0
+
+        def _q(vals, p):
+            return vals[int(p * (len(vals) - 1))]
+
+        receipt("files measured", str(len(lufs)))
+        receipt("target", "%.0f LUFS" % a.target)
+        receipt("loudness", "min %.1f   median %.1f   max %.1f LUFS"
+                % (lufs[0], _q(lufs, .5), lufs[-1]))
+        receipt("louder than the target", "%d  (the iPod would turn these DOWN)" % louder,
+                tone="good")
+        receipt("quieter than the target", "%d  (it would turn these UP)" % quieter,
+                tone="warn" if quieter else None)
+        receipt("Sound Check raw", "%d .. %d   (1000 is no change)" % (min(raws), max(raws)))
+        if clip:
+            note("%d would clip once the gain is applied -- those need the flag checked before writing" % clip)
+        note("nothing is written to the device until `saltpod sync`; this verb only measures")
+        return 0
+
+    if a.cmd == "devprefs":
+        import json as _json
+        from . import devprefs as DP
+        # read()/report() call config.load() when mount is None, and that
+        # exits the process when no device is configured. A verb whose job is
+        # to SAY what the settings are should answer that, not vanish.
+        try:
+            mount = a.mount or __import__("saltpod.config", fromlist=["x"]).load().get("mount")
+        except SystemExit:
+            fail("no device configured", "run `saltpod curate` once, or pass --mount")
+        if not mount:
+            fail("no mount to look at", "pass --mount /Volumes/IPOD")
+
+        if a.json:
+            print(_json.dumps({"read": DP.read(mount), "findings": DP.check(mount)},
+                              indent=2, default=str))
+            return 0
+        if a.what == "show":
+            findings = DP.report(mount)
+        else:
+            findings = DP.check(mount)
+            for f in findings:
+                mark = {"ok": "ok ", "warn": "!! ", "danger": "***"}.get(f["level"], "   ")
+                print(" %s %s" % (mark, f["what"]))
+                print("      %s" % f["why"])
+        bad = [f for f in findings if f["level"] == "danger"]
+        return 1 if bad else 0
+
+    if a.cmd == "rockbox":
+        import json as _json
+        from . import rockbox as R, state as S, config as CFG
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        if not os.path.isdir(mount):
+            fail("no device at " + mount, "plug it in, or pass --mount")
+        # Writing .rockbox/Playlists onto Apple firmware is useless rather
+        # than harmful -- the Apple firmware never reads it. Say so and stop
+        # instead of leaving files the device will silently ignore.
+        seen = CFG.detect_target(mount)
+        if seen != "rockbox":
+            note("this device looks like %s firmware, not Rockbox"
+                 % (seen or "neither Rockbox nor Apple"))
+            if a.what == "write":
+                fail("refusing to write Rockbox playlists to a non-Rockbox device",
+                     "Apple firmware never reads .rockbox/Playlists; use `saltpod sync` instead")
+
+        cols, skipped = R.collections_from_state(S.load())
+        if not cols:
+            fail("no collections to write", "arrange some in `saltpod curate` first")
+        for sk in skipped:
+            note("skipped %s in %s -- %s" % (sk["key"], sk["collection"], sk["why"]))
+
+        pl = R.plan_playlists(mount, cols, a.dir)
+        if a.what == "plan":
+            if a.json:
+                print(_json.dumps(pl, indent=2)); return 0
+            receipt("playlist directory", pl["dir"])
+            for k, tone in (("new", "good"), ("changed", "good"), ("unchanged", None)):
+                if pl[k]:
+                    receipt(k, "%d  (%s)" % (len(pl[k]), ", ".join(pl[k])), tone=tone)
+            if pl["extra"]:
+                note("%d file(s) there that no collection maps to: %s"
+                     % (len(pl["extra"]), ", ".join(pl["extra"])))
+            if not (pl["new"] or pl["changed"]):
+                note("nothing to do -- the device already matches")
+            return 0
+
+        res = R.write_playlists(mount, cols, a.dir)
+        if a.json:
+            print(_json.dumps(res, indent=2)); return 0
+        receipt("playlist directory", res["dir"])
+        for w in res["written"]:
+            receipt(w["collection"], "%s  %d tracks  %d bytes"
+                    % (w["file"], w["tracks"], w["bytes"]), tone="good")
+        for e in res["errors"]:
+            note("FAILED %s -- %s" % (e["collection"], e["error"]))
+        return 1 if res["errors"] else 0
+
+    if a.cmd == "smartlists":
+        import json as _json
+        from . import smartlists as SL, ipod_edit as E, itunesdb_write as W, config as CFG
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        dbp = mount if os.path.isfile(mount) else os.path.join(
+            mount, "iPod_Control", "iTunes", "iTunesDB")
+        if not os.path.exists(dbp):
+            fail("no iPod database at " + dbp, "plug it in and put it in Disk Mode")
+
+        root = W.parse(open(dbp, "rb").read())
+        found = []
+        for typ, kind in ((2, "regular"), (5, "media-type")):
+            sect = W.section(root, typ)
+            for pl in (E.playlists(root, sect) if sect is not None else []):
+                if E.is_smart(pl):
+                    found.append((kind, pl))
+        if not found:
+            note("no smart playlists on this device"); return 0
+
+        tracks = SL.load_tracks(root) if a.what == "check" else None
+        out, failed = [], 0
+        for kind, pl in found:
+            name = E.pl_name(pl) or "?"
+            row = {"name": name, "kind": kind}
+            try:
+                parsed = SL.parse_rules(pl)
+            except ValueError as e:
+                row["error"] = str(e)
+                out.append(row)
+                continue
+            row["understood"] = parsed["understood"]
+            row["reasons"] = parsed["reasons"]
+            row["live"] = parsed["live"]
+            row["materialized"] = len(SL.materialized_ids(pl))
+            row["describe"] = SL.describe(parsed)
+
+            if a.what == "check":
+                if not parsed["understood"]:
+                    row["verdict"] = "cannot verify"
+                else:
+                    expected = SL.materialized_ids(pl)
+                    got = [t["id"] for t in SL.evaluate(parsed, tracks)]
+                    gs = set(got)
+                    misses = [i for i in expected if i not in gs]
+                    extras = [i for i in got if i not in set(expected)]
+                    # Order only means something where a limit made iTunes
+                    # choose one; without a limit the mhip order is arbitrary.
+                    ordered = bool(parsed["limit"] and parsed["limit"].get("enabled"))
+                    common = [i for i in got if i in set(expected)]
+                    order_ok = (not ordered) or common == list(expected)
+                    row.update({"evaluated": len(got), "misses": len(misses),
+                                "extras": len(extras), "order_checked": ordered,
+                                "order_ok": order_ok})
+                    bad = bool(misses) or not order_ok
+                    row["verdict"] = "FAIL" if bad else "agrees"
+                    failed += bool(bad)
+            out.append(row)
+
+        if a.json:
+            print(_json.dumps(out, indent=2, default=str)); return 0
+
+        for row in out:
+            print()
+            receipt(row["name"], row["kind"])
+            if row.get("error"):
+                note("could not parse: " + row["error"]); continue
+            for line in row["describe"].splitlines():
+                print("      " + line)
+            if a.what == "show":
+                receipt("  iTunes materialised", str(row["materialized"]))
+                if not row["understood"]:
+                    note("not understood, so saltpod will not evaluate it: "
+                         + "; ".join(row["reasons"]))
+                continue
+            if row["verdict"] == "cannot verify":
+                note("not understood -- refusing to evaluate rather than half-apply it")
+                continue
+            receipt("  iTunes materialised", str(row["materialized"]))
+            receipt("  saltpod evaluates", str(row["evaluated"]),
+                    tone="good" if row["verdict"] == "agrees" else "warn")
+            if row["misses"]:
+                note("%d tracks iTunes has that we do not -- our bug" % row["misses"])
+            if row["extras"]:
+                note("%d we find that iTunes does not -- expected, the device is stale"
+                     % row["extras"])
+            if row["order_checked"] and not row["order_ok"]:
+                note("same tracks, different order -- the limit sort disagrees")
+        print()
+        if a.what == "check":
+            if failed:
+                receipt("verdict", "%d of %d disagree with iTunes" % (failed, len(out)),
+                        tone="warn")
+            else:
+                receipt("verdict", "every understood playlist agrees with iTunes",
+                        tone="good")
+        return 1 if failed else 0
+
+    if a.cmd == "podcasts":
+        import json as _json
+        import shutil as _sh
+        import tempfile as _tf
+        from . import podcasts as P, ipod_edit as E, itunesdb_write as W
+        from . import config as CFG, state as S, hash58 as H
+
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        # A plain file is accepted so a backup can be rehearsed against with
+        # no hardware attached -- the same affordance `smartlists` has, and
+        # the reason this verb could be tested at all before the iPod
+        # came back.
+        as_file = os.path.isfile(mount)
+        dbp = mount if as_file else os.path.join(mount, "iPod_Control", "iTunes", "iTunesDB")
+        if not os.path.exists(dbp):
+            fail("no iPod database at " + dbp, "plug it in, or pass --mount with a backup file")
+
+        root = W.parse(open(dbp, "rb").read())
+
+        # WHICH TRACKS ARE PODCASTS IS NOT A GUESS. iTunes stamped PCST/WFED
+        # into these files when they were subscribed to; the files still
+        # carry it. `declares_podcast` reads that, so nothing here infers a
+        # podcast from a genre string or a folder name.
+        idx = {S.key_for(e.get("artist"), e.get("title")): e for e in _local_index()}
+        want, unreadable = set(), 0
+        for t in E.tracks(root):
+            e = idx.get(S.key_for(_mhod_of(t, 4), _mhod_of(t, 1)))
+            if not e or not e.get("path"):
+                continue
+            if not os.path.exists(e["path"]):
+                unreadable += 1
+                continue
+            try:
+                if P.declares_podcast(e["path"]):
+                    want.add(E.track_dbid(t))
+            except Exception:
+                unreadable += 1
+
+        pl = P.plan(root, want)
+        flagged = P._flagged_playlists(root)
+        if a.json and a.what == "status":
+            print(_json.dumps({"plan": pl, "flagged_playlists": flagged,
+                               "unreadable": unreadable}, indent=2, default=str))
+            return 0
+
+        receipt("tracks on the device", str(len(list(E.tracks(root)))))
+        receipt("declare themselves podcasts", str(len(pl["tracks"])),
+                tone="good" if pl["tracks"] else None)
+        receipt("already filed as podcasts", str(pl["already"]))
+        receipt("playlists carrying the podcast flag",
+                ", ".join(map(str, flagged)) if flagged else "none",
+                tone="warn" if len(flagged) > 1 else None)
+        if unreadable:
+            note("%d files could not be read -- the library drive may be unplugged" % unreadable)
+        for r in pl["tracks"][:12]:
+            print("   %-28s %s" % (str(r["artist"])[:28], str(r["title"])[:40]))
+        if len(pl["tracks"]) > 12:
+            note("and %d more" % (len(pl["tracks"]) - 12))
+
+        if a.what == "status":
+            return 0
+        if not want:
+            note("nothing to file"); return 0
+
+        if a.what == "rehearse":
+            work = _tf.mkdtemp(prefix="saltpod-podcasts-")
+            _sh.copy2(dbp, work)
+            target = os.path.join(work, os.path.basename(dbp))
+            where = "the copy"
+        else:
+            if as_file:
+                fail("`write` needs the device, not a file", "pass --mount /Volumes/IPOD")
+            from . import apply as A
+            A.backup(mount)
+            target, where = dbp, "THE DEVICE"
+
+        root2 = W.parse(open(target if a.what == "rehearse" else dbp, "rb").read())
+        try:
+            res = P.apply(root2, want)
+        except P.PodcastError as e:
+            fail("refusing to write: " + str(e), "nothing was changed")
+
+        guid = CFG.load()["firewire_guid"]
+        blob = W.serialise(root2, guid)
+        if not H.verify(blob, guid):
+            fail("the re-signed database does not verify", "nothing written")
+        open(target, "wb").write(blob)
+
+        # Read it back from what was actually written, not from the tree in
+        # memory -- the tree is what we believe, the file is what happened.
+        back = W.parse(open(target, "rb").read())
+        filed = sum(1 for t in E.tracks(back) if t.get32(P.MEDIATYPE) == P.PODCAST)
+        again = P._flagged_playlists(back)
+
+        step("wrote to %s" % where)
+        receipt("tracks filed as podcasts", str(filed), tone="good")
+        receipt("playlist", "%s%s" % (res["playlist"], " (created)" if res["created"] else ""))
+        receipt("members", str(res["members"]))
+        receipt("flagged playlists after the write",
+                ", ".join(map(str, again)), tone="warn" if len(again) != 1 else "good")
+        receipt("hash58", "re-signed and verified", tone="good")
+        if len(again) != 1:
+            note("exactly one flagged playlist is required -- the firmware shows none otherwise")
+            return 1
+        if a.what == "rehearse":
+            note("that was a copy; nothing on the device changed")
         return 0
 
     if a.cmd == "log":

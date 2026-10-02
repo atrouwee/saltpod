@@ -18,17 +18,50 @@ then nothing can call it. Seven of them, below.
 
 ## 1. Built and verified, but NOTHING CAN CALL IT
 
-Each of these has a working `selftest()` and no CLI verb, so the only
-caller is a test.
+**CLOSED 2 October**, and the census that was supposed to catch this has
+been fixed so it closes for good.
 
-| module | what it does | missing |
+| module | verb | state |
 |---|---|---|
-| `smartlists` | parses and evaluates smart playlist rules; matches iTunes exactly on Top 25 | a verb, and the write path |
-| `loudness` | measures LUFS/true-peak, caches, encodes Sound Check | a verb, and the write path |
-| `rockbox` | writes `.m3u8` playlists to `.rockbox/Playlists` | a verb, and a place in sync |
-| `devprefs` | reads whether disk-use is on and auto-sync off | a verb |
-| `playcounts` | reads and merges the Play Counts sidecar | has `saltpod plays`, but merge has never run |
-| `artwork` / `artworkdb` | renders and writes covers | reachable via `saltpod art` -- DONE |
+| `smartlists` | `saltpod smartlists show\|check` | DONE -- `check` diffs our evaluation against what iTunes materialised |
+| `loudness` | `saltpod loudness show\|scan\|import\|track` | DONE -- the write path is still open, see section 2 |
+| `rockbox` | `saltpod rockbox plan\|write` | DONE -- needed a translation layer that did not exist, below |
+| `devprefs` | `saltpod devprefs show\|check` | DONE |
+| `podcasts` | `saltpod podcasts status\|rehearse\|write` | DONE -- the device write last session went through a throwaway script, which is the same bug one layer along |
+| `playcounts` | `saltpod plays` | DONE -- merge has now run, 324 plays across 168 tracks |
+| `artwork` / `artworkdb` | `saltpod art` | DONE |
+
+Three things only became visible once someone tried to write the verbs.
+
+**`rockbox` was unreachable for a deeper reason than a missing verb.** It
+takes `{name: [(device_path, title, seconds)]}`; `state.py` holds
+`collection_order` as `{name: [track_key]}` and keeps the path as iPod
+colon-notation (`:iPod_Control:Music:F46:VXBJ.m4a`) on the track record.
+No caller could have satisfied that interface without a translation
+nobody had written. It is now `rockbox.collections_from_state()`, and all
+three collections render.
+
+**The 19-minute loudness scan was invisible to its own module.** It was
+written to `data/local/loudness_scan.json` by a one-off script;
+`analyse_cached` reads `data/local/loudness_cache.json`. Every one of
+those 4,044 files would have been re-measured. `saltpod loudness import`
+folds one into the other -- the scan carries `size` and `mtime`, which are
+exactly the two keys the cache tests for freshness, so an imported entry
+is indistinguishable from one measured here and goes stale on the same
+evidence.
+
+**The census was asking the wrong question.** `bin/layer_census.py`
+compared `curate.OPS` against `cli.py`'s verbs and said *"every operation
+has a verb"* -- true, and useless, because a module nothing had registered
+was never a candidate to be missing. It now walks the import graph from
+both adapters and names any shipped module neither can reach. It found
+six on the first run, `podcasts` among them.
+
+Five remain, named in the source with a budget that only goes down:
+`buy_lossless`, `verify_bandcamp`, `spectrum` and `verify_quality` are
+research one-offs that ship without a verb. **`itunesdb_patch` is the one
+to settle** -- it describes itself as *"the safest way to write"* and
+nothing writes through it.
 
 ## 2. DECIDED, DESIGNED, NOT BUILT
 

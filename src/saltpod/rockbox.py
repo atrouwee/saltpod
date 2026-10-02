@@ -316,6 +316,60 @@ def write_playlists(mount, collections, playlist_dir=None):
     return {'dir': out_dir, 'filenames': names, 'written': written, 'errors': errors}
 
 
+def collections_from_state(st, names=None):
+    """saltpod's curation state, turned into the `collections` mapping the
+    two functions above actually take.
+
+    THE MODULE WAS BUILT AGAINST A SHAPE NOTHING PRODUCED. `write_playlists`
+    wants `{name: [(device_path, title, seconds), ...]}`; `state.py` holds
+    `collection_order` as `{name: [track_key, ...]}` and keeps the path and
+    duration on the track record, in a different form again -- the device
+    location is iPod colon-notation (`:iPod_Control:Music:F46:VXBJ.m4a`),
+    not the slash path `_device_path` demands. So every one of this module's
+    entry points was unreachable not for want of a CLI verb but for want of
+    this translation, which no caller could have been expected to write.
+
+    ORDER IS CARRIED, NEVER COMPUTED. `collection_order` is the sequence the
+    owner arranged; this walks it in exactly that order and so does
+    `playlist_text`. Nothing here sorts.
+
+    A track with no `device` block has never been on the iPod, so there is no
+    device path to put in a playlist that the device will read. Those are
+    skipped and returned separately rather than guessed at -- a playlist
+    quietly missing a track is worse than one that says what it dropped.
+
+    Returns `(collections, skipped)` where `skipped` is
+    `[{'collection', 'key', 'why'}, ...]`.
+    """
+    order = st.get('collection_order') or {}
+    tracks = st.get('tracks') or {}
+    out, skipped = {}, []
+    for name, keys in order.items():
+        if names and name not in names:
+            continue
+        entries = []
+        for k in keys:
+            r = tracks.get(k) or {}
+            dev = r.get('device') or {}
+            loc = dev.get('location')
+            if not loc:
+                skipped.append({'collection': name, 'key': k,
+                                'why': 'not on the device -- no device.location'})
+                continue
+            # ':iPod_Control:Music:F46:VXBJ.m4a' -> '/iPod_Control/Music/F46/VXBJ.m4a'
+            # The leading colon becomes the leading slash, which is exactly
+            # the device-root form `_device_path` requires.
+            path = loc.replace(':', '/')
+            artist = (r.get('artist') or '').strip()
+            title = (r.get('title') or '').strip()
+            # One pre-composed string, because playlist_text takes one and
+            # says composing it is the caller's decision.
+            label = ('%s - %s' % (artist, title)).strip(' -') or (title or artist or k)
+            entries.append((path, label, dev.get('seconds') or 0))
+        out[name] = entries
+    return out, skipped
+
+
 def plan_playlists(mount, collections, playlist_dir=None):
     """What `write_playlists` WOULD do. Reads the directory; touches nothing.
 

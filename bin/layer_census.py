@@ -120,6 +120,75 @@ def main(argv):
     else:
         print('  every operation has a verb — both adapters reach the same code')
 
+    # ---- the blind spot this census had for a month
+    #
+    # The check above compares curate.OPS against cli.py's verbs, and it
+    # passed -- "every operation has a verb" -- while FOUR WHOLE MODULES
+    # (smartlists, loudness, rockbox, devprefs) could not be called by
+    # anything at all. They were invisible to it because an operation only
+    # counts here once it is already in OPS, so a module nothing registered
+    # and nothing imported was never a candidate to be missing.
+    #
+    # The honest question is not "does every registered operation have a
+    # verb" but "can anything reach this code". A module in src/saltpod that
+    # neither adapter imports is shipped, tested, documented -- and dead.
+    import ast
+    src = os.path.join(ROOT, 'src', 'saltpod')
+    mods = {f[:-3] for f in os.listdir(src)
+            if f.endswith('.py') and not f.startswith('_')}
+
+    def imports_of(mod):
+        try:
+            tree = ast.parse(open(os.path.join(src, mod + '.py')).read())
+        except (OSError, SyntaxError):
+            return set()
+        found = set()
+        for n in ast.walk(tree):
+            # `from . import x, y` and `from .x import y`
+            if isinstance(n, ast.ImportFrom) and n.level:
+                if n.module:
+                    found.add(n.module.split('.')[0])
+                found |= {al.name for al in n.names}
+        return found & mods
+
+    # Everything reachable from either adapter, transitively.
+    reach, stack = set(), ['cli', 'curate']
+    while stack:
+        m = stack.pop()
+        if m in reach or m not in mods:
+            continue
+        reach.add(m)
+        stack.extend(imports_of(m))
+
+    # A module whose only caller is itself is dead however good it is.
+    # The five below are named, not zeroed. Each is a research one-off that
+    # ships in the manifest and has no verb: buy_lossless and verify_bandcamp
+    # (one-shot purchase research), spectrum and verify_quality (the lossless
+    # audit), and itunesdb_patch -- which is the odd one out, a write path
+    # described as "the safest way to write" that nothing writes through.
+    # That last one is a real question to settle, not a one-off to accept.
+    # The number only ever goes down.
+    KNOWN_UNREACHABLE = {'buy_lossless', 'itunesdb_patch', 'spectrum',
+                         'verify_bandcamp', 'verify_quality'}
+    dead = sorted(mods - reach - {'__main__'} - KNOWN_UNREACHABLE)
+    stale = sorted(KNOWN_UNREACHABLE & reach)
+    print('\n  modules shipped: %d   reachable from cli or curate: %d'
+          % (len(mods), len(reach)))
+    if dead:
+        print('  ** nothing can call: %s' % ' '.join(dead))
+        print('     a module no adapter imports is dead code with tests --')
+        print('     give it a verb, or an operation, or delete it')
+        over.append(('modules nothing can reach', len(dead), 0))
+    else:
+        print('  no NEW unreachable module (%d known, named in the source)'
+              % len(KNOWN_UNREACHABLE))
+    if stale:
+        # The budget is a promise that only goes down, so a module that has
+        # since been wired up must come off the list rather than sit there
+        # excusing the next one.
+        print('  ** now reachable, remove from KNOWN_UNREACHABLE: %s' % ' '.join(stale))
+        over.append(('stale entries in KNOWN_UNREACHABLE', len(stale), 0))
+
     if over:
         print('\nover budget:')
         for name, n, b in over:

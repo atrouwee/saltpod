@@ -346,6 +346,72 @@ def analyse_cached(path, target=DEFAULT_TARGET, cache_path=None):
             'raw': raw, 'clips_after': clips_after, 'cached': fresh}
 
 
+# =================================================================== import
+
+
+def import_scan(scan_path, cache_path=None):
+    """Fold a completed scan file into the cache `analyse_cached` reads.
+
+    THE TWO STORES WERE NOT THE SAME STORE. The 4,047-file scan of 2 October
+    was written by a one-off script to `data/local/loudness_scan.json`, in
+    its own shape -- `{'at': when, 'tracks': {path: {...}}}` with `lra` and
+    `duration_sec` that this module does not keep. Nothing here ever looked
+    at that file, so `analyse_cached` would have re-measured every one of
+    those files: nineteen minutes of ffmpeg, already paid for, invisible.
+
+    The scan carries `size` and `mtime`, which are exactly the two keys the
+    cache tests for freshness, so the fold is lossless in the direction that
+    matters -- an imported entry is indistinguishable from one this module
+    measured itself, and goes stale on the same evidence.
+
+    A scan row with no `lufs` is a file ffmpeg could not read. Those are
+    skipped rather than cached: caching a failure would mean never trying it
+    again, and the reason is usually fixable (three WAVs on this drive).
+
+    Returns {'read', 'imported', 'already', 'skipped'}.
+    """
+    cp = cache_path or DEFAULT_CACHE_PATH
+    with open(scan_path) as fh:
+        doc = json.load(fh)
+    rows = doc.get('tracks', doc) if isinstance(doc, dict) else {}
+
+    obj = _cache_obj(cp)
+    read = imported = already = skipped = 0
+    with obj.lock:
+        for path, r in rows.items():
+            read += 1
+            if not isinstance(r, dict) or r.get('lufs') is None:
+                skipped += 1
+                continue
+            if r.get('size') is None or r.get('mtime') is None:
+                skipped += 1
+                continue
+            hit = obj.data.get(path)
+            if hit and hit.get('size') == r['size'] and hit.get('mtime') == r['mtime']:
+                already += 1
+                continue
+            obj.data[path] = {'size': r['size'], 'mtime': r['mtime'],
+                              'lufs': r['lufs'], 'true_peak': r.get('true_peak'),
+                              'backend': r.get('backend') or 'import'}
+            imported += 1
+        _persist(cp, obj.data)
+    return {'read': read, 'imported': imported, 'already': already,
+            'skipped': skipped}
+
+
+def cached_rows(cache_path=None):
+    """Every measurement the cache holds, {path: {...}} -- without stat()ing
+    a single file.
+
+    Deliberately NOT `analyse_cached` in a loop: that one checks the file on
+    disk is still the file it measured, which is right before writing a value
+    and wrong for a report. The drive this library lives on is usually
+    unplugged, and a report that needs the drive to say what was already
+    measured is a report that cannot be read.
+    """
+    return dict(_cache_obj(cache_path or DEFAULT_CACHE_PATH).data)
+
+
 # ===================================================================== scan
 
 def scan(paths, target=DEFAULT_TARGET, workers=6, progress=None, cache_path=None):
