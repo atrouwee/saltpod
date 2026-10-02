@@ -417,6 +417,7 @@ def build(roots, workers=6, _write=True):
                               if os.path.exists(e['path']) else None)
                 entries.append(e)
         os.makedirs(os.path.dirname(INDEX), exist_ok=True)
+        add_extras(entries)
         entries = fold_copies(entries, roots)
         if not _write:
             return entries, skipped
@@ -450,6 +451,7 @@ def build(roots, workers=6, _write=True):
                 e['mtime'] = (os.path.getmtime(e['path'])
                               if os.path.exists(e['path']) else None)
                 entries.append(e)
+    add_extras(entries)
     entries = fold_copies(entries, roots)
     if not _write:
         return entries, skipped
@@ -494,6 +496,51 @@ def add_root(root, workers=6):
     return {'root': root, 'walked': len(fresh), 'new_tracks': added,
             'copies_of_known': len(fresh) - added, 'skipped': skipped,
             'total': len(merged), 'roots': roots}
+
+
+def add_extras(entries):
+    """Fill key, tempo, ISRC, label and Apple's Sound Check onto every entry
+    whose file can be read now. Read-only on the files; see tags.read_extra.
+
+    Run as part of every build, so a full index carries them for the whole
+    library; and runnable on its own, so the files that ARE reachable get
+    them without waiting for the library drive to come back.
+    """
+    from . import tags as _T
+    n = 0
+    for e in entries:
+        p = e.get('path')
+        if not p or not os.path.exists(p):
+            continue
+        try:
+            x = _T.read_extra(p)
+        except Exception:
+            continue
+        for k in _T.EXTRA:
+            if x.get(k):
+                e[k] = x[k]
+        n += bool(x)
+    return n
+
+
+def enrich_index():
+    """add_extras over the index on disk, written back. Returns the count."""
+    d = load(resolved=False)
+    rows = d.get('tracks', [])
+    # Resolve to a readable copy for the read, but keep the recorded path.
+    for e in rows:
+        r = resolve(e)
+        e['_read_from'] = r
+    tmp = [dict(e, path=e['_read_from']) for e in rows]
+    n = add_extras(tmp)
+    for e, t in zip(rows, tmp):
+        e.pop('_read_from', None)
+        for k in ('bpm', 'key', 'isrc', 'label', 'itunnorm', 'soundcheck_apple'):
+            if t.get(k):
+                e[k] = t[k]
+    with open(INDEX, 'w') as f:
+        json.dump(d, f, indent=1)
+    return n
 
 
 def copy_key(path, size):

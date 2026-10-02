@@ -1373,6 +1373,191 @@ def write(path, tags):
         return True
 
 
+# ================================================================ extras
+#
+# READ-ONLY FIELDS, kept apart from FIELDS on purpose. FIELDS is the set the
+# writers own, and the writers are the most carefully verified code in the
+# project; widening it would put every one of them back under question for
+# the sake of fields nobody is editing. These are read for analysis --
+# sequencing by key and tempo, matching by ISRC, browsing by label, and
+# Apple's own Sound Check value -- and never written.
+#
+# Counted on the drive by the metadata census: TKEY on 1,058 files, TBPM on
+# 1,022, TSRC on 790, TPUB on 1,253, iTunNORM on 214. None of it was read.
+
+EXTRA = ('bpm', 'key', 'isrc', 'label', 'itunnorm', 'soundcheck_apple')
+
+_EXTRA_ID3 = {'TBPM': 'bpm', 'TBP': 'bpm', 'TKEY': 'key', 'TKE': 'key',
+              'TSRC': 'isrc', 'TRC': 'isrc', 'TPUB': 'label', 'TPB': 'label'}
+# DJ software that predates a key frame writes it as a user text frame.
+_EXTRA_TXXX = {'INITIALKEY': 'key', 'INITIAL KEY': 'key', 'KEY': 'key',
+               'BPM': 'bpm', 'TEMPO': 'bpm', 'ISRC': 'isrc',
+               'LABEL': 'label', 'PUBLISHER': 'label', 'ORGANIZATION': 'label'}
+_EXTRA_VORBIS = dict(_EXTRA_TXXX)
+
+
+def _id3_split(raw, lang=False):
+    """(description, value) out of a TXXX or COMM payload."""
+    if not raw:
+        return '', ''
+    enc, body = raw[0], raw[1:]
+    if lang:
+        body = body[3:]
+    sep = b'\x00\x00' if enc in (1, 2) else b'\x00'
+    i = body.find(sep)
+    # UTF-16 terminators are aligned; a two-byte search can land mid-char.
+    while enc in (1, 2) and i >= 0 and i % 2:
+        i = body.find(sep, i + 1)
+    if i < 0:
+        return '', _id3_text(bytes([enc]) + body)
+    desc = _id3_text(bytes([enc]) + body[:i])
+    val = _id3_text(bytes([enc]) + body[i + len(sep):])
+    return desc.strip(), val.strip()
+
+
+def soundcheck_from_itunnorm(text):
+    """Apple's Sound Check value out of an iTunNORM comment, or None.
+
+    iTunNORM is ten hex words. The first two are the left and right gain
+    already expressed on the mhit Sound Check scale (1000 = no change), so
+    the louder channel's value is the one a device would apply. INFERRED
+    from the format's description, not yet checked against a track whose
+    iTunes-written mhit+0x4C is known -- that needs the library drive.
+    """
+    try:
+        words = [int(w, 16) for w in (text or '').split()]
+    except ValueError:
+        return None
+    if len(words) < 2 or not (words[0] or words[1]):
+        return None
+    return max(words[0], words[1])
+
+
+def _extra_from_id3(frames):
+    out = {}
+    for fid, payload in (frames or []):
+        f = _EXTRA_ID3.get(fid)
+        if f:
+            v = _id3_text(payload).strip()
+            if v:
+                out[f] = v
+        elif fid in ('TXXX', 'TXX'):
+            d, v = _id3_split(payload)
+            f = _EXTRA_TXXX.get(d.upper())
+            if f and v and f not in out:
+                out[f] = v
+        elif fid in ('COMM', 'COM'):
+            d, v = _id3_split(payload, lang=True)
+            if d.lower() == 'itunnorm' and v:
+                out['itunnorm'] = v
+    return out
+
+
+def _id3_frames_of(path):
+    """The ID3 frames a file carries, wherever its container keeps them."""
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext in ('.aif', '.aiff', '.aifc'):
+            return _aiff_tag(path)[0]
+        if ext == '.wav':
+            for cid, _h, d, size in _riff_chunks_seek(path):
+                if cid in _ID3_CHUNKS:
+                    with open(path, 'rb') as fh:
+                        fh.seek(d)
+                        return _id3_read_tag(fh.read(size))[0]
+            return []
+        with open(path, 'rb') as fh:
+            head = fh.read(3)
+        if head == b'ID3':
+            with open(path, 'rb') as fh:
+                return _id3_read_tag(fh.read(_id3_span(path)))[0]
+    except Exception:
+        pass
+    return []
+
+
+def _extra_from_mp4(path):
+    out = {}
+    try:
+        _mo, moov, chain = _mp4_ilst(path)
+    except Exception:
+        return out
+    if not chain:
+        return out
+    off, size = chain[-1]
+    for typ, o, sz in _mp4_children(moov, off + 8, off + size):
+        if typ == b'tmpo':
+            _f, payload = _mp4_data(moov, o, sz)
+            if payload and len(payload) >= 2:
+                n = struct.unpack('>H', payload[:2])[0]
+                if n:
+                    out['bpm'] = str(n)
+        elif typ == b'----':
+            # Freeform: a `mean`, a `name`, then the `data`.
+            name, value = '', ''
+            for t2, o2, s2 in _mp4_children(moov, o + 8, o + sz):
+                if t2 == b'name':
+                    name = moov[o2 + 12:o2 + s2].decode('utf-8', 'replace')
+                elif t2 == b'data':
+                    value = moov[o2 + 16:o2 + s2].decode('utf-8', 'replace').strip()
+            key = name.upper()
+            if key == 'ITUNNORM' and value:
+                out['itunnorm'] = value
+            elif key in _EXTRA_TXXX and value:
+                out.setdefault(_EXTRA_TXXX[key], value)
+        elif typ == b'\xa9pub':
+            _f, payload = _mp4_data(moov, o, sz)
+            v = (payload or b'').decode('utf-8', 'replace').strip()
+            if v:
+                out.setdefault('label', v)
+    return out
+
+
+def _extra_from_vorbis(path):
+    out = {}
+    try:
+        for typ, _h, d, size, _last in _flac_blocks(path)[0]:
+            if typ != 4:
+                continue
+            with open(path, 'rb') as fh:
+                fh.seek(d)
+                _v, items = _vorbis_parse(fh.read(size))
+            for k, v in items:
+                f = _EXTRA_VORBIS.get(k.upper())
+                if f and v.strip():
+                    out.setdefault(f, v.strip())
+                elif k.upper() == 'ITUNNORM' and v.strip():
+                    out['itunnorm'] = v.strip()
+    except Exception:
+        pass
+    return out
+
+
+def read_extra(path):
+    """{bpm, key, isrc, label, itunnorm, soundcheck_apple} -- whichever the
+    file carries. Read-only; never raises on a file it cannot parse, because
+    an analysis pass over four thousand files should not stop at one."""
+    ext = os.path.splitext(path)[1].lower()
+    out = {}
+    if ext in ('.m4a', '.m4b', '.mp4', '.aac', '.alac'):
+        out = _extra_from_mp4(path)
+    else:
+        out = _extra_from_id3(_id3_frames_of(path))
+        if ext == '.flac':
+            for k, v in _extra_from_vorbis(path).items():
+                out.setdefault(k, v)
+    if out.get('bpm'):
+        try:
+            b = float(out['bpm'].replace(',', '.'))
+            out['bpm'] = ('%d' % round(b)) if b > 0 else None
+        except ValueError:
+            out['bpm'] = None
+    sc = soundcheck_from_itunnorm(out.get('itunnorm'))
+    if sc:
+        out['soundcheck_apple'] = sc
+    return {k: v for k, v in out.items() if v}
+
+
 def read(path):
     ext = os.path.splitext(path)[1].lower()
     if ext not in _READERS:

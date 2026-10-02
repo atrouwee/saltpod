@@ -392,6 +392,109 @@ def write_db(path, blob):
     return len(blob)
 
 
+class WriteRefused(Exception):
+    """A guarded write found a broken invariant and put the device back."""
+
+
+def invariants(root, blob, guid, expect_tracks=None):
+    """The checks every device database must pass after a write. Returns a
+    list of failures; empty means sound.
+
+    Each one is a way this device has actually broken, or a way the format
+    research says it breaks, not a guess at what might matter:
+
+      hash58            the empty-library trigger, seen on 2 October
+      parses            a structurally broken file
+      track count       a write that silently drops or duplicates tracks
+      dangling refs     a playlist row naming a track that is not there
+      stray group flag  a podcast group flag on an ordinary row -- the
+                        format research says it "breaks iPods"
+      one podcast list  two DIFFERENT flagged playlists show neither
+    """
+    from . import hash58 as _H
+    bad = []
+    if not _H.verify(blob, guid):
+        bad.append('hash58 does not verify')
+    try:
+        r = W.parse(blob)
+    except Exception as e:
+        return bad + ['does not parse: %s' % e]
+    ts = tracks(r)
+    if expect_tracks is not None and len(ts) != expect_tracks:
+        bad.append('track count %d, expected %d' % (len(ts), expect_tracks))
+    ids = {track_id(t) for t in ts}
+    flagged = set()
+    for sect in playlist_sections(r):
+        for p in playlists(r, sect):
+            name = pl_name(p)
+            if len(p.hdr) > 0x2C and struct.unpack_from('<H', p.hdr, 0x2A)[0]:
+                flagged.add(name)
+            for c in p.children:
+                if c.magic != b'mhip':
+                    continue
+                tid = c.get32(0x18)
+                is_header = c.get32(0x10) == 0x100
+                if is_header:
+                    if not (len(p.hdr) > 0x2C and struct.unpack_from('<H', p.hdr, 0x2A)[0]):
+                        bad.append('group header in non-podcast playlist %r' % name)
+                    continue
+                if c.get32(0x10):
+                    bad.append('stray group flag in %r' % name)
+                if tid not in ids:
+                    bad.append('%r names missing track %d' % (name, tid))
+    if len(flagged) > 1:
+        bad.append('%d different playlists carry the podcast flag: %s'
+                   % (len(flagged), sorted(flagged)))
+    # one line per kind of failure is enough to act on
+    seen, out = set(), []
+    for b in bad:
+        k = b.split(' ')[0] + b.split(' ')[-1][:1]
+        if b not in seen:
+            seen.add(b); out.append(b)
+    return out[:20]
+
+
+def guarded_write(mount, mutate, guid, expect_track_delta=0, label='write'):
+    """Change the device database safely enough to do it unsupervised.
+
+        back up -> parse -> mutate -> serialise -> check invariants on the
+        BLOB -> durable write -> re-read FROM DISK -> check again ->
+        and if anything fails at any point after the write, put the
+        original bytes back and check THOSE.
+
+    Written for the night the owner was away from the machine: a write
+    that breaks the library with nobody there to notice is the expensive
+    case, so a broken write must undo itself rather than wait to be found.
+    `mutate(root)` changes the tree in place and returns a summary.
+    """
+    from . import apply as _A
+    dbp = os.path.join(mount, 'iPod_Control', 'iTunes', 'iTunesDB')
+    original = open(dbp, 'rb').read()
+    _A.backup(mount)
+    before = len(tracks(W.parse(original)))
+    root = W.parse(original)
+    summary = mutate(root)
+    blob = W.serialise(root, guid)
+    want = before + expect_track_delta
+    pre = invariants(root, blob, guid, want)
+    if pre:
+        raise WriteRefused('%s refused before writing: %s' % (label, '; '.join(pre)))
+    try:
+        write_db(dbp, blob)
+        on_disk = open(dbp, 'rb').read()
+        post = invariants(None, on_disk, guid, want)
+        if post:
+            raise WriteRefused('%s failed after writing: %s' % (label, '; '.join(post)))
+    except Exception:
+        write_db(dbp, original)
+        restored = open(dbp, 'rb').read()
+        if restored != original or invariants(None, restored, guid, before):
+            raise WriteRefused('%s FAILED AND THE RESTORE DID NOT VERIFY -- '
+                               'restore by hand from backups/' % label)
+        raise
+    return summary
+
+
 def size_audit(root, mount):
     """Every track whose `mhit`+0x24 disagrees with the file on the device.
 

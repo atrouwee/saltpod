@@ -900,6 +900,118 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_read_extra():
+    """Key, tempo, ISRC, label and iTunNORM are read -- including the forms
+    DJ software uses -- and the writers' FIELDS are untouched by it.
+
+    Builds an ID3v2.3 tag in memory rather than relying on the drive, and
+    covers the three ways these values actually arrive: native frames
+    (TBPM/TKEY/TSRC/TPUB), a user text frame (TXXX:INITIALKEY, what key
+    detection tools wrote before TKEY), and a comment (COMM:iTunNORM, where
+    iTunes keeps its Sound Check). Differential-checked against ffprobe on
+    the 80 local files before this test was written: every field agreed.
+    """
+    import struct, tempfile
+    from saltpod import tags as T
+
+    def frame(fid, payload):
+        return fid.encode() + struct.pack('>I', len(payload)) + b'\x00\x00' + payload
+
+    def text(v):
+        return b'\x00' + v.encode('latin-1')
+
+    norm = ' 00000AF3 00000B4E 00008C1C 00008D3B 00024CA8 00024CA8 00007FFF 00007FFF 00024CA8 00024CA8'
+    body = (frame('TIT2', text('x')) + frame('TBPM', text('123.6'))
+            + frame('TSRC', text('GX9U42400001')) + frame('TPUB', text('Pond Recordings'))
+            + frame('TXXX', b'\x00INITIALKEY\x00' + b'8A')
+            + frame('COMM', b'\x00eng' + b'iTunNORM\x00' + norm.encode()))
+    size = len(body)
+    syncsafe = bytes([(size >> 21) & 0x7F, (size >> 14) & 0x7F, (size >> 7) & 0x7F, size & 0x7F])
+    tag = b'ID3\x03\x00\x00' + syncsafe + body
+    fd, path = tempfile.mkstemp(suffix='.mp3')
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(tag + b'\xff\xfb\x90\x00' + b'\x00' * 64)
+        x = T.read_extra(path)
+        assert x.get('bpm') == '124', 'bpm %r -- 123.6 should round to 124' % x.get('bpm')
+        assert x.get('key') == '8A', 'the TXXX:INITIALKEY form was missed: %r' % x.get('key')
+        assert x.get('isrc') == 'GX9U42400001', x.get('isrc')
+        assert x.get('label') == 'Pond Recordings', x.get('label')
+        assert x.get('soundcheck_apple') == 0xB4E, \
+            'iTunNORM should give the louder channel, 0xB4E: %r' % x.get('soundcheck_apple')
+        # and the editable set is exactly what it was
+        assert T.FIELDS == ('title', 'artist', 'album', 'album_artist', 'genre', 'year', 'track'), \
+            'FIELDS changed -- the writers would now own these'
+        return 'native, TXXX and COMM forms; FIELDS untouched'
+    finally:
+        os.remove(path)
+
+
+def t_guarded_write():
+    """An unsupervised write must refuse what breaks a device and undo what
+    breaks after the fact.
+
+    Built for the night the owner was away from the machine. Runs entirely
+    against a FAKE mount made from a backup, so it can never touch an iPod:
+    a stray podcast group flag and a silently dropped track must both be
+    refused before anything is written, and a file corrupted after a
+    write must be put back byte for byte.
+    """
+    import glob, shutil, tempfile
+    from saltpod import ipod_edit as E, config as CFG, apply as A
+    try:
+        guid = CFG.load().get('firewire_guid')
+    except SystemExit:
+        return ('skip', 'no device configured')
+    src = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-*', 'iTunesDB')))
+    if not guid or not src:
+        return ('skip', 'no backup to build a fake mount from')
+    orig = open(src[-1], 'rb').read()
+    if E.invariants(None, orig, guid):
+        return ('skip', 'newest backup does not pass invariants itself')
+    m = tempfile.mkdtemp(prefix='fakepod-')
+    keep_backup, keep_write = A.backup, E.write_db
+    try:
+        os.makedirs(os.path.join(m, 'iPod_Control', 'iTunes'))
+        dbp = os.path.join(m, 'iPod_Control', 'iTunes', 'iTunesDB')
+        open(dbp, 'wb').write(orig)
+        A.backup = lambda mount: None
+        def stray(root):
+            for sect in E.playlist_sections(root):
+                for p in E.playlists(root, sect):
+                    rows = [c for c in p.children if c.magic == b'mhip']
+                    flag = len(p.hdr) > 0x2C and int.from_bytes(p.hdr[0x2A:0x2C], 'little')
+                    if rows and not flag and not E.is_master(p):
+                        rows[0].set16(0x10, 0x100); return
+        def drop(root):
+            E.tracks(root).pop()
+        for name, fn in (('stray group flag', stray), ('dropped track', drop)):
+            try:
+                E.guarded_write(m, fn, guid, label=name)
+                raise AssertionError('%s was NOT refused' % name)
+            except E.WriteRefused:
+                pass
+            assert open(dbp, 'rb').read() == orig, '%s touched the file' % name
+        def corrupting(path, blob):
+            keep_write(path, blob)
+            if blob != orig:
+                with open(path, 'r+b') as f:
+                    f.seek(len(blob) // 2); f.write(b'\x00' * 64)
+        E.write_db = corrupting
+        def change(root):
+            t = E.tracks(root)[0]; t.set32(0x4C, (t.get32(0x4C) or 1000) + 1)
+        try:
+            E.guarded_write(m, change, guid, label='corrupt')
+            raise AssertionError('a post-write corruption was NOT caught')
+        except E.WriteRefused:
+            pass
+        assert open(dbp, 'rb').read() == orig, 'the restore did not reproduce the original bytes'
+        return 'refuses 2, restores 1, on a fake mount'
+    finally:
+        A.backup, E.write_db = keep_backup, keep_write
+        shutil.rmtree(m, ignore_errors=True)
+
+
 def t_pagetest():
     """The page's BEHAVIOURAL suite, run as part of this one.
 
@@ -955,6 +1067,8 @@ def main():
     check('play counts: delta once, paired right', t_playcounts)
     check('a stale Spotlight record is refused', t_stale_index_gate)
     check('two roots, one track; one root, two files', t_fold_copies_respects_roots)
+    check('an unsupervised write refuses and restores', t_guarded_write)
+    check('key, tempo, ISRC, label, iTunNORM are read', t_read_extra)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)
