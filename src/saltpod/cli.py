@@ -273,11 +273,14 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("loudness", help="Sound Check: how loud each track really is, and what the iPod should be told about it")
-    p.add_argument("what", choices=["show", "scan", "import", "track"], nargs="?", default="show",
+    p.add_argument("what", choices=["show", "scan", "import", "track", "rehearse", "write"],
+                   nargs="?", default="show",
                    help="show: what the measurements say (no drive needed); "
                         "scan: measure the library (slow, needs the drive); "
                         "import: fold a finished scan file into the cache; "
-                        "track: measure one file")
+                        "track: measure one file; "
+                        "rehearse: work out every Sound Check value and write nothing; "
+                        "write: put them on the device, after a backup")
     p.add_argument("path", nargs="?", help="for `track` the audio file; for `import` the scan json")
     p.add_argument("--target", type=float, default=-18.0,
                    help="the loudness to normalise to, in LUFS (default -18, the measured iTunes target)")
@@ -309,6 +312,12 @@ def main(argv=None):
                    help="status: what declares itself a podcast and what the device thinks; "
                         "rehearse: do it against a COPY and verify; write: do it for real, after a backup")
     p.add_argument("--mount", help="the device, or an iTunesDB file to rehearse against")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("repair", help="fields on the device that disagree with the files, and putting them right")
+    p.add_argument("what", choices=["check", "sizes"], nargs="?", default="check",
+                   help="check: what disagrees, touching nothing; sizes: write the real file sizes")
+    p.add_argument("--mount")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
@@ -609,6 +618,83 @@ def main(argv=None):
             sys.stderr.write("\n")
             ok = [r for r in res.values() if r]
             receipt("measured", "%d of %d" % (len(ok), len(paths)), tone="good")
+            return 0
+
+        if a.what in ("rehearse", "write"):
+            from . import itunesdb_write as W, ipod_edit as E, state as S
+            from . import config as CFG, hash58 as H
+            mount = (CFG.load().get("mount") or "/Volumes/IPOD")
+            dbp = os.path.join(mount, "iPod_Control", "iTunes", "iTunesDB")
+            if not os.path.exists(dbp):
+                fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+            rows = L.cached_rows()
+            if not rows:
+                fail("nothing measured", "`saltpod loudness import` or `scan` first")
+            # The measurements are keyed by PATH, the device by artist|title.
+            # The index is what joins them, and it already resolves a track
+            # to whichever copy exists -- so this works with the library
+            # drive unplugged, because the numbers are already in the cache.
+            by_key = {}
+            for e in _local_index():
+                m = rows.get(e.get("path")) or rows.get(e.get("elsewhere") or "")
+                if m and m.get("lufs") is not None:
+                    by_key[S.key_for(e.get("artist"), e.get("title"))] = m
+
+            root = W.parse(open(dbp, "rb").read())
+            plan, unmeasured, clipping, unchanged = [], 0, 0, 0
+            for t in E.tracks(root):
+                m = by_key.get(S.key_for(_mhod_of(t, 4), _mhod_of(t, 1)))
+                if not m:
+                    unmeasured += 1
+                    continue
+                gain = a.target - m["lufs"]
+                tp = m.get("true_peak")
+                # A QUIET TRACK IS THE ONE CASE THAT CAN DO HARM. Attenuating
+                # never clips; amplifying a master that already peaks near
+                # full scale does. Those get 1000 -- "no change" -- rather
+                # than a gain that would make them worse.
+                if gain > 0 and tp is not None and (tp + gain) > -1.0:
+                    raw = 1000
+                    clipping += 1
+                else:
+                    raw = L.soundcheck_for(m["lufs"], a.target)
+                was = t.get32(0x4C)
+                if was == raw:
+                    unchanged += 1
+                    continue
+                plan.append((t, was, raw))
+
+            receipt("tracks on the device", str(len(list(E.tracks(root)))))
+            receipt("have a measurement", str(len(list(E.tracks(root))) - unmeasured))
+            receipt("no measurement, left alone", str(unmeasured))
+            receipt("already correct", str(unchanged))
+            receipt("would be written", str(len(plan)), tone="good" if plan else None)
+            if clipping:
+                note("%d are quieter than the target AND would clip if raised -- "
+                     "those get 1000 (no change) rather than a gain that hurts" % clipping)
+            if plan:
+                lo = min(r for _t, _w, r in plan); hi = max(r for _t, _w, r in plan)
+                receipt("raw range", "%d .. %d  (1000 = no change)" % (lo, hi))
+                for t, was, raw in plan[:6]:
+                    print("   %-34s %6d -> %6d" % (_mhod_of(t, 1)[:34], was, raw))
+            if a.what == "rehearse" or not plan:
+                note("nothing was written") if a.what == "rehearse" else None
+                return 0
+
+            from . import apply as A
+            A.backup(mount)
+            for t, _was, raw in plan:
+                t.set32(0x4C, raw)
+            guid = CFG.load()["firewire_guid"]
+            blob = W.serialise(root, guid)
+            if not H.verify(blob, guid):
+                fail("the re-signed database does not verify", "nothing written")
+            open(dbp, "wb").write(blob)
+            back = W.parse(open(dbp, "rb").read())
+            have = sum(1 for t in E.tracks(back) if t.get32(0x4C))
+            step("wrote %d Sound Check values" % len(plan))
+            receipt("tracks now carrying a value", str(have), tone="good")
+            receipt("hash58", "re-signed and verified", tone="good")
             return 0
 
         # show -- deliberately reads the cache alone, so it works with the
@@ -946,6 +1032,52 @@ def main(argv=None):
         if a.what == "rehearse":
             note("that was a copy; nothing on the device changed")
         return 0
+
+    if a.cmd == "repair":
+        import json as _json
+        from . import itunesdb_write as W, ipod_edit as E, config as CFG, hash58 as H
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        dbp = os.path.join(mount, "iPod_Control", "iTunes", "iTunesDB")
+        if not os.path.exists(dbp):
+            fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+        root = W.parse(open(dbp, "rb").read())
+        rows = E.size_audit(root, mount)
+        if a.json:
+            print(_json.dumps([{k: v for k, v in r.items() if k != "mhit"}
+                               for r in rows], indent=2))
+            return 0
+        receipt("tracks on the device", str(len(list(E.tracks(root)))))
+        receipt("size field disagrees with the file", str(len(rows)),
+                tone="warn" if rows else "good")
+        if not rows:
+            note("every track's recorded size matches the file"); return 0
+        tpl = [r for r in rows if r["was"] == 3629903]
+        off = [r for r in rows if r["delta"] == -56]
+        if tpl:
+            receipt("  carrying the template's size", "%d  (3629903 bytes)" % len(tpl))
+            worst = max(tpl, key=lambda r: r["now"])
+            note("worst: %.0f MB declared as %.1f MB" % (worst["now"] / 1e6, 3629903 / 1e6))
+        if off:
+            receipt("  exactly 56 bytes too large", "%d  (retagged after the record was written)" % len(off))
+        if a.what == "check":
+            note("`saltpod repair sizes` writes the real sizes, after a backup")
+            return 0
+
+        from . import apply as A
+        A.backup(mount)
+        fixed = E.size_repair(root, mount)
+        guid = CFG.load()["firewire_guid"]
+        blob = W.serialise(root, guid)
+        if not H.verify(blob, guid):
+            fail("the re-signed database does not verify", "nothing written")
+        open(dbp, "wb").write(blob)
+        # Re-read from the file, not the tree: the tree is what we believe.
+        back = W.parse(open(dbp, "rb").read())
+        left = E.size_audit(back, mount)
+        step("wrote %d corrected sizes" % len(fixed))
+        receipt("still disagreeing", str(len(left)), tone="good" if not left else "warn")
+        receipt("hash58", "re-signed and verified", tone="good")
+        return 0 if not left else 1
 
     if a.cmd == "log":
         import json as _json

@@ -1497,8 +1497,8 @@ def reachable_keys(ttl=5.0):
 # Membership of a named list is a lookup. Deciding what belongs in that list
 # is a rule, and rules live here.
 
-LISTS = ('to buy', 'to sync', 'to remove', 'on iPod', 'on T7', 'on vinyl',
-         'rented only', 'owned digitally')
+LISTS = ('to buy', 'to sync', 'to remove', 'needs a drive', 'on iPod', 'on T7',
+         'on vinyl', 'rented only', 'owned digitally')
 
 
 _LP = {'built': None, 'own': set(), 'want': set()}
@@ -1550,8 +1550,16 @@ def _answers(t):
     lists = []
     if t.get('tier') == 'sync' and not held:
         lists.append('to buy')
-    if t.get('tier') == 'sync' and t.get('local') and not t.get('device'):
+    # `reachable`, not `local`. "To sync" is a promise about the next sync,
+    # and a file on an unplugged drive cannot be part of one -- plan() will
+    # not add it either. The tracks that fall out of this list do not
+    # vanish; they land in the one below, which is a different sentence:
+    # not "buy this" and not "ready", but "fetch the drive".
+    if t.get('tier') == 'sync' and t.get('reachable') and not t.get('device'):
         lists.append('to sync')
+    if (t.get('tier') == 'sync' and t.get('local')
+            and not t.get('reachable') and not t.get('device')):
+        lists.append('needs a drive')
     # ONLY WHAT WILL ACTUALLY HAPPEN. `remove` stays on a track after the
     # sync that carried it out -- nothing resets it, and nothing should,
     # because the decision is still true. But a list called "to remove"
@@ -1657,6 +1665,7 @@ def tracks_payload(scope=''):
     totals = {'to_buy': len(buy),
               'to_buy_eur': round(sum(t.get('price') or 0 for t in buy), 2),
               'to_sync': sum(1 for t in out if 'to sync' in t['lists']),
+              'needs_drive': sum(1 for t in out if 'needs a drive' in t['lists']),
               'to_remove': sum(1 for t in out if 'to remove' in t['lists']),
               'on_ipod': sum(1 for t in out if 'on iPod' in t['lists'])}
     st_cols = sorted(st.get('collections', []))

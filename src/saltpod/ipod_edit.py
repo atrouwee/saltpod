@@ -329,6 +329,62 @@ def track_add(root, meta, location):
     return tid
 
 
+def size_audit(root, mount):
+    """Every track whose `mhit`+0x24 disagrees with the file on the device.
+
+    0x24 is the file size in bytes and the format research marks it
+    REQUIRED. Found wrong on 344 of 653 tracks on the owner's device, in
+    two distinct shapes:
+
+      178 tracks     all carrying 3629903 -- the size of the .mp3 the
+                     template is cloned from, so the clone's value
+                     survived instead of being replaced. Real sizes among
+                     them run 750 KB to 127 MB. NINE OF THE TEN PODCASTS
+                     are in this set, which is the leading explanation
+                     for the Podcasts menu being slow every time it is
+                     opened: the firmware is told a 113 MB episode is
+                     3.6 MB.
+      166 tracks     exactly 56 bytes too large, every one an .m4a added
+                     by iTunes in March and retagged by saltpod since. A
+                     tag write changed the file and nothing updated the
+                     record.
+
+    The cause of the first group is NOT yet found. `track_add` is the only
+    code that writes 0x24 and it writes the probed size; the tracks had
+    correct values in the 12:17 backup and the template's value in the
+    12:31 one. Recorded as open rather than guessed at -- but the repair
+    stands on its own, because it writes the measured truth either way.
+
+    Returns [{'mhit', 'location', 'was', 'now', 'delta'}, ...].
+    """
+    out = []
+    for t in tracks(root):
+        loc = track_location(t) or ''
+        rel = loc.lstrip(':').replace(':', os.sep)
+        path = os.path.join(mount, rel)
+        try:
+            real = os.path.getsize(path)
+        except OSError:
+            continue
+        was = t.get32(0x24)
+        if was != real:
+            out.append({'mhit': t, 'location': loc, 'was': was,
+                        'now': real, 'delta': real - was})
+    return out
+
+
+def size_repair(root, mount):
+    """Write the real file size into every track whose record disagrees.
+
+    Writing a measured truth over a wrong value, so there is no judgement
+    call here and nothing to rehearse beyond confirming the count.
+    """
+    rows = size_audit(root, mount)
+    for r in rows:
+        r['mhit'].set32(0x24, r['now'])
+    return rows
+
+
 def track_remove(root, tid):
     ts = tracks(root)
     hit = [t for t in ts if track_id(t) == tid]

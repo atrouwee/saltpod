@@ -701,7 +701,10 @@ _TESTS_JS = r'''
     assert(/not mounted/.test(hO), 'the offline row carries no title explaining itself');
     assert(/buy it/.test(hU), 'the unowned row lost its title');
     // the source badge is struck through when its volume is away
-    assert(/class="gone"[^>]*>T7</.test(hO), 'the drive badge was not struck through');
+    // a drive that is out is not a track that is gone: the name stays
+    // legible and takes a dot, rather than being struck through
+    assert(/class="away"[^>]*>T7</.test(hO), 'the drive badge lost its away marker');
+    assert(!/class="gone"[^>]*>T7</.test(hO), 'the drive badge is still struck through');
 
     // and the Sync button must not promise what it cannot write
     const keep = ALL;
