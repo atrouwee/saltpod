@@ -326,6 +326,10 @@ def main(argv=None):
     p.add_argument("what", choices=["show", "adopt"], nargs="?", default="show")
     p.add_argument("--mount")
 
+    p = sub.add_parser("mixes", help="Genius-style mixes worked out from the library itself; a preview, nothing is written")
+    p.add_argument("--mount")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
     p.add_argument("-n", type=int, default=25, help="how many recent events (default 25)")
     p.add_argument("--level", choices=["debug", "info", "warn", "error"],
@@ -1203,6 +1207,37 @@ def main(argv=None):
                 receipt("kept as", "%s  (%d tracks)" % (name, n), tone="good")
             if not made:
                 note("already kept -- nothing new")
+        return 0
+
+    if a.cmd == "mixes":
+        import json as _json
+        from . import mixes as MX, smartlists as SL, itunesdb_write as W
+        from . import local_index as LI, loudness as LD, state as S, config as CFG
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        dbp = os.path.join(mount, "iPod_Control", "iTunes", "iTunesDB")
+        if not os.path.exists(dbp):
+            fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+        ts = [t for t in SL.load_tracks(W.parse(open(dbp, "rb").read())) if t.get("mediatype") == 1]
+        lc = LD.cached_rows()
+        idx = {S.key_for(e.get("artist"), e.get("title")): e for e in LI.load(resolved=False)["tracks"]}
+        lufs = {}
+        for t in ts:
+            e = idx.get(S.key_for(t.get("artist"), t.get("title")))
+            if e and e.get("path") in lc and lc[e["path"]].get("lufs") is not None:
+                lufs[t["id"]] = lc[e["path"]]["lufs"]
+        out = MX.build(ts, lufs)
+        if a.json:
+            print(_json.dumps(out, indent=2)); return 0
+        by = {t["id"]: t for t in ts}
+        for m in out["mixes"]:
+            f = by[m["ids"][0]]
+            receipt(m["name"], "%d tracks   opens with %s - %s" % (m["size"], f["artist"], f["title"]))
+        note("%d tracks under %d s left out (jingles, skits); %d in no family"
+             % (out["short"], MX.MIN_SECONDS, out["unplaced"]))
+        miss = sorted(g for g, fam in out["placement"].items() if not fam and g)
+        if miss:
+            note("genres with no family: " + ", ".join(miss))
+        note("a preview -- nothing was written to the device")
         return 0
 
     if a.cmd == "log":

@@ -900,6 +900,32 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_mixes():
+    """Mixes group by style family and era, leave out jingles, and say where
+    every raw genre went -- including the ones that went nowhere."""
+    from saltpod import mixes as M
+    assert M.family_of('Deep House') == 'House & Dance'
+    assert M.family_of('Electronica / Downtempo') == 'Electronic'
+    assert M.family_of('Hip-Hop/Rap') == 'Hip-Hop'
+    assert M.family_of('Electro (Classic / Detroit / Modern)') == 'Electronic'
+    assert M.family_of('Television Soundtrack') is None
+    ts = []
+    for i in range(40):
+        ts.append({'id': i, 'artist': 'a', 'title': 't%d' % i, 'genre': 'House',
+                   'year': 2015 if i < 20 else 2005, 'ms': 240000, 'play_count': 0})
+    ts.append({'id': 99, 'artist': 'K-DST', 'title': 'Jingle', 'genre': 'House',
+               'year': 2015, 'ms': 4000, 'play_count': 0})
+    out = M.build(ts, {i: -12.0 - (i % 5) for i in range(40)}, min_size=15)
+    names = sorted(m['name'] for m in out['mixes'])
+    assert names == ['House & Dance Mix · 2000s', 'House & Dance Mix · 2010s on'], names
+    assert all(99 not in m['ids'] for m in out['mixes']), 'a jingle made it into a mix'
+    assert out['short'] == 1
+    m = out['mixes'][0]
+    lv = [-12.0 - (i % 5) for i in m['ids']]
+    assert lv == sorted(lv), 'a mix is not sequenced up the loudness scale'
+    return 'families, era split, jingles out, loudness walk'
+
+
 def t_otg():
     """On-The-Go playlists made on the device are read positionally against
     the database they belong to, kept as a collection once, and refused
@@ -1323,6 +1349,7 @@ def main():
     check('sync merges plays before it replaces the database', t_sync_merges_plays_first)
     check('an added track gets its own identity', t_track_add_identity)
     check('on-the-go lists are kept, by position', t_otg)
+    check('genius-style mixes, previewed', t_mixes)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)
