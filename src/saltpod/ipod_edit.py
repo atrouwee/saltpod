@@ -309,6 +309,17 @@ def track_add(root, meta, location):
         m.set32(0x120, 0)                     # album-list link: none
     if len(m.hdr) > 0x160:
         m.set32(0x160, 0)                     # ArtworkDB mhii link: none
+    if len(m.hdr) > GENIUS_ID:
+        # A NEW TRACK HAS NO GENIUS IDENTITY. 0x1E4 holds the genius_id
+        # that joins a track to its row in Extras.itdb -- measured, by
+        # searching every mhit for the 63 ids in that database: 64 hits,
+        # all at this offset, where 63 random integers of the same
+        # magnitude produce none. The template is cloned from a track the
+        # firmware already plays, and one such clone carried its donor's
+        # genius_id onto a new track, pointing it at another song's
+        # similarity row. The same inheritance that put one .mp3's size on
+        # 177 records.
+        m.set32(GENIUS_ID, 0)
     m.children = [
         W.make_string_mhod(1, meta.get('title') or os.path.basename(location)),
         W.make_string_mhod(2, location),
@@ -333,6 +344,11 @@ def track_add(root, meta, location):
 # 0x12C, which the format research does not name. Measured as an exact
 # mirror on 653 of 653 tracks.
 SIZE_MIRROR = 0x12C
+
+# The Genius id, joining a track to its row in Extras.itdb. Undocumented in
+# the format research; found by searching the header for ids read out of
+# that database. See track_add.
+GENIUS_ID = 0x1E4
 
 
 def write_db(path, blob):
