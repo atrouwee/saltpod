@@ -286,6 +286,8 @@ def _plan(mount=None):
             # what each playlist on the device holds right now, so a revert
             # has something authoritative to revert TO
             'dev_seq': dev_seq, 'origin_of': origin_of,
+            'smart': _smart_plan(root),
+            'soundcheck': _soundcheck_plan(root),
             'new_playlists': [c for c in cols if c not in existing],
             'update_playlists': [c for c in cols if c in existing and c not in unchanged],
             'delete_playlists': sorted(n for n in ours if n in existing and n not in cols)}
@@ -428,6 +430,94 @@ def resolve_drift(now, was, anc, file_mtime):
     return 'file', now
 
 
+def _smart_plan(root):
+    """What each smart playlist WOULD contain, writing nothing.
+
+    The iPod does not evaluate these -- iTunes did it on the desktop and
+    wrote the resulting membership as plain mhips -- so on a device synced
+    without iTunes they go stale and stay stale. Recently Added had 178
+    tracks qualifying and showed zero.
+
+    A playlist whose rules are not fully understood is REFUSED here rather
+    than half-evaluated. A partly applied rule gives a wrong list that
+    looks right, which is worse than an empty one.
+    """
+    try:
+        from . import smartlists as SL
+    except Exception:
+        return []
+    out = []
+    try:
+        tracks = SL.load_tracks(root)
+    except Exception:
+        return []
+    # SECTION NODES, NOT INDEXES -- `E.playlists` takes the mhsd itself.
+    # Type 3 is a duplicate of type 2 and would double every row.
+    #
+    # TYPE 5 IS DELIBERATELY NOT HERE, and the plan is what caught it.
+    # Section 5 holds the firmware's own media-type lists -- Music, Videos,
+    # Movies, TV Shows, Audiobooks, Rentals -- and iTunes ships them with
+    # smart rules and ZERO members. Evaluating them did exactly what the
+    # rules say and proposed putting all 653 tracks into "Music", which is
+    # not what any of those lists is for. The format notes are explicit:
+    # "six empty smart lists ... with mhod 50/51 and 0 mhips".
+    #
+    # They are reported separately below so they stay visible rather than
+    # silently dropped.
+    for typ in (2,):
+        sect = W.section(root, typ)
+        if not sect:
+            continue
+        try:
+            pls = E.playlists(root, sect)
+        except Exception:
+            continue
+        for pl in pls:
+            if not E.is_smart(pl):
+                continue
+            name = E.pl_name(pl)
+            if any(r['name'] == name for r in out):
+                continue              # sections 2 and 3 hold the same lists
+            row = {'name': name, 'now': len(SL.materialized_ids(pl))}
+            try:
+                parsed = SL.parse_rules(pl)
+                row['rules'] = SL.describe(parsed)
+                if not parsed.get('understood'):
+                    row['refused'] = 'a rule this does not understand'
+                else:
+                    row['would'] = len(SL.evaluate(parsed, tracks))
+            except Exception as e:
+                row['refused'] = str(e)[:70]
+            out.append(row)
+    # the firmware's own lists, named so they are not mistaken for an omission
+    sect5 = W.section(root, 5)
+    if sect5:
+        try:
+            for pl in E.playlists(root, sect5):
+                if E.is_smart(pl):
+                    out.append({'name': E.pl_name(pl), 'now': len(SL.materialized_ids(pl)),
+                                'firmware': True})
+        except Exception:
+            pass
+    return out
+
+
+def _soundcheck_plan(root):
+    """How many tracks carry a Sound Check value and how many do not.
+
+    Counting only -- measuring loudness is an analysis pass over the whole
+    audio and `plan()` must stay cheap. The measurement happens when a
+    track is first copied to the device.
+    """
+    have = miss = 0
+    for t in E.tracks(root):
+        if len(t.hdr) > 0x50 and t.get32(0x4C):
+            have += 1
+        else:
+            miss += 1
+    return {'have': have, 'missing': miss}
+
+
 def print_plan(p):
     print('collections -> playlists: %d new, %d updated, %d unchanged'
           % (len(p['new_playlists']), len(p['update_playlists']), len(p.get('unchanged', []))))
@@ -436,6 +526,27 @@ def print_plan(p):
             continue
         tag = 'new' if c in p['new_playlists'] else 'update'
         print('   %-8s %-30s %d tracks' % (tag, c[:30], len(p['collections'][c])))
+    sm = p.get('smart') or []
+    if sm:
+        mine = [r for r in sm if not r.get('firmware')]
+        stale = [r for r in mine if 'would' in r and r['would'] != r['now']]
+        print('smart playlists: %d ours, %d would change, %d refused'
+              % (len(mine), len(stale), sum(1 for r in mine if r.get('refused'))))
+        fw = [r for r in sm if r.get('firmware')]
+        if fw:
+            print('   (%d media-type lists left alone: %s)'
+                  % (len(fw), ', '.join(r['name'] for r in fw if r['name'])))
+        for r in sm:
+            if r.get('firmware'):
+                continue
+            if r.get('refused'):
+                print('   refused  %-28s %s' % (r['name'][:28], r['refused']))
+            elif r['would'] != r['now']:
+                print('   %-8s %-28s %d -> %d' % ('update', r['name'][:28], r['now'], r['would']))
+    sc = p.get('soundcheck') or {}
+    if sc.get('missing'):
+        print('sound check: %d tracks have a value, %d do not'
+              % (sc.get('have', 0), sc['missing']))
     if p['delete_playlists']:
         print('playlists to DELETE (collection removed from state): %s' % ', '.join(p['delete_playlists']))
     print('tracks to ADD: %d' % len(p['adds']))

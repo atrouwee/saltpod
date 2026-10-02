@@ -195,9 +195,54 @@ track into Videos; a podcast flag inconsistent with the mediatype makes
 iTunes drop the track on the next sync; two playlists with the podcast
 flag means none are shown.
 
-**How a track is classified** is the open question -- by folder, by a tag,
-by duration, or by an explicit decision in the page. Not started, and worth
-deciding deliberately rather than inferring.
+### Classification is DECLARED, not inferred -- the files already say
+
+The open question was how to tell a podcast from a track. It answered
+itself: AJ used to serve the DeepCast mixes from his own RSS feed, iTunes
+subscribed to it, and iTunes STAMPED THE PODCAST FRAMES INTO THE FILES. They
+are still there, fifteen years later.
+
+    PCST   the podcast flag frame itself
+    WFED   http://www.adrianwaterhouse.com/rss.xml       the feed
+    TGID   .../media/Adrian_Waterhouse_-_Apr_Mix_11_LQ.mp3  episode guid
+    TCAT   Podcasts
+    TDES   Episode 008: Deep tracks to warm you up! Featuring: Kjofol...
+    TDRL   2011-04-05T17:15:00Z
+
+Scanned the whole library: **11 of 2,895 readable files carry podcast
+metadata** -- 10 from adrianwaterhouse.com and 1 from ibiza-voice.com.
+Every one has `PCST` and `WFED`, and the ten DeepCast episodes also carry
+`TCAT: Podcasts`.
+
+So no heuristic. No guessing from duration or folder. The authoritative
+signal is `PCST` or `WFED` being present at all; `TDES` gives the episode
+description the iPod can show, and `TDRL` the release date.
+
+MP4 equivalents, for when an m4a needs the same treatment: `pcst`, `purl`,
+`egid`, `catg`, `desc`/`ldes`.
+
+### But declared is only the floor -- PODCASTS AS A DROP TARGET
+
+AJ: *"I think podcasts should show up as smart playlist in a way or in its
+own category so people can drag things into there."*
+
+Which is right, and it costs almost nothing, because the product already
+has exactly this shape: a **collection** is the thing you drag into, and
+`state.collection_order` is already the truth for what is in one.
+
+**PROPOSED:** a collection named Podcasts whose effect on sync is not a
+playlist but a `mediatype`. Seeded from the 11 files that already declare
+themselves, and open to anything dragged in afterwards -- a long mix, an
+audiobook, a recorded set. Nothing new in the page, no new interaction, no
+new vocabulary: the same row, the same drag, the same collection.
+
+That also settles where audiobooks go without a second mechanism, which is
+what AJ asked for: they are dragged into Podcasts like anything else.
+
+**The one thing to be careful of** remains the firmware's own six
+media-type lists in section 5. Those ship with rules and ZERO members and
+must stay that way -- `plan()` already excludes them and names them, after
+a first version proposed putting all 653 tracks into "Music".
 
 ## Phase 4 -- Things the device creates that a sync ignores
 
