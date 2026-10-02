@@ -504,6 +504,17 @@ def invariants(root, blob, guid, expect_tracks=None):
     if expect_tracks is not None and len(ts) != expect_tracks:
         bad.append('track count %d, expected %d' % (len(ts), expect_tracks))
     ids = {track_id(t) for t in ts}
+    # THE SIZE AND ITS MIRROR MUST AGREE. Measured, not assumed: the only
+    # difference between the database where the Podcasts menu opened
+    # (backup 211919) and the one where it stopped (211936) was mhit+0x24 on
+    # 344 tracks -- a repair that fixed the size and left its copy at 0x12C
+    # behind. Every playlist, section and other field was byte-identical.
+    split = [track_id(t) for t in ts
+             if len(t.hdr) > SIZE_MIRROR + 4 and t.get32(SIZE_MIRROR)
+             and t.get32(0x24) != t.get32(SIZE_MIRROR)]
+    if split:
+        bad.append('%d tracks whose size (0x24) and its mirror (0x12C) disagree'
+                   % len(split))
     flagged = set()
     for sect in playlist_sections(r):
         for p in playlists(r, sect):

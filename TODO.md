@@ -23,6 +23,28 @@ Three patterns are worth naming, because each one has cost something:
 
 ## 0. OPEN AND BLOCKING: the Podcasts menu will not open
 
+**THE CAUSE, FOUND 3 OCTOBER, from the owner's correction** that Podcasts
+DID open -- slowly -- until the empty-library incident. Diffing the backup
+where it opened (`211919`) against the one restored afterwards (`211936`):
+the ONLY difference is mhit+0x24 on 344 tracks. Every playlist, section and
+other field is byte-identical. The size repair fixed 0x24 and left its
+mirror at 0x12C behind, so nine of the ten episodes carried two size fields
+that disagreed -- and the menu stopped opening.
+
+The three attempts after that did not land because the write that fixed the
+mirror ("Do it") also introduced the show header with a duplicate 64-bit id.
+The fourth write is the first state since the incident with neither defect.
+`ipod_edit.invariants` now refuses any write where 0x24 and 0x12C disagree;
+it rejects `211936` and passes both `211919` and the live device.
+
+**If the fourth write still does not open**, the next step is the
+known-working structure from `211919` -- a flat list, flagged in section 3
+-- with the corrected, agreeing sizes: one variable changed from a state
+the owner saw working.
+
+---
+
+
 The main menu shows **Podcasts (10)**. Clicking it does nothing — the
 screen stays on the main menu. Three fixes have been written and failed:
 
