@@ -56,6 +56,19 @@ the firmware checks something libgpod never reads.
 - on the episodes: skip-when-shuffling, remember-position and flag4 set,
   unplayed mark, a release date, and one album entry instead of three
 
+**And the firmware research found this exact symptom fixed before**
+(`research/FIRMWARE.md`): GNOME bug 631172 — a Podcasts row with a count
+that will not open, on a 160 GB Classic — fixed in Banshee commit 58db80f
+by one line, `track.Flag4 = 1` (mhit+0xA7), right after setting the podcast
+media type. Verified against the diff itself. The fourth write already set
+0xA7 = 1 on all ten episodes, confirmed on the live device.
+
+If the menu still does not open, the next leads come from iOpenPod's study
+of an Apple-written podcast database: Apple puts 0x8000/0x8001 at mhip 0x12
+on show headers and a non-zero id at 0x24; it writes 3 at mhia+0x1C for
+podcast-only albums; and the firmware tests mhit 0xB2 for exactly 1, where
+saltpod set 2.
+
 **To test:** click Podcasts. If it opens, the parts get reverted one at a
 time to find which mattered. If it does not, the next step is Apple ground
 truth — let Finder write ONE podcast episode and diff its bytes against
