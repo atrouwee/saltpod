@@ -167,6 +167,24 @@ def show_of(mhit):
     return _mhod(mhit, 3) or _mhod(mhit, 4) or 'Podcast'
 
 
+def flag_every_copy(root, name=PLAYLIST_NAME):
+    """Set the podcast flag on the playlist in every section it appears in.
+
+    For devices written before the flag was understood: the type-3 copy is
+    flagged, the type-2 copy is not. Returns the sections changed.
+    """
+    changed = []
+    for sect in E.playlist_sections(root):
+        try:
+            p = E.find_playlist(root, sect, name)
+        except KeyError:
+            continue
+        if struct.unpack_from('<H', p.hdr, PODCAST_FLAG)[0] != 1:
+            struct.pack_into('<H', p.hdr, PODCAST_FLAG, 1)
+            changed.append(sect.get32(0x0C))
+    return changed
+
+
 def group_episodes(root, name=PLAYLIST_NAME):
     """Give the podcast playlist the two-level structure the firmware wants.
 
@@ -283,17 +301,20 @@ def apply(root, want_dbids, meta=None):
                    for p in E.playlists(root, sect)):
             E.playlist_create(root, name)
             made = True
-        # THE FLAG GOES ON SECTION 3 ONLY. A playlist is created in every
-        # playlist section, and flagging all of them produced two flagged
-        # lists in the first rehearsal -- the documented way to make the
-        # firmware show NEITHER. Type 3 is the podcast-style playlist list;
-        # that is where the flag belongs, and section 2 keeps its plain
-        # copy so the list still appears under Playlists.
-        for sect in E.playlist_sections(root):
-            if sect.get32(0x0C) != 3:
-                continue
-            p = E.find_playlist(root, sect, name)
-            struct.pack_into('<H', p.hdr, PODCAST_FLAG, 1)
+    # THE FLAG GOES ON EVERY COPY -- and the first version of this got it
+    # backwards. A playlist is written once per playlist section, and the
+    # first rehearsal saw the flag twice, ['Podcasts', 'Podcasts'], and read
+    # it as the documented "two flagged playlists -> neither shows". It was
+    # ONE playlist in two sections. That rule is about two DIFFERENT
+    # playlists.
+    #
+    # libgpod, which is proven on a Classic, settles it: write_playlist()
+    # emits `put16lint(cts, pl->podcastflag)` for every section the
+    # playlist is written into, so its podcast list carries the flag in
+    # both -- grouped by show in type 3, flat in type 2. Flagging section 3
+    # alone left the type-2 copy looking like an ordinary playlist, and the
+    # menu counted ten episodes and would not open.
+    flag_every_copy(root, name)
     if ids:
         E.playlist_set_tracks(root, name, ids)
     return {'tracks': changed, 'playlist': name, 'created': made,
