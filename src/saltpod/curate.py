@@ -1441,21 +1441,46 @@ def local_index():
             'folders': out}
 
 
-def local_keys():
+def local_keys(reachable_only=False):
     """Keys we hold a playable file for, from the index of your own drive.
 
     A collection may name a track you have not bought; sync reports it under
     `no_source` and writes the rest. This is what lets the page say which is
     which before you plug anything in.
+
+    `reachable_only` is the difference between OWNING a track and being able
+    to WRITE it today. The two were one flag, so a track on an unplugged
+    drive rendered exactly like one sitting ready -- full ink, no warning,
+    and the first sign of trouble was sync declining to add it. Owning it is
+    permanent; reaching it depends on what is mounted this minute, and the
+    page needs both to say "you have this, plug the drive in" instead of
+    "buy this".
     """
-    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
-    if not os.path.exists(idx):
-        return set()
     try:
-        return {S.key_for(e.get('artist'), e.get('title'))
-                for e in json.load(open(idx))['tracks']}
+        from . import local_index as LI
+        rows = LI.load()['tracks']
     except Exception:
         return set()
+    out = set()
+    for e in rows:
+        if reachable_only and not os.path.exists(e.get('path') or ''):
+            continue
+        out.add(S.key_for(e.get('artist'), e.get('title')))
+    return out
+
+
+# Reachability changes when a drive is plugged in, not when the index is
+# rebuilt, so it is cached for a few seconds rather than against the index's
+# mtime -- long enough that one page render does not stat the library twice,
+# short enough that plugging a drive in shows up without a reload.
+_REACH_CACHE = {'at': 0, 'keys': None}
+
+
+def reachable_keys(ttl=5.0):
+    now = time.time()
+    if _REACH_CACHE['keys'] is None or now - _REACH_CACHE['at'] > ttl:
+        _REACH_CACHE.update(at=now, keys=local_keys(reachable_only=True))
+    return _REACH_CACHE['keys']
 
 
 # ---------------------------------------------------------------- answers
@@ -1561,6 +1586,7 @@ def tracks_payload(scope=''):
     st = S.load()
     am_keys = set(am_index().get('keys') or [])
     loc_keys = local_keys()
+    reach_keys = reachable_keys()
     out = []
     for k, r in st['tracks'].items():
         if scope and not any(p.startswith(scope) for p in r['playlists']):
@@ -1588,7 +1614,11 @@ def tracks_payload(scope=''):
             't7': t7, 'am': bool(r['playlists']) or k in am_keys,
             'am_owned': bool(r.get('am_owned')),
             'am_status': r.get('am_status'),
-            'local': t7 or k in loc_keys,      # a file exists; sync could write it
+            'local': t7 or k in loc_keys,      # a file exists somewhere: you own it
+            # ...and whether it can be written TODAY. A track you own on an
+            # unplugged drive is not the same as one you have never bought,
+            # and until now the page could not tell you apart.
+            'reachable': bool(t7 or k in reach_keys or dev.get('location')),
             'play_from': 't7' if t7 else ('ipod' if dev.get('location') else None),
             # PLAYABLE MEANS THERE IS A FILE, wherever it is. This read
             # only the device record, so every track that existed solely on

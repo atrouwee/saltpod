@@ -681,6 +681,40 @@ _TESTS_JS = r'''
   });
 
   // ---------------------------------------------------------------- mark()
+  record('owned-but-offline is its own state, not unowned', () => {
+    // Three states, because "buy it" and "plug the drive in" are different
+    // instructions. Before this, a track on an unplugged drive rendered at
+    // full ink and the Sync button counted it as ready to write.
+    const mk = (k, o) => Object.assign({key:k, artist:'A', title:k, tier:'sync',
+      collections:['C'], lists:[], playlists:[], seconds:100}, o);
+    const ready   = mk('ready',   {local:true,  reachable:true,  device:false});
+    const offline = mk('offline', {local:true,  reachable:false, device:false, t7:true});
+    const unowned = mk('unowned', {local:false, reachable:false, device:false});
+
+    const hR = rowHTML(ready,0,0), hO = rowHTML(offline,1,0), hU = rowHTML(unowned,2,0);
+    assert(!/class="row[^"]*unowned/.test(hR) && !/class="row[^"]*offline/.test(hR),
+      'a ready track was dimmed');
+    assert(/class="row[^"]*offline/.test(hO), 'an owned track on an absent drive was not marked offline');
+    assert(!/class="row[^"]*unowned/.test(hO), 'an owned track was called unowned because its drive is out');
+    assert(/class="row[^"]*unowned/.test(hU), 'a track with no file anywhere was not marked unowned');
+    // law 3: the state must be spoken, not only shaded
+    assert(/not mounted/.test(hO), 'the offline row carries no title explaining itself');
+    assert(/buy it/.test(hU), 'the unowned row lost its title');
+    // the source badge is struck through when its volume is away
+    assert(/class="gone"[^>]*>T7</.test(hO), 'the drive badge was not struck through');
+
+    // and the Sync button must not promise what it cannot write
+    const keep = ALL;
+    ALL = [ready, offline, unowned];
+    counts();
+    const sb = document.getElementById('dosync');
+    assert(sb.textContent === 'Sync · 1',
+      `Sync counted tracks it cannot reach: ${sb.textContent}`);
+    assert(/not mounted/.test(sb.title), 'the button does not mention the ones waiting on a drive');
+    ALL = keep; 
+    return 'ready / offline / unowned told apart, Sync counts 1';
+  });
+
   record('the health strip shows volumes, not sources', () => {
     // A folder on the internal disk cannot be unplugged, so a dot for it is
     // a dot that never changes -- and this strip is read by glancing at
@@ -928,6 +962,7 @@ def _run_all():
     check('pass() honors a real filter-pill click', node_check('pass() honors a real filter-pill click'))
     check('pass() honors a real search input', node_check('pass() honors a real search input'))
     check('mark() tracks the cursor, leaves MARK alone', node_check('mark() tracks the cursor without touching a MARKed row'))
+    check('owned-but-offline is its own state', node_check('owned-but-offline is its own state, not unowned'))
     check('the strip shows volumes, not sources', node_check('the health strip shows volumes, not sources'))
 
     section('tokens (see bin/selftest.py -- not duplicated here)')

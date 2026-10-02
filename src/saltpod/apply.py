@@ -189,11 +189,16 @@ def _plan(mount=None):
     # Files for tracks that are not on the device: a device record's origin
     # first; otherwise the T7 index by the same key, duration-checked, since a
     # bought file has no device record yet. Lossless originals win ties.
+    # THROUGH local_index.load(), NOT json.load. A track can now be indexed
+    # on one volume and readable from another, and `load()` is what resolves
+    # `path` to the copy that exists. Reading the file directly here meant
+    # sync looked only at the recorded path -- so 80 tracks copied to the
+    # internal disk, specifically so work could continue with the drive
+    # unplugged, were invisible to the one function that needed them.
     local = {}
-    idx = os.path.join(ROOT, 'data', 'local', 'index.json')
-    if os.path.exists(idx):
-        for e in json.load(open(idx))['tracks']:
-            local.setdefault(S.key_for(e.get('artist'), e.get('title')), []).append(e)
+    from . import local_index as _LI
+    for e in _LI.load()['tracks']:
+        local.setdefault(S.key_for(e.get('artist'), e.get('title')), []).append(e)
 
     def source_for(k, r):
         src = (r.get('device') or {}).get('origin')
@@ -228,7 +233,15 @@ def _plan(mount=None):
                 continue
             src = source_for(k, r)
             if not src:
-                no_source.append((k, r))
+                # TWO DIFFERENT PROBLEMS WEARING ONE WORD. "No file" meant
+                # both "you do not own this, buy it" and "you own it, the
+                # drive is unplugged" -- and the second is fixed by
+                # reaching for a cable, not a credit card. They are told
+                # apart by whether the index knows the track at all: an
+                # entry whose every copy is absent is music the owner has,
+                # on a volume that is not here.
+                why = 'offline' if local.get(k) else 'unowned'
+                no_source.append((k, r, why))
                 continue
             adds.append((k, r, src))
     for k, r in st['tracks'].items():
@@ -554,8 +567,17 @@ def print_plan(p):
         ext = os.path.splitext(src)[1].lower()
         print('   %-38s %s' % ((r['artist'] + ' - ' + r['title'])[:38], 'convert->ALAC' if ext in CONVERT else 'copy ' + ext))
     if p['no_source']:
-        print('in a collection but NO FILE to add (buy first, or index the T7): %d' % len(p['no_source']))
-        for k, r in p['no_source'][:8]:
+        off = [x for x in p['no_source'] if x[-1] == 'offline']
+        unk = [x for x in p['no_source'] if x[-1] != 'offline']
+        if off:
+            print('in a collection, owned, but the VOLUME IS NOT MOUNTED: %d' % len(off))
+            for k, r, _w in off[:8]:
+                print('   %-38s %s' % (r.get('artist', '')[:38], r.get('title', '')[:38]))
+            if len(off) > 8:
+                print('   ... and %d more' % (len(off) - 8))
+        if unk:
+            print('in a collection but NO FILE ANYWHERE (buy it, or index the drive): %d' % len(unk))
+        for k, r, _w in (unk or [])[:8]:
             print('   %s - %s' % (r['artist'], r['title']))
     print('tracks to REMOVE (device tracks curated as skipped): %d' % len(p['removes']))
     for k, r, tid in p['removes'][:12]:

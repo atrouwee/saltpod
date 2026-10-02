@@ -339,6 +339,12 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
    whether you have the music.)
    Struck through is the other direction: on its way off the device. */
 .row.unowned .t, .row.unowned .art { opacity: .45; }
+/* THREE STATES, NOT TWO. "You do not own this" and "you own this and the
+   drive is unplugged" are different problems -- one is fixed with a credit
+   card, the other with a cable -- so they must not wear the same ink. The
+   offline drop is deliberately shallower than unowned: the track is real and
+   yours, it just cannot be written this minute. */
+.row.offline .t, .row.offline .art { opacity: .7; }
 .row.skip .t .n { text-decoration: line-through; }
 .col.pend .cnt { color: var(--orange); }
 .row.dragging { opacity: .35; }
@@ -1189,11 +1195,17 @@ function counts(){
   const todo={length:(TOTALS.to_buy||0)}, eur=TOTALS.to_buy_eur||0;
   // what the next sync would do, as far as the page can know without the device
   const offs=ALL.filter(t=>t.device&&t.tier==='remove').length;
-  const ons=ALL.filter(t=>!t.device&&t.local&&t.collections.length).length;
+  // `reachable`, not `local`: the button says what the next sync WOULD do,
+  // and it cannot write a file on a drive that is not mounted. Counting
+  // those made the button promise work it would then decline to do.
+  const ons=ALL.filter(t=>!t.device&&t.reachable&&t.collections.length).length;
+  const waiting=ALL.filter(t=>!t.device&&t.local&&!t.reachable&&t.collections.length).length;
   const pend=offs+ons, sb=$('#dosync');
   sb.textContent = pend ? `Sync · ${pend}` : 'Sync';
   sb.classList.toggle('pending',pend>0);
-  sb.title = pend ? `${offs} to take off the iPod, ${ons} to put on — nothing has changed on the device yet` : 'write the collections to the iPod';
+  sb.title = (pend ? `${offs} to take off the iPod, ${ons} to put on — nothing has changed on the device yet`
+                   : 'write the collections to the iPod')
+           + (waiting ? ` · ${waiting} more are owned but on a drive that is not mounted` : '');
   $('#counts').innerHTML=`<span><s>${ALL.length}</s> tracks</span>
     <span><s>${todo.length}</s> to buy</span>
     <span><s>&euro;${eur.toFixed(2)}</s> final</span>`;
@@ -1227,7 +1239,11 @@ function srcStrip(t){
   const g=[];
   if(t.am)      g.push(t.am_status ? `<span class="gone" title="in Apple Music, ${esc(t.am_status)}">AM</span>`
                                    : (t.am_owned?'<b title="owned in Apple Music">AM</b>':'<span title="in Apple Music, rented">AM</span>'));
-  if(t.t7)      g.push(`<b title="stored on the T7${t.lossless?', lossless':''}">T7</b>`);
+  // Struck through when the volume holding it is not mounted -- the same
+  // mark Apple Music uses for a track that is listed but cannot be had.
+  if(t.t7)      g.push(t.reachable
+                  ? `<b title="stored on the drive${t.lossless?', lossless':''}">T7</b>`
+                  : `<span class="gone" title="on a drive that is not mounted — plug it in to sync this">T7</span>`);
   // the iPod is NOT in this strip -- it sits at the end of the row, beside
   // the chevron, where it never moves. See rowHTML.
   if(owned(t))  g.push('<b title="you own the record">LP</b>');
@@ -1258,18 +1274,24 @@ function libRow(r){
 }
 function rowHTML(t,i,seq){
   const dur=mmss(t.seconds||t.dev_seconds);
-  const have = t.device || t.local;      // on the iPod, or a file sync can reach
-  // LAW 3 IN WORDS, NOT JUST OPACITY. ".unowned" is a 45% opacity drop and
-  // nothing else, so a title carries the same fact for anyone who cannot
-  // see the difference. Reads nothing t does not already have -- a lookup
-  // on the same `have` this row's class already turned on.
-  const unownedTitle = have ? '' : ' title="not yet available — buy it or sync the file"';
+  const own  = t.device || t.local;       // you hold this music
+  const have = t.device || t.reachable;   // ...and sync could write it today
+  // LAW 3 IN WORDS, NOT JUST OPACITY. Each state is a 45% or 30% opacity
+  // drop and nothing else, so a title carries the same fact for anyone who
+  // cannot see the difference -- and now there are three of them, because
+  // "buy it" and "plug the drive in" are not the same instruction.
+  const state = !own ? 'unowned' : (have ? '' : 'offline');
+  const stateTitle = state === 'unowned'
+      ? ' title="not yet available — buy it or sync the file"'
+      : state === 'offline'
+      ? ' title="you own this, but the drive holding it is not mounted — plug it in to sync"'
+      : '';
   // role=option + aria-selected is the ARIA half of law 2's blue: the
   // listbox's selected option IS "where you are". MARK.has(t.key) is false
   // for every row while nothing is marked, which is the correct default --
   // mark() below corrects the one cursor row to true when there is no
   // multi-selection.
-  return `<div id="trk-${i}" class="row ${t.tier==='remove'?'skip':''} ${have?'':'unowned'} ${MARK.has(t.key)?'marked':''}" role="option" aria-selected="${MARK.has(t.key)}"${unownedTitle} draggable="true" data-i="${i}" data-k="${esc(t.key)}">
+  return `<div id="trk-${i}" class="row ${t.tier==='remove'?'skip':''} ${state} ${MARK.has(t.key)?'marked':''}" role="option" aria-selected="${MARK.has(t.key)}"${stateTitle} draggable="true" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
