@@ -3,7 +3,7 @@ else gets the portable path that already works.
 
 WHY THIS EXISTS. `curate.py`, `apply.py` and `local_index.py` each shell out
 to `ffmpeg`/`ffprobe` directly, which is the only thing that runs today but
-drags 36 MB of homebrew dylibs along for jobs macOS already does itself
+drags 59.5 MB of homebrew dylibs along for jobs macOS already does itself
 (research/MACOS-ADAPTERS.md). Measured there:
 
     afconvert -f m4af -d alac in.wav out.m4a   ->  alac, 44100, 2ch, 16-bit
@@ -200,6 +200,45 @@ def to_alac(src, dst):
         except Exception as e:
             return {'ok': False, 'backend': 'ffmpeg', 'error': str(e)}
     return {'ok': False, 'backend': 'ffmpeg', 'error': 'neither afconvert nor ffmpeg is available'}
+
+
+def to_preview(src, dst):
+    """A browser-playable AAC of `src`. {'ok','backend','error'}.
+
+    NOT ALAC. A preview is for listening, not for the device, so it does not
+    need to be lossless -- and AAC is both quicker and a fraction of the
+    size. Measured on real FLACs off the drive:
+
+        0:25 track   138 ms      2:36 track   740 ms      8:22 track  2.2 s
+
+    Only FLAC needs this at all. Everything else in the library is a
+    container the browser plays directly, and serving the file untouched is
+    both instant and seekable.
+    """
+    c = caps()
+    if c['afconvert']:
+        try:
+            r = subprocess.run(['/usr/bin/afconvert', '-f', 'm4af', '-d', 'aac',
+                                '-b', '128000', src, dst],
+                               capture_output=True, text=True, timeout=600)
+            if r.returncode == 0 and os.path.exists(dst):
+                return {'ok': True, 'backend': 'afconvert', 'error': None}
+            err = (r.stderr or r.stdout or 'afconvert failed').strip()[:400]
+        except Exception as e:
+            err = str(e)
+        if not c['ffmpeg']:
+            return {'ok': False, 'backend': 'afconvert', 'error': err}
+    if not c['ffmpeg']:
+        return {'ok': False, 'backend': 'none', 'error': 'no encoder available'}
+    try:
+        r = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src, '-vn',
+                            '-map', '0:a:0', '-c:a', 'aac', '-b:a', '128k', dst],
+                           capture_output=True, text=True, timeout=600, env=_FF_ENV)
+        if r.returncode != 0 or not os.path.exists(dst):
+            raise RuntimeError((r.stderr or 'ffmpeg failed').strip()[:400])
+        return {'ok': True, 'backend': 'ffmpeg', 'error': None}
+    except Exception as e:
+        return {'ok': False, 'backend': 'ffmpeg', 'error': str(e)}
 
 
 # ============================================================== image resize

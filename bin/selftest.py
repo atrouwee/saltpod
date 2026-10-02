@@ -457,6 +457,170 @@ def t_published_tree_imports():
     return '%d modules ship, every import resolves' % len(names)
 
 
+def t_target_config():
+    """Two firmwares, two sets of required settings, one config file.
+
+    `load()` used to refuse to return without sixteen hex characters of
+    FireWire GUID. That is correct for the Apple firmware -- an iTunesDB
+    whose checksum is wrong shows an EMPTY LIBRARY on the device -- and
+    simply wrong for Rockbox, which has no checksum and never reads it. A
+    Rockbox-only owner could not start the tool at all.
+
+    Verified against a real disk image with a .rockbox directory before
+    this was written: detected as rockbox, loaded with no guid present, and
+    asking for the apple target on it refused with the reason.
+    """
+    import json as _json
+    import tempfile as _tf
+    from saltpod import config as C
+    assert C.detect_target('/nonexistent-volume-xyz') is None
+
+    tmp = _tf.mkdtemp(prefix='saltpod-target-')
+    try:
+        os.makedirs(os.path.join(tmp, '.rockbox'))
+        assert C.detect_target(tmp) == 'rockbox', 'did not see .rockbox'
+        apple = _tf.mkdtemp(prefix='saltpod-apple-')
+        os.makedirs(os.path.join(apple, 'iPod_Control', 'iTunes'))
+        open(os.path.join(apple, 'iPod_Control', 'iTunes', 'iTunesDB'), 'wb').close()
+        assert C.detect_target(apple) == 'apple', 'did not see an iTunesDB'
+
+        # a rockbox config with NO guid must load; apple on it must refuse
+        saved = open(C.PATH).read() if os.path.exists(C.PATH) else None
+        try:
+            with open(C.PATH, 'w') as fh:
+                _json.dump({'mount': tmp, 'library_root': tmp,
+                            'rockbox': {'playlist_dir': '/Playlists'}}, fh)
+            d = C.load()
+            assert d['target'] == 'rockbox', d['target']
+            assert d.get('playlist_dir') == '/Playlists', 'target block not folded in'
+            assert not d.get('firewire_guid'), 'invented a guid'
+            try:
+                C.load(target='apple')
+                raise AssertionError('apple target accepted with no guid')
+            except SystemExit:
+                pass
+        finally:
+            if saved is not None:
+                open(C.PATH, 'w').write(saved)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return 'apple needs a guid, rockbox does not, both detected by looking'
+
+
+def t_artwork_render():
+    """Our RGB565 against the thumbnails ITUNES ITSELF put on this device.
+
+    The strongest check available: the device already holds 259 covers that
+    iTunes rendered, so ours can be compared with the real thing rather than
+    with an idea of it. Measured 0.9 to 7.7 of 255 mean absolute difference
+    -- resampler and RGB565 rounding, visually identical.
+
+    Falls back to checking only the geometry when no device is attached,
+    because the byte sizes are the part that must never drift: the firmware
+    memory-maps these and a wrong length corrupts every image after it.
+    """
+    from saltpod import artwork as A, tags as T
+    src = _a_file('.mp3', with_art=True) or _a_file('.aiff', with_art=True)
+    if not src:
+        return None
+    art = T.art_bytes(src)
+    if not art:
+        return None
+    for cid, (w, h) in sorted(A.CLASSIC_FORMATS.items()):
+        blob = A.render(art[1], w, h)
+        assert len(blob) == w * h * 2, (
+            'format %d rendered %d bytes, the device declares %d'
+            % (cid, len(blob), w * h * 2))
+        assert A.geometry_for(w * h * 2) == (w, h)
+    return 'three sizes, exact byte counts (%d KB source)' % (len(art[1]) // 1024)
+
+
+def t_playcounts():
+    """The sidecar reader, and the two ways it can be wrong.
+
+    It is a DELTA, so merging the same file twice would double a count, and
+    it is POSITIONAL, so pairing it with the wrong database names the wrong
+    tracks -- measured: one backup's sidecar reads "The Beatles -- Her
+    Majesty" against its own database and "2 Many Dj's -- Disc Jockey's
+    Delight" against today's, with nothing to suggest a problem. Both are
+    guarded, and this is what holds the guards in place.
+    """
+    import copy
+    import glob as _glob
+    from saltpod import playcounts as PC, state as S
+    pairs = [(f, os.path.join(os.path.dirname(f), 'iTunesDB'))
+             for f in sorted(_glob.glob(os.path.join(ROOT, 'backups', '*', 'Play Counts')))]
+    pairs = [(a, b) for a, b in pairs if os.path.exists(b)]
+    if not pairs:
+        return None
+    side, db = pairs[0]
+    rows = PC.read(side, db)                       # the correct pairing works
+
+    # the wrong pairing must REFUSE, not return plausible nonsense
+    other = next((b for a, b in pairs[1:]
+                  if len(PC.parse(side)) != len(_tracks_in(b))), None)
+    if other:
+        try:
+            PC.read(side, other)
+            raise AssertionError('paired a sidecar with the wrong database')
+        except PC.PlayCountError:
+            pass
+
+    # and the same delta must never be counted twice
+    st = copy.deepcopy(S.load())
+    fp = PC.fingerprint(side)
+    st.pop(PC.LEDGER, None)
+    first = PC.merge(st, rows, fp)
+    again = PC.merge(st, rows, fp)
+    assert again.get('skipped'), 'the same sidecar was counted twice'
+    return ('%d entries read, re-merge refused%s'
+            % (len(rows), ', wrong pairing refused' if other else ''))
+
+
+def _tracks_in(db_path):
+    from saltpod import itunesdb as I
+    return I.read(db_path)['tracks']
+
+
+def t_stale_index_gate():
+    """A Spotlight record that is behind the file must be REFUSED.
+
+    The library drive is usually unplugged, so files can change while
+    Spotlight is not watching. An absent record is safe -- it falls back to
+    ffprobe. A STALE ONE ANSWERS CONFIDENTLY, which is the dangerous case,
+    and this is the gate that turns stale into absent.
+
+    It needs a test because it silently did not work. The freshness check
+    was `seen.timestamp()` inside a bare `except Exception: pass`, and mdls
+    returns that attribute as a string rather than a plist date -- so it
+    raised on every file and the except swallowed it. Verified on a real
+    disk image before this was written: files changed on an unwatched
+    volume went from 3 of 3 wrongly accepted to 0 of 3.
+    """
+    from saltpod import local_index as L
+    src = _a_file('.mp3')
+    if not src:
+        return None
+    st = os.stat(src)
+    fresh = {'duration_sec': 100.0, 'size': st.st_size, 'title': 'x',
+             'seen_at': time.strftime('%Y-%m-%d %H:%M:%S',
+                                      time.gmtime(st.st_mtime + 60))}
+    assert L.probe_fast(src, fresh) is not None, 'refused a current record'
+
+    behind = dict(fresh, seen_at=time.strftime('%Y-%m-%d %H:%M:%S',
+                                               time.gmtime(st.st_mtime - 3600)))
+    assert L.probe_fast(src, behind) is None, 'trusted a record older than the file'
+
+    wrong_size = dict(fresh, size=st.st_size + 1)
+    assert L.probe_fast(src, wrong_size) is None, 'trusted a record of a different size'
+
+    # and the one that hid the bug: an unparseable date must FAIL CLOSED
+    unreadable = dict(fresh, seen_at='not a date at all')
+    assert L.probe_fast(src, unreadable) is None, 'trusted a record it could not date'
+    assert L._as_epoch('2026-10-02 01:34:47') is not None, 'cannot parse mdls dates'
+    return 'current accepted; stale, resized and undatable all refused'
+
+
 def t_platform():
     """The adapters, and the differential that keeps them honest.
 
@@ -618,6 +782,10 @@ def main():
     section('layers — the boundary and the design system')
     check('every module imports', t_imports)
     check('the published tree imports too', t_published_tree_imports)
+    check('two targets, two sets of settings', t_target_config)
+    check('artwork renders to the exact sizes', t_artwork_render, slow=True)
+    check('play counts: delta once, paired right', t_playcounts)
+    check('a stale Spotlight record is refused', t_stale_index_gate)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

@@ -225,6 +225,14 @@ def main(argv=None):
     p.add_argument("key", help="the track key, as `saltpod state stats` lists them")
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("plays", help="play counts and ratings: what the iPod recorded, and fold it into the library")
+    p.add_argument("what", choices=["show", "device", "adopt", "merge"], nargs="?", default="show",
+                   help="show: what the library holds; device: what is on the iPod right now; "
+                        "adopt: take the counts iTunes left in the iTunesDB; "
+                        "merge: add the Play Counts delta (the file is never deleted)")
+    p.add_argument("--mount")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
     p.add_argument("-n", type=int, default=25, help="how many recent events (default 25)")
     p.add_argument("--level", choices=["debug", "info", "warn", "error"],
@@ -241,6 +249,78 @@ def main(argv=None):
 
     if a.cmd in ("track", "tags", "undo", "discard", "recover", "decide"):
         return _service(a)
+
+    if a.cmd == "plays":
+        import datetime
+        import json as _json
+        from . import playcounts as PC, state as S, config as CFG, itunesdb as I
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        dbp = os.path.join(mount, "iPod_Control/iTunes/iTunesDB")
+        if a.what == "device":
+            if not os.path.exists(dbp):
+                fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+            side = PC.find(mount)
+            tr = I.read(dbp)["tracks"]
+            played = [t for t in tr if t.get("play_count")]
+            receipt("tracks on the device", str(len(tr)))
+            receipt("with a play count", "%d, %d plays in total"
+                    % (len(played), sum(t["play_count"] for t in played)))
+            receipt("Play Counts sidecar", "present" if side else
+                    "not there -- the iPod writes one only once something has played")
+            if side:
+                try:
+                    rows = PC.read(side, dbp)
+                    receipt("unmerged plays", "%d tracks, %d plays"
+                            % (len(rows), sum(r["plays"] for r in rows)))
+                except PC.PlayCountError as e:
+                    receipt("sidecar", str(e), tone="bad")
+            for t in sorted(played, key=lambda x: -x["play_count"])[:12]:
+                lp = (datetime.date.fromtimestamp(t["last_played"]).isoformat()
+                      if t.get("last_played") else "-")
+                print("   %-28s %-28s %4d  %s"
+                      % (str(t["artist"])[:28], str(t["title"])[:28], t["play_count"], lp))
+            return 0
+        if a.what in ("adopt", "merge"):
+            if not os.path.exists(dbp):
+                fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+            st = S.load()
+            if a.what == "adopt":
+                n = PC.adopt_db_counts(st, dbp)
+                S.save(st)
+                receipt("adopted", "%d tracks took the count iTunes left on the device" % n)
+                note("a one-off floor, not a delta; running it again cannot inflate anything")
+                return 0
+            side = PC.find(mount)
+            if not side:
+                fail("no Play Counts file on the device",
+                     "the iPod writes one only after something has been played")
+            try:
+                rows = PC.read(side, dbp)
+            except PC.PlayCountError as e:
+                fail(str(e), "")
+            out = PC.merge(st, rows, PC.fingerprint(side))
+            S.save(st)
+            for k, v in out.items():
+                receipt(str(k), str(v))
+            note("the sidecar was NOT deleted; the iPod clears it itself on the next sync")
+            return 0
+        st = S.load()
+        got = [r for r in st["tracks"].values() if r.get("plays") or r.get("rating")]
+        if a.json:
+            print(_json.dumps(sorted(got, key=lambda r: -(r.get("plays") or 0))[:200],
+                              indent=2, default=str))
+            return 0
+        if not got:
+            note("nothing counted yet -- try: saltpod plays adopt")
+            return 0
+        for r in sorted(got, key=lambda x: -(x.get("plays") or 0))[:25]:
+            lp = (datetime.date.fromtimestamp(r["last_played"]).isoformat()
+                  if r.get("last_played") else "-")
+            print("   %-28s %-28s %4s %5s  %s"
+                  % (str(r["artist"])[:28], str(r["title"])[:28], r.get("plays") or "",
+                     "*" * (r.get("rating") or 0), lp))
+        note("%d tracks carry a count or a rating" % len(got))
+        return 0
 
     if a.cmd == "log":
         import json as _json

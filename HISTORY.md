@@ -128,7 +128,13 @@ from one the firmware already accepted on the same device. Then sign, write,
 read back, verify on the device, eject. A dated backup precedes every write.
 
 The owner ruled out the alternative in five words — **"We're not doing
-Rockbox"** — and it has not been reopened.
+Rockbox"**.
+
+**Reopened 2 October 2026**, and reframed rather than reversed: *"rockbox
+is an adaptor like native ipod software"*, with a reason attached — *"if we
+can skin that interface we might be able to make it like apple glass
+effect"*. What was rejected was replacing the firmware we had just learned
+to write for. What is being explored is a second target beside it.
 
 **First device write, 27 September:** a playlist rename. Stock firmware showed
 it and played the track. **Second write, 14:24:** playlist create, cloned
@@ -283,7 +289,8 @@ Each of these has a reason above. Do not relitigate them without reading it.
   delete, whoever made it. Smart playlists are shown and never written.
 - Back up before every write.
 - Sequence is the product. Never sort.
-- No Rockbox.
+- Rockbox: ruled out, then reopened 2 October 2026 as a TARGET beside the
+  Apple firmware rather than instead of it.
 - Stdlib Python plus ffmpeg and ffprobe. Nothing fetched by the page.
 - Every keystroke saves.
 - The last playlist clicked is what the centre shows.

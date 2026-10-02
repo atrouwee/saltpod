@@ -42,10 +42,22 @@ Which suggests the right split rather than a straight swap:
 - **`ffprobe`** for what is genuinely left: `has_art`, and codec where the
   extension does not settle it
 
-## ffmpeg is 36 MB of dylibs, and most of what it does ships with macOS
+## ffmpeg is 59.5 MB of dylibs, and most of what it does ships with macOS
 
-`ffmpeg` itself is 420 KB but links 21 homebrew dylibs — **36 MB** that
-would all have to be bundled and signed inside-out.
+`ffmpeg` itself is 420 KB but pulls in **59.5 MB across 26 homebrew
+dylibs** once the transitive closure is walked -- 21 are direct, and the
+**36 MB** this file used to claim was a direct-dependency count repeated
+without re-checking. Every one of them would have to be bundled and signed
+inside-out for a notarized or App Store build.
+
+Against that, the whole native set is already in the OS and weighs nothing:
+
+| | size | ships with macOS |
+|---|---|---|
+| ffmpeg + its dylibs | **59.5 MB** | no |
+| afconvert | 0.4 MB | yes |
+| sips | 0.5 MB | yes |
+| mdls | 0.1 MB | yes |
 
 **`afconvert` makes the ALAC the iPod needs, and the audio is identical.**
 
@@ -87,7 +99,7 @@ is the only thing that was ever going to help:
 |---|---|---|
 | index the drive | 130 s | **~2 s** |
 | `plan()` | 2,677 ms | **54 ms** (mtime cache, already built) |
-| bundle size | +36 MB of ffmpeg dylibs | **0**, if the last use goes |
+| bundle size | +59.5 MB of ffmpeg dylibs | **0**, if the last use goes |
 
 ## BUILT, and what measuring changed
 

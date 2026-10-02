@@ -9,6 +9,7 @@ and reads tags with ffprobe.
     saltpod index /Volumes/YourDrive/Music [more roots...]
     python3 src/local_index.py --stats
 """
+import datetime
 import json
 import os
 import plistlib
@@ -216,6 +217,37 @@ def _is_alac(path):
     return False
 
 
+def _as_epoch(v):
+    """A POSIX timestamp from whatever mdls handed back, or None.
+
+    FAILS CLOSED, AND THAT IS THE POINT. This started life as
+    `seen.timestamp()` inside a bare `except Exception: pass` -- and mdls
+    returns this attribute as a STRING, not a plist date, so it raised on
+    every single file and the except swallowed it. The freshness half of the
+    staleness gate never ran once. A swallowed exception inside a safety
+    check is the worst place in a program for one: the check reports success
+    by doing nothing.
+
+    Found by the test it exists for -- changing files on a volume Spotlight
+    was not watching, then asking whether the gate noticed. It had not; the
+    files were only refused because Spotlight had also dropped their
+    duration, which is luck rather than a gate.
+    """
+    if v is None:
+        return None
+    if hasattr(v, 'timestamp'):
+        return v.timestamp()
+    for fmt in ('%Y-%m-%d %H:%M:%S %z', '%Y-%m-%d %H:%M:%S'):
+        try:
+            dt = datetime.datetime.strptime(str(v).strip(), fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            continue
+    return None
+
+
 def probe_fast(path, md):
     """An index entry from Spotlight, our own tag readers, and nothing else.
 
@@ -253,14 +285,12 @@ def probe_fast(path, md):
         return None
     if md.get('size') is not None and md['size'] != st.st_size:
         return None
-    seen = md.get('seen_at')
-    if seen is not None:
-        try:
-            # allow a couple of seconds: the two clocks are not the same clock
-            if st.st_mtime > seen.timestamp() + 2:
-                return None
-        except Exception:
-            pass
+    seen = _as_epoch(md.get('seen_at'))
+    if seen is None:
+        return None          # cannot tell how fresh this is: do not use it
+    # allow a couple of seconds: these are not the same clock
+    if st.st_mtime > seen + 2:
+        return None
     ext = os.path.splitext(path)[1].lower()
     tg = {}
     try:

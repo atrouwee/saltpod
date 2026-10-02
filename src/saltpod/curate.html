@@ -386,8 +386,21 @@ code { font-family: var(--mono); font-size: var(--fs-ctrl); color: var(--ink); }
 .eq i:nth-child(3) { height: 62%; animation-delay: -.8s; }
 @keyframes eq { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
 @media (prefers-reduced-motion: reduce) { .eq i { animation: none; } }
-.row.playing .ch { display: none; }
-.row.playing .eq { display: inline-flex; }
+/* PREPARING IS THE SAME SLOT SAYING A DIFFERENT THING. One slot, one
+   meaning -- this one means "what this row's audio is doing" -- and the
+   SHAPE carries the state: a ring while the file is being made playable, the
+   bars once it plays. A FLAC has to be converted before a browser will take
+   it, 138 ms for a short track and 2.2 s for an eight-minute one, and a row
+   that sits there doing nothing for two seconds reads as a bug. */
+.row.playing .ch, .row.loading .ch { display: none; }
+.row.playing .eq, .row.loading .eq { display: inline-flex; }
+.row.loading .eq i { display: none; }
+.row.loading .eq .eqsr:after { content: " — preparing"; }
+.row.loading .eq:after { content: ""; width: 11px; height: 11px;
+        border: 2px solid var(--orange); border-right-color: transparent;
+        border-radius: var(--r-pill); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .row.loading .eq:after { animation: none; } }
 .dur { font-variant-numeric: tabular-nums; }
 .row.playing .dur { color: var(--orange); }
 .row.sel .eq i { background: var(--on-sel); }
@@ -1258,7 +1271,7 @@ function rowHTML(t,i,seq){
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only eqsr">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -2104,14 +2117,32 @@ function tickProgress(){
   const full=d.dataset.full;
   d.textContent = full ? `${mmss(au.currentTime)} / ${full}` : mmss(au.currentTime);
 }
-au.ontimeupdate=tickProgress; au.onplay=paintPlaying; au.onpause=paintPlaying; au.onended=paintPlaying;
+/* The row says "working" from the moment play is asked for until the audio
+   element can actually play it, which is exactly the window the browser
+   itself reports. No timer, no guess: the element knows. */
+function markLoading(on){
+  document.querySelectorAll('.row.loading').forEach(r=>r.classList.remove('loading'));
+  if(!on)return;
+  const k=au.dataset.key; if(!k)return;
+  const r=[...document.querySelectorAll('#list .row')].find(x=>x.dataset.k===k);
+  if(r)r.classList.add('loading');
+}
+au.onwaiting=()=>markLoading(true);
+au.oncanplay=()=>markLoading(false);
+au.onplaying=()=>{markLoading(false);paintPlaying();};
+au.onerror=()=>markLoading(false);
+au.ontimeupdate=tickProgress; au.onplay=paintPlaying; au.onpause=paintPlaying;
+au.onended=()=>{markLoading(false);paintPlaying();};
 function play(){
   const t=view[sel]; if(!t)return;
   const s=srcFor(t);
   if(!s){toast('nothing to play for this one');return;}
   if(au.dataset.key===t.key&&!au.paused){au.pause();return;}
   au.dataset.key=t.key; au.src=s.url;
-  au.play().catch(()=>toast(s.full?'could not play the file':'preview failed'));
+  markLoading(true);
+  au.play()
+    .then(()=>markLoading(false))
+    .catch(()=>{markLoading(false);toast(s.full?'could not play the file':'preview failed');});
   if(s.full)toast('playing the full track');
 }
 

@@ -68,6 +68,16 @@ def _decode(raw):
     return raw.decode('utf-8', 'replace').rstrip('\x00')
 
 
+# Mac time is seconds since 1 January 1904, which is 2,082,844,800 seconds
+# before the Unix epoch. Zero means never, not 1904.
+MAC_EPOCH = 2082844800
+
+
+def _mactime(v):
+    """A POSIX timestamp, or None when the field has never been set."""
+    return (v - MAC_EPOCH) if v and v > MAC_EPOCH else None
+
+
 def _tracks(b, o, count):
     out = []
     for _ in range(count):
@@ -75,14 +85,30 @@ def _tracks(b, o, count):
         if magic != b'mhit':
             break
         n_mhod = _u32(b, o + 12)
+        # THE COUNTERS WERE SITTING HERE ALL ALONG. The reader exposed
+        # fourteen fields and none of the ones a smart playlist actually
+        # asks about -- "Top 25 Most Played" and "My Top Rated" cannot mean
+        # anything without them. Offsets from research/itunesdb-format.md.
+        #
+        # `play_count` here is NOT the whole truth: the device does not
+        # update it, it writes plays into the `Play Counts` sidecar instead
+        # and iTunes used to fold them in. See playcounts.py.
         rec = {
             'id': _u32(b, o + 16),
             'visible': _u32(b, o + 20),
+            'rating': b[o + 31],                      # stars x 20
             'size': _u32(b, o + 36),
             'ms': _u32(b, o + 40),
             'track_no': _u32(b, o + 44),
             'year': _u32(b, o + 52),
             'bitrate': _u32(b, o + 56),
+            'sample_rate': _u32(b, o + 60) >> 16,     # stored x 0x10000
+            'play_count': _u32(b, o + 80),
+            'play_count2': _u32(b, o + 84),
+            'last_played': _mactime(_u32(b, o + 88)),
+            'disc_no': _u32(b, o + 92),
+            'date_added': _mactime(_u32(b, o + 104)),
+            'bookmark_ms': _u32(b, o + 108),          # resume position
         }
         p = o + hl
         for _ in range(n_mhod):

@@ -1329,6 +1329,111 @@ def has_art(path):
     return False
 
 
+def art_bytes(path):
+    """The LARGEST embedded cover in the file, as (mime, bytes), or None.
+
+    Largest, not first: a file can carry several pictures -- front cover,
+    back, artist -- and the one worth sending to a device is the biggest.
+    One real file here carries a 1679x1432 JPEG that ffprobe does not even
+    report, because ffmpeg's own ID3 walk desynchronises where ours
+    resynchronises.
+
+    The parsers all exist already: carrying artwork through a write
+    untouched is the reason unmanaged frames are preserved rather than
+    rebuilt, so the code that must not LOSE a picture can also hand it over.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    best = None
+
+    def keep(mime, blob):
+        nonlocal best
+        if blob and (best is None or len(blob) > len(best[1])):
+            best = (mime or _sniff_mime(blob), blob)
+
+    try:
+        if ext in ('.mp3', '.aif', '.aiff', '.aifc', '.wav'):
+            if ext == '.mp3':
+                with open(path, 'rb') as fh:
+                    frames, _n, _c = _id3_read_tag(fh.read(_id3_span(path)))
+            elif ext == '.wav':
+                frames = []
+                for cid, _h, d, size in _riff_chunks_seek(path):
+                    if cid in _ID3_CHUNKS:
+                        with open(path, 'rb') as fh:
+                            fh.seek(d)
+                            frames, _n, _c = _id3_read_tag(fh.read(size))
+                        break
+            else:
+                frames, _m, _c, _cl = _aiff_tag(path)
+            for fid, payload in (frames or []):
+                if fid != 'APIC' or len(payload) < 4:
+                    continue
+                # enc, mime NUL-terminated, picture type, description NUL, image
+                i = payload.find(b'\x00', 1)
+                if i < 0:
+                    continue
+                mime = payload[1:i].decode('latin-1', 'replace')
+                rest = payload[i + 2:]           # skip the picture-type byte
+                keep(mime, _image_in(rest))
+        elif ext in ('.m4a', '.m4b', '.mp4'):
+            _mo, moov, chain = _mp4_ilst(path)
+            if chain:
+                off, size = chain[-1]
+                for typ, co, cs in _mp4_children(moov, off + 8, off + size):
+                    if typ != b'covr':
+                        continue
+                    flags, payload = _mp4_data(moov, co, cs)
+                    # 13 = jpeg, 14 = png, in the data atom's type flag
+                    keep({13: 'image/jpeg', 14: 'image/png'}.get(flags), payload)
+        elif ext == '.flac':
+            for typ, _h, d, size, _last in _flac_blocks(path)[0]:
+                if typ != 6:
+                    continue
+                with open(path, 'rb') as fh:
+                    fh.seek(d)
+                    blk = fh.read(size)
+                ml = struct.unpack('>I', blk[4:8])[0]
+                mime = blk[8:8 + ml].decode('latin-1', 'replace')
+                q = 8 + ml
+                dl = struct.unpack('>I', blk[q:q + 4])[0]
+                q += 4 + dl + 16                 # description, then w/h/depth/colours
+                n = struct.unpack('>I', blk[q:q + 4])[0]
+                keep(mime, blk[q + 4:q + 4 + n])
+    except Exception:
+        return None
+    return best
+
+
+def _image_in(rest):
+    """The picture out of an APIC tail, by FINDING it rather than trusting
+    the layout.
+
+    The spec says a NUL-terminated description comes before the image. One
+    real file here disagrees: its mime is the three-character "JPG" of
+    ID3v2.2 and there is no description terminator at all, so the JPEG
+    starts immediately. Parsing to the next NUL then lands INSIDE the image
+    and returns a truncated file that still looks like a success.
+
+    So: look for the magic in the first stretch of bytes, and only fall
+    back to the NUL rule when there is none. Same instinct as the frame
+    resync -- a malformed header should cost its own field, not the data.
+    """
+    for magic in (b'\xff\xd8\xff', b'\x89PNG\r\n\x1a\n', b'GIF8', b'BM'):
+        at = rest.find(magic, 0, 256)
+        if at >= 0:
+            return rest[at:]
+    j = rest.find(b'\x00')
+    return rest[j + 1:] if j >= 0 else rest
+
+
+def _sniff_mime(blob):
+    if blob[:2] == b'\xff\xd8':
+        return 'image/jpeg'
+    if blob[:4] == b'\x89PNG':
+        return 'image/png'
+    return 'application/octet-stream'
+
+
 def _riff_chunks_seek(path):
     """`_riff_chunks` without slurping the file -- some of these are 95 MB."""
     out = []

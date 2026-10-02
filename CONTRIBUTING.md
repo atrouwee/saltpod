@@ -224,5 +224,14 @@ the reason written beside it rather than deleting it.
 
 - Anything that regenerates the database rather than patching it.
 - Anything that sorts a collection.
-- Rockbox.
 - A dependency outside the standard library, ffmpeg and ffprobe.
+
+**Rockbox was on this list and is not any more.** The owner reopened it on
+2 October 2026, and with a framing that changes what it means: *"rockbox is
+an adaptor like native ipod software."* Not a fork and not a second
+product -- a TARGET below the boundary, a peer of the Apple firmware, the
+way `platform.py` already picks between afconvert and ffmpeg per operation
+with the caller knowing nothing about it. See `research/ROCKBOX-DELTA.md`.
+
+The original objection still stands against the thing it was aimed at: a
+Rockbox-shaped rewrite of the sync path. It never applied to an adapter.

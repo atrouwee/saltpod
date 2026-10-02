@@ -107,7 +107,7 @@ def convert_to_alac(src, dst):
     agreeing by two tools happening to make the same choice.
 
     `platform.to_alac` prefers /usr/bin/afconvert, which produces identical
-    audio and is 36 MB of homebrew dylibs lighter, and falls back to ffmpeg
+    audio and is 59.5 MB of homebrew dylibs lighter, and falls back to ffmpeg
     off macOS or when afconvert is missing. afconvert carries no metadata at
     all, which is the better starting point: nothing to disagree with.
     """
