@@ -329,6 +329,47 @@ def track_add(root, meta, location):
     return tid
 
 
+def write_db(path, blob):
+    """Write a database to the device and DO NOT RETURN until it is on the
+    disk.
+
+    THIS COST A LIBRARY. Two writes went out on 2 October, each verified
+    by re-reading the file immediately afterwards -- and the re-read
+    passed, because it was served from the page cache. The device was
+    then unplugged without an eject, macOS had flushed only part of the
+    second write, and the iPod showed an empty library: hash58 covers the
+    whole file, so a file that is 94% written fails its own signature as
+    surely as a corrupt one. Sound Check had landed on 619 of 653 tracks
+    instead of 652; the tail never reached the platter.
+
+    A plain `open(...).write(...)` hands bytes to the kernel and returns.
+    That is a promise about memory, not about storage. `fsync` on the file
+    forces the data out; `fsync` on the DIRECTORY forces the metadata that
+    says how long the file now is -- both are needed, and the second is
+    the one people forget.
+
+    An eject is still worth doing, but it is now a courtesy rather than
+    the thing standing between a write and a wiped library.
+    """
+    with open(path, 'wb') as fh:
+        fh.write(blob)
+        fh.flush()
+        os.fsync(fh.fileno())
+    d = os.open(os.path.dirname(path) or '.', os.O_RDONLY)
+    try:
+        os.fsync(d)
+    finally:
+        os.close(d)
+    # Read it back from a fresh descriptor and compare. Cheap against a
+    # 1.1 MB file, and it is the only check that would have caught this.
+    with open(path, 'rb') as fh:
+        back = fh.read()
+    if back != blob:
+        raise IOError('the database on disk is not what was written '
+                      '(%d bytes out of %d)' % (len(back), len(blob)))
+    return len(blob)
+
+
 def size_audit(root, mount):
     """Every track whose `mhit`+0x24 disagrees with the file on the device.
 

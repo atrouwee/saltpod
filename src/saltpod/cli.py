@@ -308,9 +308,10 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("podcasts", help="file episodes as podcasts so the iPod resumes them instead of restarting")
-    p.add_argument("what", choices=["status", "rehearse", "write"], nargs="?", default="status",
+    p.add_argument("what", choices=["status", "rehearse", "write", "group"], nargs="?", default="status",
                    help="status: what declares itself a podcast and what the device thinks; "
-                        "rehearse: do it against a COPY and verify; write: do it for real, after a backup")
+                        "rehearse: do it against a COPY and verify; write: do it for real, after a backup; "
+                        "group: give an existing Podcasts list its show headers")
     p.add_argument("--mount", help="the device, or an iTunesDB file to rehearse against")
     p.add_argument("--json", action="store_true")
 
@@ -456,10 +457,10 @@ def main(argv=None):
             if not H.verify(blob, CFG.load()["firewire_guid"]):
                 fail("the re-signed database does not verify", "nothing written")
             if a.what == "rehearse":
-                open(os.path.join(target, "iTunesDB"), "wb").write(blob)
+                E.write_db(os.path.join(target, "iTunesDB"), blob)
             else:
                 tmp = dbp + ".new"
-                open(tmp, "wb").write(blob)
+                E.write_db(tmp, blob)
                 os.replace(tmp, dbp)
             receipt("tracks linked", "%d, hash58 re-signed and verified" % linked)
         for c in sorted(res["before"]):
@@ -689,7 +690,7 @@ def main(argv=None):
             blob = W.serialise(root, guid)
             if not H.verify(blob, guid):
                 fail("the re-signed database does not verify", "nothing written")
-            open(dbp, "wb").write(blob)
+            E.write_db(dbp, blob)
             back = W.parse(open(dbp, "rb").read())
             have = sum(1 for t in E.tracks(back) if t.get32(0x4C))
             step("wrote %d Sound Check values" % len(plan))
@@ -944,6 +945,51 @@ def main(argv=None):
 
         root = W.parse(open(dbp, "rb").read())
 
+        if a.what == "group":
+            # The menu showed 10 and would not open: a flagged podcast
+            # playlist is rendered SHOW -> EPISODE and ours had no show
+            # headers to build that from.
+            try:
+                g = P.group_episodes(root)
+            except P.PodcastError as e:
+                fail(str(e))
+            if g["already"]:
+                note("already grouped -- %d rows" % g["episodes"]); return 0
+            receipt("shows", "%d  (%s)" % (g["shows"], ", ".join(g["names"])))
+            receipt("episodes", str(g["episodes"]))
+            receipt("rows now", "%d  (one header per show)" % g["rows"], tone="good")
+            # A stray group flag on an ordinary song is the documented
+            # "breaks iPods" case, so it is checked before anything is
+            # written rather than afterwards.
+            stray = sum(1 for sect in E.playlist_sections(root)
+                        for pl in E.playlists(root, sect)
+                        for c in pl.children
+                        if c.magic == b"mhip" and c.get32(P.GROUP_FLAG)
+                        and E.pl_name(pl) != P.PLAYLIST_NAME)
+            if stray:
+                fail("%d group flags landed outside the Podcasts list" % stray,
+                     "nothing written -- this is the documented way to break a device")
+            if as_file:
+                note("that was a file; nothing on the device changed"); return 0
+            from . import apply as A
+            A.backup(mount)
+            guid = CFG.load()["firewire_guid"]
+            blob = W.serialise(root, guid)
+            if not H.verify(blob, guid):
+                fail("the re-signed database does not verify", "nothing written")
+            E.write_db(dbp, blob)
+            back = W.parse(open(dbp, "rb").read())
+            hdrs = sum(1 for sect in E.playlist_sections(back)
+                       for pl in E.playlists(back, sect)
+                       if E.pl_name(pl) == P.PLAYLIST_NAME
+                       for c in pl.children
+                       if c.magic == b"mhip" and c.get32(P.GROUP_FLAG) == P.GROUP_HEADER)
+            step("written and flushed to the disk")
+            receipt("show headers on the device", str(hdrs), tone="good")
+            receipt("hash58", "re-signed and verified", tone="good")
+            note("eject before unplugging: saltpod device eject, or the Finder")
+            return 0
+
         # WHICH TRACKS ARE PODCASTS IS NOT A GUESS. iTunes stamped PCST/WFED
         # into these files when they were subscribed to; the files still
         # carry it. `declares_podcast` reads that, so nothing here infers a
@@ -1004,6 +1050,10 @@ def main(argv=None):
         root2 = W.parse(open(target if a.what == "rehearse" else dbp, "rb").read())
         try:
             res = P.apply(root2, want)
+            # Filing a track as a podcast without giving the list its show
+            # headers produces a menu that counts correctly and will not
+            # open. The two belong in one write.
+            grp = P.group_episodes(root2)
         except P.PodcastError as e:
             fail("refusing to write: " + str(e), "nothing was changed")
 
@@ -1011,7 +1061,7 @@ def main(argv=None):
         blob = W.serialise(root2, guid)
         if not H.verify(blob, guid):
             fail("the re-signed database does not verify", "nothing written")
-        open(target, "wb").write(blob)
+        E.write_db(target, blob)
 
         # Read it back from what was actually written, not from the tree in
         # memory -- the tree is what we believe, the file is what happened.
@@ -1023,6 +1073,7 @@ def main(argv=None):
         receipt("tracks filed as podcasts", str(filed), tone="good")
         receipt("playlist", "%s%s" % (res["playlist"], " (created)" if res["created"] else ""))
         receipt("members", str(res["members"]))
+        receipt("show headers", "%d  (%s)" % (grp["shows"], ", ".join(grp.get("names") or ["already grouped"])))
         receipt("flagged playlists after the write",
                 ", ".join(map(str, again)), tone="warn" if len(again) != 1 else "good")
         receipt("hash58", "re-signed and verified", tone="good")
@@ -1070,7 +1121,7 @@ def main(argv=None):
         blob = W.serialise(root, guid)
         if not H.verify(blob, guid):
             fail("the re-signed database does not verify", "nothing written")
-        open(dbp, "wb").write(blob)
+        E.write_db(dbp, blob)
         # Re-read from the file, not the tree: the tree is what we believe.
         back = W.parse(open(dbp, "rb").read())
         left = E.size_audit(back, mount)

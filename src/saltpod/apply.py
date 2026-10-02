@@ -754,7 +754,16 @@ def _sync(mount=None, eject=True, exclude=None):
     out = W.serialise(root, GUID)
     dbp = os.path.join(mount, DB_REL)
     tmp = dbp + '.saltgate.tmp'
-    open(tmp, 'wb').write(out); os.replace(tmp, dbp)
+    # Durable, then renamed. os.replace is atomic but says nothing about
+    # whether the bytes reached the disk -- see ipod_edit.write_db for the
+    # night that distinction cost a library.
+    E.write_db(tmp, out)
+    os.replace(tmp, dbp)
+    _d = os.open(os.path.dirname(dbp) or '.', os.O_RDONLY)
+    try:
+        os.fsync(_d)
+    finally:
+        os.close(_d)
     back = open(dbp, 'rb').read()
     if back != out or not hash58.verify(back, GUID):
         raise SystemExit('!! database on device does not verify after write - restore from %s' % bdir)

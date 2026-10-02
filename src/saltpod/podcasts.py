@@ -150,6 +150,101 @@ def _flagged_playlists(root):
     return names
 
 
+GROUP_FLAG = 0x10          # mhip: 0x100 marks a show header row
+GROUP_ID = 0x14
+GROUP_REF = 0x20
+GROUP_HEADER = 0x100
+
+
+def show_of(mhit):
+    """Which show an episode belongs to.
+
+    The album field. iTunes puts the podcast's title there and the files
+    still carry it -- all ten episodes here say "Adrian Waterhouse
+    DeepCast" -- so the grouping needs no heuristic any more than the
+    classification did.
+    """
+    return _mhod(mhit, 3) or _mhod(mhit, 4) or 'Podcast'
+
+
+def group_episodes(root, name=PLAYLIST_NAME):
+    """Give the podcast playlist the two-level structure the firmware wants.
+
+    THE MENU SHOWED 10 AND WOULD NOT OPEN. A flagged podcast playlist is
+    not rendered like an ordinary one: the firmware builds SHOW -> EPISODE,
+    and it finds the shows by reading header rows out of the `mhip` list.
+    saltpod wrote ten ordinary rows and no headers, so the count came from
+    the row count and the view had nothing to build from.
+
+    The structure, from research/itunesdb-format.md:
+
+        header mhip   0x10 = 0x100, track id = 0, its own group id,
+                      ONE child mhod of type 1 carrying the show's name
+        episode mhip  0x10 = 0, its own track id, and 0x20 pointing back
+                      at the header's group id
+
+    ordered header-then-its-episodes, so a show and its contents are
+    contiguous.
+
+    The flag is handled carefully on purpose: the format research says a
+    non-zero group flag on an ORDINARY song "breaks iPods", so this only
+    ever writes it on a row it creates itself, never on an episode.
+    """
+    target = None
+    for sect in E.playlist_sections(root):
+        if sect.get32(0x0C) != 3:
+            continue
+        for pl in E.playlists(root, sect):
+            if E.pl_name(pl) == name:
+                target = pl
+    if target is None:
+        raise PodcastError('no %s playlist in the type-3 section' % name)
+
+    by_id = {E.track_id(t): t for t in E.tracks(root)}
+    rows = [c for c in target.children if c.magic == b'mhip']
+    if any(c.get32(GROUP_FLAG) == GROUP_HEADER for c in rows):
+        return {'already': True, 'shows': 0, 'episodes': len(rows)}
+
+    # Keep the owner's order inside each show; shows appear in the order
+    # their first episode does. Sequence is the product here too.
+    order, grouped = [], {}
+    for c in rows:
+        t = by_id.get(c.get32(0x18))
+        sh = show_of(t) if t is not None else 'Podcast'
+        if sh not in grouped:
+            grouped[sh] = []
+            order.append(sh)
+        grouped[sh].append(c)
+
+    template = rows[0]
+    _tid, gid = E._next_ids(root)
+    out = []
+    for sh in order:
+        head = W.Node(b'mhip', bytes(template.hdr))
+        head.set32(0x0C, 1)                 # one child mhod
+        head.set16(GROUP_FLAG, GROUP_HEADER)
+        head.set32(GROUP_ID, gid)
+        head.set32(0x18, 0)                 # a header names a show, not a track
+        head.set32(0x1C, E.mac_now())
+        head.set32(GROUP_REF, 0)
+        if len(head.hdr) > 0x34:
+            head.set64(0x2C, 0)             # track dbid: none, this is not a track
+        head.children = [W.make_string_mhod(1, sh)]
+        out.append(head)
+        for c in grouped[sh]:
+            c.set16(GROUP_FLAG, 0)
+            c.set32(GROUP_REF, gid)
+            out.append(c)
+        gid += 1
+
+    keep = [c for c in target.children if c.magic != b'mhip']
+    target.children = keep + out
+    # The count field counts every mhip, headers included.
+    target.set32(0x10, len(out))
+    return {'already': False, 'shows': len(order), 'episodes': len(rows),
+            'rows': len(out), 'names': order}
+
+
 def apply(root, want_dbids, meta=None):
     """File the given tracks as podcasts. Returns what it did.
 
