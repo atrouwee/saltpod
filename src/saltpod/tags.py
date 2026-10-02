@@ -235,8 +235,7 @@ def write_wav(path, tags):
                            'writing it would drop whatever follows; refusing')
         major = tag[3] if tag[:3] == b'ID3' else None
         if major == 2:
-            raise TagError('ID3v2.2 inside a WAV needs the converter; refusing '
-                           'rather than dropping its frames')
+            frames, major = v22_to_v23(frames), 3  # every frame, or Unconvertible
         if major not in (3, 4):
             raise TagError('id3 chunk is not an ID3v2.3/2.4 tag; refusing')
         blob = _id3_build(_id3_frames_for(tags, frames, major), 1024, major)
@@ -291,6 +290,80 @@ _ID3_YEAR = ('TYER', 'TDRC', 'TDRL')
 _V22 = {'TT2': 'TIT2', 'TP1': 'TPE1', 'TAL': 'TALB', 'TP2': 'TPE2',
         'TCO': 'TCON', 'TYE': 'TYER', 'TRK': 'TRCK', 'PIC': 'APIC',
         'COM': 'COMM', 'TEN': 'TENC', 'TCM': 'TCOM', 'TPA': 'TPOS'}
+
+
+# THE FULL v2.2 -> v2.3 MAP. `_V22` above is the reader's partial map,
+# enough to find the seven managed fields. A converter needs all of it,
+# because a frame that cannot be renamed cannot be carried into v2.3 at
+# all -- a three-character id in a four-character slot is a malformed
+# header, and the first attempt at this wrote exactly that: an 11-frame tag
+# came back as 5 and the cover art was gone. The iTunes-specific ids at the
+# end (TCP compilation, the TS? sort fields) are not in the 2.2 spec but
+# are what iTunes wrote into v2.2 tags.
+_V22_FULL = {
+    'BUF': 'RBUF', 'CNT': 'PCNT', 'COM': 'COMM', 'CRA': 'AENC', 'ETC': 'ETCO',
+    'EQU': 'EQUA', 'GEO': 'GEOB', 'IPL': 'IPLS', 'LNK': 'LINK', 'MCI': 'MCDI',
+    'MLL': 'MLLT', 'PIC': 'APIC', 'POP': 'POPM', 'REV': 'RVRB', 'RVA': 'RVAD',
+    'SLT': 'SYLT', 'STC': 'SYTC', 'TAL': 'TALB', 'TBP': 'TBPM', 'TCM': 'TCOM',
+    'TCO': 'TCON', 'TCR': 'TCOP', 'TDA': 'TDAT', 'TDY': 'TDLY', 'TEN': 'TENC',
+    'TFT': 'TFLT', 'TIM': 'TIME', 'TKE': 'TKEY', 'TLA': 'TLAN', 'TLE': 'TLEN',
+    'TMT': 'TMED', 'TOA': 'TOPE', 'TOF': 'TOFN', 'TOL': 'TOLY', 'TOR': 'TORY',
+    'TOT': 'TOAL', 'TP1': 'TPE1', 'TP2': 'TPE2', 'TP3': 'TPE3', 'TP4': 'TPE4',
+    'TPA': 'TPOS', 'TPB': 'TPUB', 'TRC': 'TSRC', 'TRD': 'TRDA', 'TRK': 'TRCK',
+    'TSI': 'TSIZ', 'TSS': 'TSSE', 'TT1': 'TIT1', 'TT2': 'TIT2', 'TT3': 'TIT3',
+    'TXT': 'TEXT', 'TXX': 'TXXX', 'TYE': 'TYER', 'UFI': 'UFID', 'ULT': 'USLT',
+    'WAF': 'WOAF', 'WAR': 'WOAR', 'WAS': 'WOAS', 'WCM': 'WCOM', 'WCP': 'WCOP',
+    'WPB': 'WPUB', 'WXX': 'WXXX',
+    'TCP': 'TCMP', 'TST': 'TSOT', 'TS2': 'TSO2', 'TSA': 'TSOA', 'TSP': 'TSOP',
+    'TSC': 'TSOC',
+}
+# v2.2 PIC names its image with three letters where v2.3 APIC uses a MIME type.
+_V22_IMG = {'JPG': 'image/jpeg', 'PNG': 'image/png', 'GIF': 'image/gif',
+            'BMP': 'image/bmp'}
+
+
+class Unconvertible(TagError):
+    """A v2.2 tag holds a frame with no v2.3 equivalent."""
+
+
+def _pic_to_apic(p):
+    """v2.2 PIC payload -> v2.3 APIC payload.
+
+    PIC   enc(1) format(3, e.g. "JPG") type(1) description data
+    APIC  enc(1) mime(NUL-terminated)  type(1) description data
+
+    Only the format field changes; the description and the image bytes are
+    carried across untouched, which is the whole point.
+    """
+    if len(p) < 5:
+        raise Unconvertible('PIC frame too short to be a picture')
+    fmt = p[1:4].decode('latin-1', 'replace').upper()
+    mime = _V22_IMG.get(fmt)
+    if not mime:
+        raise Unconvertible('PIC image format %r has no MIME type we know' % fmt)
+    return p[0:1] + mime.encode('latin-1') + b'\x00' + p[4:]
+
+
+def v22_to_v23(frames):
+    """Frames read from a v2.2 tag -> the same frames as v2.3.
+
+    The reader has already renamed some of them through `_V22`; the rest
+    are renamed here. EVERY frame either converts or the whole tag is
+    refused -- a converter that drops the frames it does not understand is
+    what lost the cover art the first time.
+    """
+    out = []
+    for name, payload in frames:
+        name = _V22_FULL.get(name, name)
+        if len(name) != 4 or not _FRAME_ID.match(name.encode('latin-1', 'replace')):
+            raise Unconvertible('ID3v2.2 frame %r has no v2.3 equivalent; '
+                                'refusing rather than dropping it' % name)
+        if name == 'APIC':
+            # The whole tag is v2.2, so every picture in it is PIC-shaped,
+            # whatever the reader renamed it to.
+            payload = _pic_to_apic(payload)
+        out.append((name, payload))
+    return out
 
 
 def _synchsafe(n):
@@ -635,15 +708,14 @@ def write_id3(path, tags, _audio_from=None):
     larger pad and the audio copied across verbatim, which is the same
     fallback the iTunesDB writer has.
     """
-    # v2.2 REFUSED, not converted. Its frame ids are three characters to
-    # v2.3's four, so carrying an unmapped frame across means writing a
-    # malformed header and losing everything after it -- which is exactly
-    # what the first attempt did: an 11-frame tag came back as 5 and the
-    # cover art was gone. 47 of 600 sampled files are v2.2; they wait for a
-    # real converter rather than being quietly emptied.
-    if _id3_major(path) == 2:
-        raise TagError('ID3v2.2 needs a converter that does not exist yet; '
-                       'refusing rather than dropping its frames')
+    # v2.2 IS CONVERTED, to v2.3 -- every frame or none. Its frame ids are
+    # three characters to v2.3's four, so carrying an unmapped frame across
+    # writes a malformed header and loses everything after it: the first
+    # attempt at this kept 5 of an 11-frame tag and lost the cover art, and
+    # 47 of 600 sampled files waited as refusals since. v22_to_v23 renames
+    # every frame through the full map and converts PIC to APIC, or raises
+    # Unconvertible and nothing is written.
+    was_v22 = _id3_major(path) == 2
     with open(path, 'rb') as fh:
         head = fh.read(10)
         old_span = 10 + _unsynchsafe(head[6:10]) if head[:3] == b'ID3' else 0
@@ -659,8 +731,16 @@ def write_id3(path, tags, _audio_from=None):
         raise TagError('this tag has a frame header we cannot parse, so '
                        'writing it would drop whatever follows; refusing')
 
-    new_frames = _id3_frames_for(tags, frames, _id3_major(path) or 3)
+    major = _id3_major(path) or 3
+    if was_v22:
+        frames = v22_to_v23(frames)
+        major = 3
+    new_frames = _id3_frames_for(tags, frames, major)
 
+    # The three builds below must agree on the version, or the exact-fit pad
+    # is computed for one encoding and written in another. They have always
+    # used the default (v2.3) here; that is unchanged, and a converted v2.2
+    # tag lands as v2.3 too.
     bare = len(_id3_build(new_frames, 0))
     if old_span and bare <= old_span:
         blob = _id3_build(new_frames, old_span - bare)      # exact fit, no move
@@ -777,8 +857,7 @@ def write_aiff(path, tags):
     if old and old[1] < ssnd[1]:
         raise TagError('tag chunk precedes the audio; refusing to move it')
     if major == 2:
-        raise TagError('ID3v2.2 inside a FORM chunk needs the converter; '
-                       'refusing rather than dropping its frames')
+        frames, major = v22_to_v23(frames), 3      # every frame, or Unconvertible
 
     new_frames = _id3_frames_for(tags, frames, major)
     bare = len(_id3_build(new_frames, 0, major))
@@ -1651,6 +1730,22 @@ def _riff_walk(path):
     return out
 
 
+def _id3_writable(frames, major, clean):
+    """The one bar every ID3-carrying writer sets: a clean tag in a version
+    we can write, where v2.2 counts only if every frame converts."""
+    if not clean:
+        return False
+    if major in (3, 4):
+        return True
+    if major == 2:
+        try:
+            v22_to_v23(frames)
+            return True
+        except TagError:
+            return False
+    return False
+
+
 def supported(path):
     """Writable *and* safe to write -- the second half is the point.
 
@@ -1674,25 +1769,29 @@ def supported(path):
                     with open(path, 'rb') as fh:
                         fh.seek(d)
                         tag = fh.read(size)
-                    if tag[:3] != b'ID3' or tag[3] not in (3, 4):
+                    if tag[:3] != b'ID3':
                         return False
-                    return bool(_id3_read_tag(tag)[2])
+                    fr, _n, clean = _id3_read_tag(tag)
+                    return _id3_writable(fr, tag[3], clean)
             return True
         if ext == '.mp3':
-            if _id3_major(path) != 3 and _id3_major(path) != 4:
-                return False
-            span = _id3_span(path)
-            if not span:
+            # NO TAG IS FINE: write_id3 starts a fresh one. The first version
+            # tested `major not in (3, 4)` first, which is true of None too,
+            # so the "no tag at all" line below was unreachable and every
+            # untagged MP3 was reported unwritable.
+            major = _id3_major(path)
+            if major is None:
                 return True            # no tag at all: a fresh one is safe
+            span = _id3_span(path)
             with open(path, 'rb') as fh:
-                _fr, _n, clean = _id3_read_tag(fh.read(span))
-            return clean
+                fr, _n, clean = _id3_read_tag(fh.read(span))
+            return _id3_writable(fr, major, clean)
         if ext in ('.aif', '.aiff', '.aifc'):
             chunks = _form_chunks(path)
             if not any(c[0] == b'SSND' for c in chunks):
                 return False
-            _frames, major, old, clean = _aiff_tag(path, chunks)
-            if major == 2 or not clean:
+            frames, major, old, clean = _aiff_tag(path, chunks)
+            if old is not None and not _id3_writable(frames, major, clean):
                 return False
             return old is None or old is chunks[-1]
         if ext == '.flac':

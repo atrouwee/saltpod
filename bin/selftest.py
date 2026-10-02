@@ -900,6 +900,74 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_id3v22_converts():
+    """An ID3v2.2 tag converts to v2.3 keeping every frame and the cover; a
+    frame with no v2.3 equivalent refuses with the file untouched.
+
+    The bar is the one the writer's own comment set after the first attempt
+    failed: "an 11-frame tag came back as 5 and the cover art was gone".
+    So this builds an 11-frame v2.2 tag with a picture and asserts 11 come
+    back. Also checks the untagged MP3, which supported() used to call
+    unwritable through a branch that could never be reached.
+    """
+    import tempfile, hashlib
+    from saltpod import tags as T
+
+    def f22(fid, payload):
+        return fid + len(payload).to_bytes(3, 'big') + payload
+
+    def tag22(frames):
+        body = b''.join(frames); n = len(body)
+        return b'ID3\x02\x00\x00' + bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F,
+                                             (n >> 7) & 0x7F, n & 0x7F]) + body
+
+    def txt(v):
+        return b'\x00' + v.encode('latin-1')
+
+    art = b'\xff\xd8\xff\xe0' + bytes(range(256)) * 6 + b'\xff\xd9'
+    frames = [f22(b'TT2', txt('Old')), f22(b'TP1', txt('A')), f22(b'TAL', txt('B')),
+              f22(b'TCO', txt('House')), f22(b'TYE', txt('2008')), f22(b'TRK', txt('3')),
+              f22(b'TBP', txt('124')), f22(b'TKE', txt('8A')),
+              f22(b'COM', b'\x00eng\x00note'), f22(b'TCP', txt('1')),
+              f22(b'PIC', b'\x00JPG\x03\x00' + art)]
+    audio = (b'\xff\xfb\x90\x64' + bytes(413)) * 20
+    paths = []
+    try:
+        fd, p = tempfile.mkstemp(suffix='.mp3'); paths.append(p)
+        os.write(fd, tag22(frames) + audio); os.close(fd)
+        assert T.supported(p), 'a convertible v2.2 tag should be writable'
+        T.write_id3(p, {'title': 'New', 'artist': 'A', 'album': 'B',
+                        'genre': 'House', 'year': '2008', 'track': '3'})
+        raw = open(p, 'rb').read()
+        span = T._id3_span(p)
+        assert raw[3] == 3, 'should land as v2.3, got v2.%d' % raw[3]
+        fr = T._id3_read_tag(raw[:span])[0]
+        assert len(fr) == 11, '11 frames went in, %d came back' % len(fr)
+        d = dict(fr)
+        assert art in d.get('APIC', b'') and b'image/jpeg' in d['APIC'][:16], 'cover lost or MIME wrong'
+        assert raw[span:] == audio, 'the audio moved'
+        assert T.read(p).get('title') == 'New'
+
+        fd, q = tempfile.mkstemp(suffix='.mp3'); paths.append(q)
+        os.write(fd, tag22(frames[:2] + [f22(b'XYZ', txt('?'))]) + audio); os.close(fd)
+        before = open(q, 'rb').read()
+        assert not T.supported(q), 'an unconvertible frame should make it unwritable'
+        try:
+            T.write_id3(q, {'title': 'x'})
+            raise AssertionError('an unconvertible v2.2 tag was written')
+        except T.TagError:
+            pass
+        assert open(q, 'rb').read() == before, 'a refusal touched the file'
+
+        fd, u = tempfile.mkstemp(suffix='.mp3'); paths.append(u)
+        os.write(fd, audio); os.close(fd)
+        assert T.supported(u), 'an untagged MP3 should be writable'
+        return '11 of 11 frames and the cover; unknown frame refused'
+    finally:
+        for x in paths:
+            os.remove(x)
+
+
 def t_wav_id3_write():
     """A WAV carrying an id3 chunk can be retagged, and nothing else in it
     is lost.
@@ -1138,6 +1206,7 @@ def main():
     check('an unsupervised write refuses and restores', t_guarded_write)
     check('key, tempo, ISRC, label, iTunNORM are read', t_read_extra)
     check('a WAV with an id3 chunk retags, losing nothing', t_wav_id3_write)
+    check('ID3v2.2 converts, every frame or none', t_id3v22_converts)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)
