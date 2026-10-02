@@ -136,7 +136,7 @@ written as ordinary playlists.
 - **`.m3u8` into sync** — the writer is built and wired to real collections
 - **Rebuild the browse indexes** instead of dropping them — measured in
   `research/BROWSE-INDEXES.md`: Apple writes ten sort types (libgpod
-  five); eight reproduce at ~99%, `0x12` needs a secondary key, `0x23` is
+  five); nine reproduce to within 1–17 out-of-order pairs of 480, `0x23` is
   unidentified. Not to ship until all ten match exactly.
 - **Five unreachable shipped modules** — four research one-offs, and
   `itunesdb_patch`, which calls itself "the safest way to write" and
