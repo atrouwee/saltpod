@@ -681,37 +681,43 @@ _TESTS_JS = r'''
   });
 
   // ---------------------------------------------------------------- mark()
-  record('the health strip shows drives, not folders', () => {
+  record('the health strip shows volumes, not sources', () => {
     // A folder on the internal disk cannot be unplugged, so a dot for it is
     // a dot that never changes -- and this strip is read by glancing at
     // what is different. Added when a second source went in and the strip
     // grew a permanent green light.
-    HEALTH.sources = [
-      {name:'Music Drive', path:'/Volumes/Music Drive/Music', online:false, kind:'drive'},
-      {name:'local copies', path:'/home/user/local copies', online:true, kind:'folder'},
+    // TWO SOURCES ON ONE DRIVE IS ONE DRIVE. The server deduplicates to
+    // volumes; this pins that the strip shows one slot, not two, and that
+    // the boot volume never takes a slot at all.
+    HEALTH.volumes = [
+      {name:'Music Drive', path:'/Volumes/Music Drive', online:false,
+       removable:true, sources:2},
+      {name:'this Mac', path:'/', online:true, removable:false, sources:1},
     ];
-    HEALTH.library = {tracks: 4050, reachable: 80};
     paintHealth();
     let html = document.getElementById('hstrip').innerHTML;
     assert(html.includes('Music Drive'), 'the drive lost its slot in the strip');
-    assert(!html.includes('local copies'), 'a folder took a slot it cannot ever change');
+    // one <i> per slot; the strip also carries iPod and Music, so count
+    // only the slots that name this drive
+    const driveSlots = html.split('<i ').slice(1)
+                           .filter(x => x.includes('Music Drive')).length;
+    assert(driveSlots === 1, `one drive carrying two sources took ${driveSlots} slots`);
+    assert(!html.includes('this Mac'), 'the boot volume took a slot it can never change');
     assert(html.includes('offline'), 'an unmounted drive did not read as offline');
-    // the question the drives were standing in for
-    assert(/80 of 4,050 readable/.test(html),
-      'the strip did not say how much of the library can be read: ' + html);
+    assert(/2 sources/.test(html), 'the title did not say how many sources are on the drive');
 
-    // everything reachable: no readable label at all, it would be noise
-    HEALTH.library = {tracks: 4050, reachable: 4050};
-    HEALTH.sources[0].online = true;
-    paintHealth();
+    // the library's reach is NOT health -- it lives with the library
+    assert(!/readable/.test(html),
+      'library reach is in the strip; it belongs with the library pane');
+
+    HEALTH.volumes[0].online = true; paintHealth();
     html = document.getElementById('hstrip').innerHTML;
-    assert(!/readable/.test(html), 'the readable count stayed up when nothing was missing');
     assert(!html.includes('offline'), 'a mounted drive still read as offline');
 
-    // no sources configured at all must not throw
-    HEALTH.sources = []; HEALTH.library = null; paintHealth();
-    HEALTH.sources = []; HEALTH.library = {tracks:0, reachable:0}; paintHealth();
-    return 'drive shown, folder hidden, reach reported';
+    // nothing configured must not throw
+    HEALTH.volumes = []; paintHealth();
+    HEALTH.volumes = null; paintHealth();
+    return 'one slot per removable volume, boot volume hidden';
   });
 
   record('mark() tracks the cursor without touching a MARKed row', () => {
@@ -922,7 +928,7 @@ def _run_all():
     check('pass() honors a real filter-pill click', node_check('pass() honors a real filter-pill click'))
     check('pass() honors a real search input', node_check('pass() honors a real search input'))
     check('mark() tracks the cursor, leaves MARK alone', node_check('mark() tracks the cursor without touching a MARKed row'))
-    check('the strip shows drives, not folders', node_check('the health strip shows drives, not folders'))
+    check('the strip shows volumes, not sources', node_check('the health strip shows volumes, not sources'))
 
     section('tokens (see bin/selftest.py -- not duplicated here)')
     check('no colour/radius/font-size literal outside :root', t_token_census_ref)

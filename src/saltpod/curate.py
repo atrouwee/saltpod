@@ -72,28 +72,70 @@ def _osa(argv, timeout):
     return r
 
 
-def _source_kind(root):
-    """'drive' if this source can be unplugged, 'folder' if it cannot.
+def volume_of(path):
+    """The mount point a source sits on.
 
-    Decided by the device id, not by the path spelling: a source on any
-    volume other than the boot volume can go away, whatever it is called
-    and wherever it is mounted. `/Volumes/...` is only the fallback for a
-    root that is not there to be stat'd -- and an absent path under
-    /Volumes is a drive that is out, which is precisely the case the strip
-    exists to show.
+    A SOURCE IS NOT A DEVICE. Several sources can live on one drive --
+    `/Volumes/X/Music` and `/Volumes/X/Podcasts` are two sources and one
+    thing that gets unplugged -- so status belongs to the volume, and the
+    volume is what has to be found first.
+
+    `/Volumes/<name>` is checked before stat because it is the only form
+    that survives the volume being ABSENT, which is exactly when the
+    answer matters. Otherwise walk up while the device id holds; the point
+    where it changes is the mount point.
     """
+    p = os.path.abspath(os.path.expanduser(path))
+    parts = p.split(os.sep)
+    if len(parts) > 2 and parts[1] == 'Volumes':
+        return os.sep.join(parts[:3])
     try:
-        return 'drive' if os.stat(root).st_dev != os.stat('/').st_dev else 'folder'
+        dev = os.stat(p).st_dev
+        cur = p
+        while cur != os.sep:
+            par = os.path.dirname(cur)
+            if os.stat(par).st_dev != dev:
+                break
+            cur = par
+        else:
+            return os.sep
+        # macOS firmlinks the data volume over the system one; both are the
+        # boot disk and neither can be unplugged.
+        return os.sep if cur.startswith('/System/Volumes/Data') else cur
     except OSError:
-        return 'drive' if root.startswith('/Volumes/') else 'folder'
+        return os.sep
 
 
-def _library_reach():
+def volumes_for(roots):
+    """One entry per VOLUME, with how many sources sit on it.
+
+    `removable` is what earns a slot in the health strip: the boot volume
+    cannot go away, so reporting it as online forever is reporting nothing.
+    """
+    vols = {}
+    for root in roots:
+        mp = volume_of(root)
+        v = vols.get(mp)
+        if v is None:
+            v = vols[mp] = {'name': os.path.basename(mp) or 'this Mac',
+                            'path': mp, 'online': os.path.isdir(mp),
+                            'removable': mp != os.sep, 'sources': 0}
+        v['sources'] += 1
+    return list(vols.values())
+
+
+def library_reach():
     """{'tracks', 'reachable'} -- how much of the library can be read now.
 
-    Cached against the index's mtime like the count above it, because this
-    walks every entry and the strip polls. `resolve` is the same function
-    every verb uses, so the number on screen is the number sync would get.
+    NOT A HEALTH FIGURE. It sat in the strip for one commit, next to the
+    iPod and Music.app, and that was the wrong neighbourhood: the strip is
+    for things outside the application that can go away, and the library
+    IS the application. It belongs with the library's own count, which is
+    where /api/local serves it.
+
+    Cached against the index's mtime, because this walks every entry.
+    `resolve` is the same function every verb uses, so the number on
+    screen is the number sync would get.
     """
     idx = os.path.join(ROOT, 'data', 'local', 'index.json')
     if not os.path.exists(idx):
@@ -154,14 +196,12 @@ def health():
         name = parts[2] if len(parts) > 2 and parts[1] == 'Volumes' else (parts[-1] or root)
         out['sources'].append({'name': name, 'path': root,
                                'online': os.path.isdir(root),
-                               'kind': _source_kind(root)})
-    # WHAT THE STRIP IS ACTUALLY FOR is "can I work right now", and with
-    # sources in more than one place that is no longer the same question as
-    # "is the drive in". A track the drive holds may be readable from a
-    # folder on this disk, so the honest figure is how many of the library's
-    # tracks resolve to a file that exists -- counted here, because working
-    # it out is exactly what a client may not do.
-    out['library'] = _library_reach()
+                               'volume': volume_of(root)})
+    # STATUS BELONGS TO THE VOLUME, not the source. Two folders on one
+    # drive are two sources and one thing that can be unplugged, and the
+    # strip showed that drive twice. The sources list stays for settings,
+    # where the folders themselves are the subject.
+    out['volumes'] = volumes_for(cfg.get('library_roots', []))
     out['tools'] = {'ffmpeg': bool(shutil.which('ffmpeg')), 'ffprobe': bool(shutil.which('ffprobe'))}
     idx = os.path.join(ROOT, 'data', 'local', 'index.json')
     if os.path.exists(idx):
@@ -1987,7 +2027,8 @@ class Handler(BaseHTTPRequestHandler):
                        for g in d['folders']]
             body = {'root': os.path.basename(d['roots'][0]) if d['roots'] else None,
                     'built': d['built'], 'folders': folders,
-                    'total': sum(f['n'] for f in folders)}
+                    'total': sum(f['n'] for f in folders),
+                    'reach': library_reach()}
             if want is not None:
                 body['folder'] = want
                 if want == '__all__':
