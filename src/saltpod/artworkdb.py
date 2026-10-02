@@ -160,9 +160,65 @@ def clone(template, dbid, image_id, offsets):
     return m
 
 
+# THE HEADER ADVERTISES THE NEXT FREE ID, and not bumping it was almost
+# certainly why the first cover came back as the grey placeholder. On this
+# device `mhfd`+0x1C read 364 while an entry we had just added already
+# claimed 364 -- the firmware being told "the next unused id is 364" by a
+# database in which 364 is used. Found by reading the header before
+# ejecting for a second screen test, rather than by the test.
+NEXT_ID = 0x1C
+
+
 def next_image_id(root):
+    """The id to give the next entry.
+
+    Trusts whichever is higher: the header's counter or one past the
+    largest id actually present. The header is authoritative when nothing
+    has gone wrong, and the max is the repair when something has.
+    """
     ids = [m.get32(0x10) for m in images(root).children]
-    return (max(ids) + 1) if ids else 100
+    from_entries = (max(ids) + 1) if ids else 100
+    from_header = root.get32(NEXT_ID) if len(root.hdr) > NEXT_ID + 4 else 0
+    return max(from_entries, from_header)
+
+
+# THE LINK LIVES IN THE TRACK, NOT ONLY IN THE ARTWORK DATABASE, and
+# missing that cost two hardware tests. A correct ArtworkDB entry with a
+# correct dbid is NOT enough: the `mhit` has to point back.
+#
+#   mhit+0xA4   1 = has artwork, 2 = none        (one byte)
+#   mhit+0x160  the ArtworkDB image id           (u32)
+#   mhit+0x80   byte count of the SOURCE cover   (u32, informational)
+#
+# Verified against this device: 0x160 equals the matching ArtworkDB image
+# id on 253 of the 254 tracks that have artwork, and the one exception was
+# the entry we had just written by hand. The field this was first guessed
+# to be, 0x1D, correlates with artwork on 96% of tracks but is not the
+# link -- a near-perfect correlation that is not causation, which is
+# exactly why the first two screen tests showed a placeholder.
+#
+# Offsets confirmed against toofunky/SyncMyPod's TrackRecordBuilder.swift,
+# an independent implementation, and then checked against the real device
+# rather than taken on trust.
+TRACK_HAS_ART = 0xA4
+TRACK_IMAGE_ID = 0x160
+TRACK_SOURCE_BYTES = 0x80
+HAS_ART, NO_ART = 1, 2
+
+
+def link_track(mhit, image_id, source_bytes=None):
+    """Point a track record at its ArtworkDB entry. Returns what changed."""
+    was = (mhit.hdr[TRACK_HAS_ART], mhit.get32(TRACK_IMAGE_ID))
+    mhit.hdr[TRACK_HAS_ART] = HAS_ART
+    mhit.set32(TRACK_IMAGE_ID, image_id)
+    if source_bytes:
+        mhit.set32(TRACK_SOURCE_BYTES, int(source_bytes))
+    return {'has_art': (was[0], HAS_ART), 'image_id': (was[1], image_id)}
+
+
+def unlink_track(mhit):
+    mhit.hdr[TRACK_HAS_ART] = NO_ART
+    mhit.set32(TRACK_IMAGE_ID, 0)
 
 
 def snapshot(artwork_dir, into):
@@ -223,7 +279,7 @@ def add(artwork_dir, entries, db_name='ArtworkDB'):
 
     before = {c: os.path.getsize(os.path.join(artwork_dir, 'F%d_1.ithmb' % c))
               for c in want}
-    added, skipped = [], []
+    added, skipped, assigned = [], [], {}
     handles = {}
     try:
         for dbid, blobs in entries:
@@ -247,7 +303,11 @@ def add(artwork_dir, entries, db_name='ArtworkDB'):
                 fh.seek(0, os.SEEK_END)
                 offsets[corr] = fh.tell()
                 fh.write(blobs[corr])
-            lst.children.append(clone(template, dbid, next_image_id(root), offsets))
+            new_id = next_image_id(root)
+            lst.children.append(clone(template, dbid, new_id, offsets))
+            assigned[dbid] = new_id
+            if len(root.hdr) > NEXT_ID + 4:
+                root.set32(NEXT_ID, new_id + 1)      # the header must move too
             have.add(dbid)
             added.append(dbid)
     finally:
@@ -260,6 +320,7 @@ def add(artwork_dir, entries, db_name='ArtworkDB'):
         with open(tmp, 'wb') as fh:
             fh.write(blob)
         os.replace(tmp, db_path)
-    return {'added': added, 'skipped': skipped, 'before': before,
+    return {'added': added, 'skipped': skipped, 'image_ids': assigned,
+            'before': before,
             'after': {c: os.path.getsize(os.path.join(artwork_dir, 'F%d_1.ithmb' % c))
                       for c in want}}

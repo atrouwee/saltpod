@@ -330,8 +330,9 @@ def main(argv=None):
             import shutil as _sh
             import tempfile as _tf
             work = _tf.mkdtemp(prefix="saltpod-art-rehearse-")
-            step("copying the artwork files so nothing on the device is touched")
+            step("copying the artwork files AND the database so nothing on the device is touched")
             _sh.copy2(os.path.join(adir, "ArtworkDB"), work)
+            _sh.copy2(dbp, work)
             for c in fmts:
                 _sh.copy2(os.path.join(adir, "F%d_1.ithmb" % c), work)
             target, where = work, "the copies"
@@ -364,6 +365,36 @@ def main(argv=None):
                 note("skipped %s - %s: %s" % (str(ar)[:20], str(ti)[:20], e))
         res = ADB.add(target, entries)
         receipt("added", "%d covers to %s" % (len(res["added"]), where))
+
+        # THE LINK LIVES IN THE TRACK, and writing only the ArtworkDB is
+        # exactly half the job -- it cost three hardware tests to learn.
+        # mhit+0xA4 says whether the track has artwork and mhit+0x160 names
+        # the image id; without them the firmware shows its placeholder no
+        # matter how correct the ArtworkDB is.
+        if res["added"]:
+            by_dbid = {}
+            for m in mhits:
+                by_dbid[_st.unpack_from("<Q", m.hdr, 0x70)[0]] = m
+            src_bytes = {d: len(T.art_bytes(p)[1]) for d, p, _a, _t in todo
+                         if T.art_bytes(p)}
+            linked = 0
+            for dbid in res["added"]:
+                m = by_dbid.get(dbid)
+                if not m:
+                    continue
+                ADB.link_track(m, res["image_ids"][dbid], src_bytes.get(dbid))
+                linked += 1
+            blob = W.serialise(root, CFG.load()["firewire_guid"])
+            from . import hash58 as H
+            if not H.verify(blob, CFG.load()["firewire_guid"]):
+                fail("the re-signed database does not verify", "nothing written")
+            if a.what == "rehearse":
+                open(os.path.join(target, "iTunesDB"), "wb").write(blob)
+            else:
+                tmp = dbp + ".new"
+                open(tmp, "wb").write(blob)
+                os.replace(tmp, dbp)
+            receipt("tracks linked", "%d, hash58 re-signed and verified" % linked)
         for c in sorted(res["before"]):
             receipt("F%d_1.ithmb" % c, "%d -> %d bytes" % (res["before"][c], res["after"][c]))
         if res["skipped"]:
