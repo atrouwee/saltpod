@@ -900,6 +900,31 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_sync_merges_plays_first():
+    """Sync reads the Play Counts sidecar BEFORE it replaces the database
+    the sidecar belongs to, and only then removes it.
+
+    The sidecar is positional, so it can only be read correctly against the
+    database it was written with. Sync used to delete it unread whenever the
+    track list changed -- against playcounts.py's own rule -- and every such
+    sync threw away the plays since the last merge. Structural rather than
+    behavioural because exercising a full sync needs a device; what matters
+    is the ORDER, and the order is what this pins.
+    """
+    import inspect
+    from saltpod import apply as A
+    # the body lives in _sync; sync() wraps it in a log span
+    src = inspect.getsource(A._sync)
+    merge = src.find('_PC.merge(')
+    replace = src.find('os.replace(tmp, dbp)')
+    remove = src.find('os.remove(pc)')
+    assert merge > 0, 'sync no longer merges the Play Counts sidecar at all'
+    assert replace > 0 and remove > 0, 'sync changed shape -- re-check this test'
+    assert merge < replace, 'the merge must come before the database is replaced'
+    assert merge < remove, 'the merge must come before the sidecar is removed'
+    return 'merge, then replace, then remove'
+
+
 def t_id3v22_converts():
     """An ID3v2.2 tag converts to v2.3 keeping every frame and the cover; a
     frame with no v2.3 equivalent refuses with the file untouched.
@@ -1207,6 +1232,7 @@ def main():
     check('key, tempo, ISRC, label, iTunNORM are read', t_read_extra)
     check('a WAV with an id3 chunk retags, losing nothing', t_wav_id3_write)
     check('ID3v2.2 converts, every frame or none', t_id3v22_converts)
+    check('sync merges plays before it replaces the database', t_sync_merges_plays_first)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

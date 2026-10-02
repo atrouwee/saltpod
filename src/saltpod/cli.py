@@ -371,9 +371,18 @@ def main(argv=None):
 
         todo = []
         import struct as _st
+        # WHAT "ALREADY HAS A COVER" MEANS. The link from a track to its cover
+        # is 0xA4 == 1 with an image id at 0x160 -- not the track's dbid
+        # appearing in the ArtworkDB. Tracks that share an album's cover point
+        # at that one image and never appear there by dbid, so checking the
+        # dbid alone treated them as coverless and wrote a SECOND copy: the
+        # taxonomy sweep found 215 covers duplicated this way. Both tests now.
+        image_ids = {c.get32(0x10) for c in ADB.images(adb).children if c.magic == b"mhii"}
         for m in mhits:
             dbid = _st.unpack_from("<Q", m.hdr, 0x70)[0]
             if dbid in have:
+                continue
+            if m.hdr[0xA4] == ADB.HAS_ART and m.get32(ADB.TRACK_IMAGE_ID) in image_ids:
                 continue
             e = idx.get(S.key_for(mstr(m, 4), mstr(m, 1)))
             if e and e.get("has_art") and os.path.exists(e["path"]):

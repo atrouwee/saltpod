@@ -587,8 +587,20 @@ def print_plan(p):
 # ----------------------------------------------------------------- sync
 
 def backup(mount):
+    """iPod_Control/iTunes, plus the ArtworkDB index.
+
+    The ArtworkDB is the other half of every cover link -- a track's 0x160
+    names an image id that only means something against it -- and a backup
+    of the iTunesDB without it restores links to images that may not exist.
+    It is 370 KB. The .ithmb image files are 113 MB and append-only, so they
+    are left out: artworkdb.snapshot records their lengths, which is enough
+    to undo an add by truncating.
+    """
     d = os.path.join(ROOT, 'backups', 'ipod-%s' % time.strftime('%Y-%m-%d-%H%M%S'))
     shutil.copytree(os.path.join(mount, 'iPod_Control', 'iTunes'), d)
+    adb = os.path.join(mount, 'iPod_Control', 'Artwork', 'ArtworkDB')
+    if os.path.exists(adb):
+        shutil.copy2(adb, os.path.join(d, 'ArtworkDB'))
     return d
 
 
@@ -753,6 +765,23 @@ def _sync(mount=None, eject=True, exclude=None):
     print('## write')
     out = W.serialise(root, GUID)
     dbp = os.path.join(mount, DB_REL)
+    # MERGE THE PLAYS BEFORE THE DATABASE THEY BELONG TO IS REPLACED. The
+    # Play Counts sidecar is positional -- entry i belongs to the i-th track
+    # of the database it was written against -- so the only moment it can be
+    # read correctly is now, while that database is still on disk. Sync used
+    # to delete it a few lines below without reading it at all, against
+    # playcounts.py's own rule, and every sync that changed the track list
+    # threw away whatever had been played since the last merge. Found by the
+    # taxonomy sweep; 9 plays were sitting unmerged when it ran.
+    pc = os.path.join(mount, 'iPod_Control', 'iTunes', 'Play Counts')
+    if os.path.exists(pc):
+        from . import playcounts as _PC
+        try:
+            got = _PC.merge(st, _PC.read(pc, dbp), _PC.fingerprint(pc))
+            print('  play counts: %s' % (got.get('skipped') or
+                  '%d plays merged before the database was replaced' % got.get('added', 0)))
+        except Exception as e:
+            print('  !! play counts NOT merged (%s); the sidecar is in %s' % (e, bdir))
     tmp = dbp + '.saltgate.tmp'
     # Durable, then renamed. os.replace is atomic but says nothing about
     # whether the bytes reached the disk -- see ipod_edit.write_db for the
@@ -767,10 +796,13 @@ def _sync(mount=None, eject=True, exclude=None):
     back = open(dbp, 'rb').read()
     if back != out or not hash58.verify(back, GUID):
         raise SystemExit('!! database on device does not verify after write - restore from %s' % bdir)
-    if changed_tracks:
-        pc = os.path.join(mount, 'iPod_Control', 'iTunes', 'Play Counts')
-        if os.path.exists(pc):
-            os.remove(pc)
+    if changed_tracks and os.path.exists(pc):
+        # Safe now: its plays were merged above (or it was already counted),
+        # and the file itself is in the backup. It is removed because it is
+        # positional and the track list just changed under it -- left in
+        # place it would describe the wrong tracks to anything that read it
+        # before the iPod rebuilt it.
+        os.remove(pc)
     # RECORD THE ANCESTOR. What we just wrote, and the mtime of the file we
     # wrote it from -- the two things that make the next plan able to say
     # which side moved rather than only that they differ. Both are free.
