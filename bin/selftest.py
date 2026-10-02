@@ -900,6 +900,74 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_wav_id3_write():
+    """A WAV carrying an id3 chunk can be retagged, and nothing else in it
+    is lost.
+
+    368 of 724 WAVs here carry an id3 chunk, and the writer refused all of
+    them. It also, when it did write, stripped every INFO entry it did not
+    manage (comments, copyright, and NITR on 11 files) and every LIST chunk
+    whatever it held, including `adtl` cue labels. This builds a WAV with
+    all of those hazards in it -- artwork, a BPM frame, a comment, NITR, a
+    cue label -- retags it twice, and checks every one survives.
+    """
+    import struct, tempfile, hashlib
+    from saltpod import tags as T
+
+    def chunk(cid, body):
+        return cid + struct.pack('<I', len(body)) + body + (b'\x00' if len(body) & 1 else b'')
+
+    def info(entries):
+        body = b'INFO'
+        for cid, v in entries:
+            raw = v + b'\x00'
+            if len(raw) & 1:
+                raw += b'\x00'
+            body += cid + struct.pack('<I', len(raw)) + raw
+        return chunk(b'LIST', body)
+
+    def fr(fid, payload):
+        return fid + struct.pack('>I', len(payload)) + b'\x00\x00' + payload
+
+    art = b'\xff\xd8\xff\xe0' + bytes(range(256)) * 8 + b'\xff\xd9'
+    frames = (fr(b'TIT2', b'\x00Old') + fr(b'TBPM', b'\x00124')
+              + fr(b'APIC', b'\x00image/jpeg\x00\x03\x00' + art))
+    n = len(frames)
+    tag = b'ID3\x03\x00\x00' + bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F]) + frames
+    audio = bytes(range(256)) * 64
+    body = (chunk(b'fmt ', struct.pack('<HHIIHH', 1, 2, 44100, 176400, 4, 16))
+            + chunk(b'data', audio)
+            + info([(b'INAM', b'Old'), (b'ICMT', b'mixed live'), (b'NITR', b'traktor')])
+            + chunk(b'LIST', b'adtl' + chunk(b'labl', struct.pack('<I', 1) + b'Drop\x00'))
+            + chunk(b'id3 ', tag))
+    fd, path = tempfile.mkstemp(suffix='.wav')
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(b'RIFF' + struct.pack('<I', 4 + len(body)) + b'WAVE' + body)
+        assert T.supported(path), 'a clean id3-carrying WAV should now be writable'
+        for title in ('New', 'Third'):
+            T.write_wav(path, {'title': title})
+            b = open(path, 'rb').read()
+            ch = T._riff_chunks(b)
+            assert struct.unpack('<I', b[4:8])[0] == len(b) - 8, 'RIFF size wrong'
+            data = [b[d:d + sz] for c, h, d, sz in ch if c == b'data'][0]
+            assert data == audio, 'the audio moved or changed'
+            id3c = [b[d:d + sz] for c, h, d, sz in ch if c == b'id3 '][0]
+            f = dict(T._id3_read_tag(id3c)[0])
+            assert art in f.get('APIC', b''), 'artwork was lost'
+            assert T._id3_text(f.get('TBPM', b'')) == '124', 'an unmanaged frame was lost'
+            infos = [b[d + 4:d + sz] for c, h, d, sz in ch if c == b'LIST' and b[d:d + 4] == b'INFO']
+            e = dict(T._info_parse(infos[0]))
+            assert e.get(b'ICMT', b'').rstrip(b'\x00') == b'mixed live', 'INFO comment lost'
+            assert e.get(b'NITR', b'').rstrip(b'\x00') == b'traktor', 'NITR lost'
+            assert any(c == b'LIST' and b[d:d + 4] == b'adtl' for c, h, d, sz in ch), 'cue labels lost'
+            assert T.read_wav(path).get('title') == title, 'did not read back'
+            assert e.get(b'INAM', b'').rstrip(b'\x00').decode() == title, 'INFO and ID3 disagree'
+        return 'artwork, BPM, comment, NITR, cue labels all kept; twice'
+    finally:
+        os.remove(path)
+
+
 def t_read_extra():
     """Key, tempo, ISRC, label and iTunNORM are read -- including the forms
     DJ software uses -- and the writers' FIELDS are untouched by it.
@@ -1069,6 +1137,7 @@ def main():
     check('two roots, one track; one root, two files', t_fold_copies_respects_roots)
     check('an unsupervised write refuses and restores', t_guarded_write)
     check('key, tempo, ISRC, label, iTunNORM are read', t_read_extra)
+    check('a WAV with an id3 chunk retags, losing nothing', t_wav_id3_write)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

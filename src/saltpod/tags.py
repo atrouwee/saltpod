@@ -71,8 +71,27 @@ def _riff_chunks(b):
     return out
 
 
-def _info_chunk(tags):
-    """A LIST/INFO chunk carrying the non-empty tags, word-aligned."""
+def _info_parse(body):
+    """[(id, raw)] out of a LIST/INFO body, i.e. what follows `INFO`."""
+    out, o = [], 0
+    while o + 8 <= len(body):
+        cid = body[o:o + 4]
+        size = struct.unpack('<I', body[o + 4:o + 8])[0]
+        out.append((cid, body[o + 8:o + 8 + size]))
+        o += 8 + size + (size & 1)
+    return out
+
+
+def _info_chunk(tags, carry=()):
+    """A LIST/INFO chunk carrying the non-empty tags, word-aligned.
+
+    `carry` is the old chunk's entries. Anything this module does not manage
+    is written back byte for byte. The first version rebuilt INFO from the
+    seven managed fields alone, so a retag silently stripped every comment,
+    copyright, engineer and software entry -- and NITR, which 11 WAVs here
+    carry and which is almost certainly a DJ application's own data. The
+    ID3 writer was built specifically never to do that; INFO now matches.
+    """
     body = b'INFO'
     for name in FIELDS:
         v = (tags.get(name) or '').strip()
@@ -82,6 +101,13 @@ def _info_chunk(tags):
         if len(raw) & 1:
             raw += b'\0'
         body += _INFO[name] + struct.pack('<I', len(raw)) + raw
+    managed = set(_INFO.values())
+    for cid, raw in carry:
+        if cid in managed:
+            continue
+        body += cid + struct.pack('<I', len(raw)) + raw
+        if len(raw) & 1:
+            body += b'\0'
     if body == b'INFO':
         return b''                           # nothing to say: write no chunk
     if len(body) & 1:
@@ -158,12 +184,26 @@ def _wav_id3(path):
 
 
 def write_wav(path, tags):
-    """Replace the tag chunks. Every other chunk keeps its bytes and offset.
+    """Replace the tag chunks. Every other chunk keeps its bytes.
 
     Tag chunks live after `data` in every file measured, so the rebuild is
     just: keep everything that is not ours, then append ours. If a tag chunk
     were to sit BEFORE the audio, dropping it would slide the audio down the
     file -- so that case refuses rather than risking it.
+
+    OURS MEANS LIST/INFO AND THE ID3 CHUNK, NOTHING ELSE. A LIST chunk is
+    not always tags -- `adtl` carries cue-point labels, which DJ software
+    writes -- and the first version dropped every LIST it saw. None of the
+    724 WAVs here has one, but a tool other people run cannot assume that.
+
+    THE ID3 CHUNK IS REWRITTEN NOW, not refused. 368 of 724 WAVs here carry
+    one (226 `id3 `, 142 `ID3 `), and on 138 it is the only place the artist
+    and title live. The refusal said "the ID3v2 writer is not built yet"; it
+    was, and the AIFF writer already used it to rebuild an ID3 chunk inside
+    a container. The same `_id3_frames_for` keeps every frame it does not
+    manage -- artwork above all -- and keeps the bytes of any managed field
+    whose value did not change. Both tag stores are written from the same
+    values, so INFO and ID3 cannot disagree afterwards.
     """
     with open(path, 'rb') as fh:
         b = fh.read()
@@ -171,19 +211,46 @@ def write_wav(path, tags):
     if not any(c[0] == b'data' for c in chunks):
         raise TagError('no data chunk')
     data_at = next(c for c in chunks if c[0] == b'data')[1]
-    for cid, h, _d, _s in chunks:
-        if cid in _WAV_TAG_CHUNKS and h < data_at:
-            raise TagError('tag chunk precedes the audio; refusing to move it')
-        if cid in _ID3_CHUNKS:
-            raise TagError('this WAV carries an id3 chunk and the ID3v2 writer '
-                           'is not built yet; refusing rather than dropping it')
+
+    def is_info(cid, d):
+        return cid == b'LIST' and b[d:d + 4] == b'INFO'
+
+    carry, id3_old = [], None
+    for cid, h, d, size in chunks:
+        if is_info(cid, d) or cid in _ID3_CHUNKS:
+            if h < data_at:
+                raise TagError('tag chunk precedes the audio; refusing to move it')
+        if is_info(cid, d):
+            carry += _info_parse(b[d + 4:d + size])
+        elif cid in _ID3_CHUNKS and id3_old is None:
+            id3_old = (cid, d, size)
+
+    new_id3 = b''
+    if id3_old:
+        cid, d, size = id3_old
+        tag = b[d:d + size]
+        frames, _n, clean = _id3_read_tag(tag)
+        if not clean:
+            raise TagError('this id3 chunk has a frame header we cannot parse, so '
+                           'writing it would drop whatever follows; refusing')
+        major = tag[3] if tag[:3] == b'ID3' else None
+        if major == 2:
+            raise TagError('ID3v2.2 inside a WAV needs the converter; refusing '
+                           'rather than dropping its frames')
+        if major not in (3, 4):
+            raise TagError('id3 chunk is not an ID3v2.3/2.4 tag; refusing')
+        blob = _id3_build(_id3_frames_for(tags, frames, major), 1024, major)
+        if len(blob) & 1:
+            blob += b'\x00'
+        new_id3 = cid + struct.pack('<I', len(blob)) + blob
 
     keep = bytearray(b[:12])
-    for cid, h, _d, size in chunks:
-        if cid in _WAV_TAG_CHUNKS:
+    for cid, h, d, size in chunks:
+        if is_info(cid, d) or cid in _ID3_CHUNKS:
             continue
         keep += b[h:h + 8 + size + (size & 1)]
-    keep += _info_chunk(tags)
+    keep += _info_chunk(tags, carry)
+    keep += new_id3
     struct.pack_into('<I', keep, 4, len(keep) - 8)      # RIFF size field
 
     _replace(path, bytes(keep))
@@ -1598,7 +1665,19 @@ def supported(path):
         return False
     try:
         if ext == '.wav':
-            return not any(c in _ID3_CHUNKS for c in _riff_walk(path))
+            if not any(c in _ID3_CHUNKS for c in _riff_walk(path)):
+                return True
+            # Writable when the id3 chunk is a clean v2.3/2.4 tag -- the
+            # same bar the MP3 and AIFF writers set.
+            for cid, _h, d, size in _riff_chunks_seek(path):
+                if cid in _ID3_CHUNKS:
+                    with open(path, 'rb') as fh:
+                        fh.seek(d)
+                        tag = fh.read(size)
+                    if tag[:3] != b'ID3' or tag[3] not in (3, 4):
+                        return False
+                    return bool(_id3_read_tag(tag)[2])
+            return True
         if ext == '.mp3':
             if _id3_major(path) != 3 and _id3_major(path) != 4:
                 return False
