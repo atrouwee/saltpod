@@ -122,7 +122,39 @@ def read_wav(path):
                 if k in _INFO_BACK:
                     out[_INFO_BACK[k]] = _genre_norm(v) if _INFO_BACK[k] == 'genre' else v
                 o += 8 + n + (n & 1)
+    # THE ID3 CHUNK WINS where both exist, because ffprobe prefers it and
+    # the whole point of this reader is to agree with what reaches the
+    # device. Only fields the chunk actually supplies override; a LIST/INFO
+    # value the id3 chunk is silent about is kept.
+    for k, v in _wav_id3(path).items():
+        if v:
+            out[k] = v
     return out
+
+
+def _wav_id3(path):
+    """The fields in a WAV's `id3 ` chunk, or {}.
+
+    A WAV CAN CARRY BOTH and half of them here do. 368 of 724 WAVs on this
+    drive have an `id3 ` chunk alongside (or instead of) their LIST/INFO,
+    and on 138 of them the id3 chunk is the ONLY place the artist and title
+    live -- `read_wav` returned nothing for those, so the editor showed
+    blank fields for a file that is fully tagged.
+
+    ffprobe reads the id3 chunk, which is why the drive index had those
+    tags all along and nobody noticed our own reader did not. Found by the
+    metadata census, not by anything going wrong.
+    """
+    try:
+        for cid, _h, d, size in _riff_chunks_seek(path):
+            if cid in _ID3_CHUNKS:
+                with open(path, 'rb') as fh:
+                    fh.seek(d)
+                    frames, _n, _clean = _id3_read_tag(fh.read(size))
+                return _id3_fields(frames)
+    except Exception:
+        pass
+    return {}
 
 
 def write_wav(path, tags):

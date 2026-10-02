@@ -841,7 +841,11 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 
   <aside class="right" id="right" aria-label="Buy and vinyl">
     <div class="plabel"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span></div>
-    <div class="pbody" id="rbody" role="listbox" aria-label="Buy and vinyl tracks"></div>
+    <!-- role="list", not listbox: these cards are things with a menu, not
+         options you choose one of. A listbox holding zero role=option
+         descendants reads as EMPTY to a screen reader however many cards
+         are visibly in it, which is what bin/pagetest.py caught. -->
+    <div class="pbody" id="rbody" role="list" aria-label="Buy and vinyl tracks"></div>
     <div class="substat pstat" id="rstat"></div>
   </aside>
 
@@ -1844,9 +1848,17 @@ function colRow(o){
   // checkboxes, and ".out" is the unticked state. Both states read the ONE
   // class string the caller already built, never a second fact; that is the
   // same rule aria-selected follows above.
+  // AN ARIA CHECKBOX TAKES ITS NAME FROM THE AUTHOR, and that is the whole
+  // difference from `option`. `option` falls back to its subtree text, so a
+  // row announces itself; `checkbox` has nameFrom:author and does NOT, so
+  // without an explicit label a screen reader says "checkbox, not checked"
+  // and never says WHICH TRACK. Introduced here this morning along with the
+  // checkbox role itself, and caught by bin/pagetest.py's first run.
+  const label = String(o.name||'').replace(/<[^>]*>/g,'').trim();
   const role = o.role === null ? ''
     : o.role === 'checkbox'
       ? ` role="checkbox" aria-checked="${!/(^|\s)out(\s|$)/.test(o.cls||'')}"`
+        + (label ? ` aria-label="${label}"` : '')
       : ` role="${o.role||'option'}" aria-selected="${picked}"`;
   const moreAttrs = o.menu
     ? ' role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions"'
@@ -1951,7 +1963,7 @@ function drawRight(){
     const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
     $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> synced`;
     let h='';
-    const dots=t=>`<span class="more" data-card="${esc(t.key)}" title="more">&#8943;</span>`;
+    const dots=t=>`<span class="more" data-card="${esc(t.key)}" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span>`;
     // Identity, price and a lossless source are looked up when a track joins
     // this list -- not for the whole library in advance. This says where that
     // got to, per track, so a blank price reads as "not asked yet" rather than
@@ -1964,10 +1976,10 @@ function drawRight(){
       return `<div class="look"><span class="go" data-look="${esc(t.key)}">look it up</span></div>`;
     };
     if(ready.length) h+=`<div class="month vg">bought · ready for the next sync · ${ready.length}</div>`
-      + ready.map(t=>`<div class="card">${dots(t)}<b>${esc(t.artist)} — ${esc(t.title)}</b>
+      + ready.map(t=>`<div class="card" role="listitem">${dots(t)}<b>${esc(t.artist)} — ${esc(t.title)}</b>
         <div class="sub">a file is on your drive${t.lossless?', lossless':''} · goes on with the next sync${t.collections.length?' · in '+esc(t.collections.join(', ')):' · <span style="color:var(--orange)">not in any playlist yet</span>'}</div></div>`).join('')
       + `<div class="month vg">still to buy · ${todo.length} · ${flac} confirmed FLAC</div>`;
-    h+= todo.length ? todo.map(t=>`<div class="card">${dots(t)}
+    h+= todo.length ? todo.map(t=>`<div class="card" role="listitem">${dots(t)}
         <b>${esc(t.artist)} — ${esc(t.title)}</b>
         <div class="sub">${esc(t.album||'')} · ${mmss(t.seconds)} · ${t.playlists.map(MONTH).join(', ')}</div>
         <div class="acts">
@@ -2006,7 +2018,7 @@ function drawRight(){
     const W=(DISCOGS.wantlist||[]).slice().sort((a,b)=>(b.added||'').localeCompare(a.added||''));
     const C=(DISCOGS.collection||[]).slice().sort((a,b)=>norm(a.artist).localeCompare(norm(b.artist))||a.title.localeCompare(b.title));
     $('#rstat').innerHTML=`<s>${toAdd.length}</s> to add · <s>${W.length}</s> wanted · <s>${C.length}</s> owned`;
-    const rel=x=>`<div class="card"><b>${esc(x.artist)} — ${esc(x.title)}</b>
+    const rel=x=>`<div class="card" role="listitem"><b>${esc(x.artist)} — ${esc(x.title)}</b>
         <div class="sub">${[x.label,x.format,x.year!=='0'&&x.year].filter(Boolean).map(esc).join(' · ')}</div>
         <div class="acts"><a href="https://www.discogs.com/release/${encodeURIComponent(x.release_id)}" target="_blank">Discogs</a>
           ${fkeys.has(x.key)?'<span class="tag vinyl">flagged</span>':''}
@@ -2015,7 +2027,7 @@ function drawRight(){
     const where=`<code>${esc(DISCOGS.dir||'data/discogs')}/</code>`;
     let h='';
     h+=grp('add','To add on Discogs',toAdd.length, toAdd.length
-      ? toAdd.map(f=>`<div class="card"><b>${esc(f.name)}</b><span class="more" data-vrel="${esc(f.name)}" title="more">&#8943;</span><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
+      ? toAdd.map(f=>`<div class="card" role="listitem"><b>${esc(f.name)}</b><span class="more" data-vrel="${esc(f.name)}" title="more">&#8943;</span><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
           <div class="acts"><a href="https://www.discogs.com/search/?q=${encodeURIComponent(f.name.replace(' — ',' '))}&type=release" target="_blank">Search Discogs</a></div></div>`).join('')
       : flagged.length ? '<p class="note">Everything flagged is already wanted or owned.</p>'
       : '<p class="note">Nothing flagged. Drag a track here, or press <kbd>v</kbd> on one.</p>');
