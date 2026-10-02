@@ -322,6 +322,10 @@ def main(argv=None):
     p.add_argument("--mount")
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("otg", help="playlists made on the iPod itself: see them, and keep them as collections")
+    p.add_argument("what", choices=["show", "adopt"], nargs="?", default="show")
+    p.add_argument("--mount")
+
     p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
     p.add_argument("-n", type=int, default=25, help="how many recent events (default 25)")
     p.add_argument("--level", choices=["debug", "info", "warn", "error"],
@@ -1173,6 +1177,33 @@ def main(argv=None):
         receipt("still disagreeing", str(len(left)), tone="good" if not left else "warn")
         receipt("hash58", "re-signed and verified", tone="good")
         return 0 if not left else 1
+
+    if a.cmd == "otg":
+        from . import otg as OTG, config as CFG, state as S
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        dbp = os.path.join(mount, "iPod_Control", "iTunes", "iTunesDB")
+        if not os.path.exists(dbp):
+            fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+        files = OTG.find(mount)
+        if not files:
+            note("no On-The-Go playlists on the device"); return 0
+        for f in files:
+            try:
+                rows = OTG.read(f, dbp)
+            except OTG.OTGError as e:
+                note("%s: %s" % (os.path.basename(f), e)); continue
+            receipt(os.path.basename(f), "%d tracks" % len(rows))
+            for r in rows[:8]:
+                print("   %-30s %s" % ((r["artist"] or "")[:30], (r["title"] or "")[:40]))
+        if a.what == "adopt":
+            st = S.load()
+            made = OTG.adopt(st, mount, dbp)
+            S.save(st)
+            for name, n in made:
+                receipt("kept as", "%s  (%d tracks)" % (name, n), tone="good")
+            if not made:
+                note("already kept -- nothing new")
+        return 0
 
     if a.cmd == "log":
         import json as _json

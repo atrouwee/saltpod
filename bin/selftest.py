@@ -900,6 +900,54 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_otg():
+    """On-The-Go playlists made on the device are read positionally against
+    the database they belong to, kept as a collection once, and refused
+    when they name a track that does not exist.
+
+    Builds its own files on a fake mount made from a backup; there is no
+    On-The-Go list on the owner's iPod to test against.
+    """
+    import glob, shutil, struct, tempfile
+    from saltpod import otg as O, itunesdb as I
+    src = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-*', 'iTunesDB')))
+    if not src:
+        return ('skip', 'no backup to build a fake mount from')
+    m = tempfile.mkdtemp(prefix='fakepod-')
+    try:
+        d = os.path.join(m, 'iPod_Control', 'iTunes')
+        os.makedirs(d)
+        db = os.path.join(d, 'iTunesDB')
+        shutil.copy2(src[-1], db)
+        tracks = I.read(db)['tracks']
+        picks = [3, 0, 7]
+        O.write_file(os.path.join(d, 'OTGPlaylistInfo'), picks)
+        rows = O.read(os.path.join(d, 'OTGPlaylistInfo'), db)
+        assert [r['title'] for r in rows] == [tracks[i].get('title') for i in picks], \
+            'entries were not paired by position, in order'
+        st = {'tracks': {}, 'collections': []}
+        made = O.adopt(st, m, db)
+        assert len(made) == 1 and made[0][1] == 3, 'not kept as one 3-track collection'
+        assert O.adopt(st, m, db) == [], 'the same file was imported twice'
+        name = made[0][0]
+        assert len(st['collection_order'][name]) == 3, 'the order was not kept'
+        # a big-endian file reads the same
+        rev = os.path.join(d, 'OTGPlaylistInfo_1')
+        with open(rev, 'wb') as fh:
+            fh.write(b'opmh' + struct.pack('>IIII', 0x14, 4, 1, 0) + struct.pack('>I', 5))
+        assert [r['index'] for r in O.read(rev, db)] == [5], 'byte-reversed file misread'
+        # an index past the end means the file belongs to another database
+        O.write_file(rev, [len(tracks) + 10])
+        try:
+            O.read(rev, db)
+            raise AssertionError('an index past the end was accepted')
+        except O.OTGError:
+            pass
+        return '3 tracks by position, kept once, reversed read, bad index refused'
+    finally:
+        shutil.rmtree(m, ignore_errors=True)
+
+
 def t_track_add_identity():
     """A track added to the device gets its own identity, not its template's.
 
@@ -1274,6 +1322,7 @@ def main():
     check('ID3v2.2 converts, every frame or none', t_id3v22_converts)
     check('sync merges plays before it replaces the database', t_sync_merges_plays_first)
     check('an added track gets its own identity', t_track_add_identity)
+    check('on-the-go lists are kept, by position', t_otg)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

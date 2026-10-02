@@ -786,6 +786,21 @@ def _sync(mount=None, eject=True, exclude=None):
                   '%d plays merged before the database was replaced' % got.get('added', 0)))
         except Exception as e:
             print('  !! play counts NOT merged (%s); the sidecar is in %s' % (e, bdir))
+    # ON-THE-GO LISTS, for the same reason and at the same moment: each entry
+    # is a position in the database being replaced. Read now, kept as
+    # collections, and only then removed -- as libgpod does after a write
+    # (itdb_itunesdb.c:7074-7088). Not reading them used to leave the
+    # owner's own click-wheel playlists naming the wrong songs, or gone.
+    from . import otg as _OTG
+    otg_files = _OTG.find(mount)
+    otg_ok = True
+    if otg_files:
+        try:
+            for name, n in _OTG.adopt(st, mount, dbp):
+                print('  on-the-go: kept as collection %r (%d tracks)' % (name, n))
+        except Exception as e:
+            otg_ok = False
+            print('  !! on-the-go lists NOT read (%s); they are left on the device' % e)
     tmp = dbp + '.saltgate.tmp'
     # Durable, then renamed. os.replace is atomic but says nothing about
     # whether the bytes reached the disk -- see ipod_edit.write_db for the
@@ -807,6 +822,11 @@ def _sync(mount=None, eject=True, exclude=None):
         # place it would describe the wrong tracks to anything that read it
         # before the iPod rebuilt it.
         os.remove(pc)
+    if changed_tracks and otg_ok:
+        # Read and kept above; positional, so left in place they would name
+        # the wrong songs against the database just written.
+        for f in otg_files:
+            os.remove(f)
     # RECORD THE ANCESTOR. What we just wrote, and the mtime of the file we
     # wrote it from -- the two things that make the next plan able to say
     # which side moved rather than only that they differ. Both are free.
