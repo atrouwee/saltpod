@@ -21,6 +21,7 @@ in a temp directory; device tests read and never write.
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -226,6 +227,62 @@ def t_tag_matches_ffprobe():
                 assert a == b, ('%s %s: ours %r, ffprobe %r'
                                 % (os.path.basename(path)[:40], field, a, b))
     return '%d files agree with ffprobe on all seven fields' % checked
+
+
+def t_bad_frame_keeps_art():
+    """A WRONG FRAME SIZE MUST NOT COST THE ARTWORK, and must block the write.
+
+    Built here rather than pointed at a file, so it keeps testing after the
+    library changes. Two real files on this drive declare a frame one byte
+    longer than it is; the walk then lands mid-header and used to stop,
+    returning 2 frames of an 11-frame tag. `read` still got its text and
+    looked fine -- but `write` carries forward exactly those frames, so
+    saving an edit would have dropped 870 KB of cover art on one of them.
+    ffprobe does not see that picture either; our resynchronising walk does.
+    """
+    from saltpod import tags as T
+    # A REAL APIC OFF THE DRIVE, not a synthetic one. The first version of
+    # this test invented an image body of repeated "JUNK" -- and the resync
+    # locked onto those four bytes as a frame id, which a real JPEG would
+    # have exposed differently. Real cover art IS the adversary here: it is
+    # megabytes of arbitrary bytes, some of which spell plausible ids.
+    src = _a_file('.mp3', with_art=True)
+    if not src:
+        return None
+    frames, _n, _clean = T._id3_read_tag(open(src, 'rb').read(T._id3_span(src)))
+    apic = next((pl for f, pl in (frames or []) if f == 'APIC'), None)
+    if not apic:
+        return None
+    good = [('TPE1', T._id3_encode('Someone')), ('APIC', apic)]
+    blob = bytearray(T._id3_build(good, 64, 3))
+    # corrupt the FIRST frame's size by one, the way the real files are
+    at = blob.index(b'TPE1') + 4
+    size = struct.unpack('>I', bytes(blob[at:at + 4]))[0]
+    struct.pack_into('>I', blob, at, size + 1)
+
+    frames, _n, clean = T._id3_read_tag(bytes(blob))
+    ids = [f for f, _p in frames]
+    assert not clean, 'a corrupt frame size was reported as a clean parse'
+    assert 'APIC' in ids, 'resync lost the artwork: got %s' % ids
+    got = next(pl for f, pl in frames if f == 'APIC')
+    assert got == apic, 'the recovered APIC is not the one written'
+
+    # and the file must then be refused, because writing it would drop
+    # whatever the walk had to skip
+    tmp = tempfile.mkdtemp(prefix='saltpod-selftest-')
+    try:
+        work = os.path.join(tmp, 'bad.mp3')
+        with open(work, 'wb') as fh:
+            fh.write(bytes(blob) + b'\xff\xfb' + b'\x00' * 4096)
+        assert not T.supported(work), 'claims a file with an unparseable tag is writable'
+        try:
+            T.write(work, {'title': 'nope'})
+            raise AssertionError('wrote a tag it could not fully parse')
+        except T.TagError:
+            pass
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return 'recovered %d KB of real cover art, write refused' % (len(apic) // 1024)
 
 
 def t_genre_numbers():
@@ -529,7 +586,7 @@ def _a_file(ext, writable=False, with_art=False):
 
 def _apic_bytes(path):
     from saltpod import tags as T
-    fr, _ = T._id3_read_tag(open(path, 'rb').read(T._id3_span(path)))
+    fr, _n, _c = T._id3_read_tag(open(path, "rb").read(T._id3_span(path)))
     return sum(len(x) for f, x in (fr or []) if f == 'APIC')
 
 
@@ -549,6 +606,7 @@ def main():
     check('cover art survives a write', t_tag_preserves_art, slow=True)
     check('readers agree with ffprobe', t_tag_matches_ffprobe, slow=True)
     check('refuses what it cannot do safely', t_tag_refusals)
+    check('a bad frame size keeps the art', t_bad_frame_keeps_art)
     check('ID3v1 genre numbers resolve', t_genre_numbers)
 
     section('core — the rules')

@@ -127,7 +127,11 @@ ALAC carries the source bit depth in its format flags (`/1` = 16, `/3` =
 compares only the thing you were worried about will pass the thing you were
 not.
 
-### sips does not preserve aspect ratio
+### sips does not preserve aspect ratio -- but the 61.8 was my own error
+
+**Correction.** The table below first compared `sips -z` against ffmpeg's
+scale-to-cover, which are two DIFFERENT OPERATIONS, and reported the
+difference as sips being worse. Like for like, the two backends agree.
 
 `sips -z H W` resamples to exactly those dimensions. ffmpeg's
 `scale=...:force_original_aspect_ratio=increase,crop=...` scales to cover
@@ -136,10 +140,21 @@ why this would have looked right in every test.
 
 Mean absolute pixel difference against ffmpeg's output:
 
-| | square source | 900x300 source |
+Mean absolute pixel difference against ffmpeg's output, on a real
+photograph off the drive (1932x2576, so genuinely non-square) and a real
+square cover:
+
+| | square cover | 1932x2576 photo |
 |---|---|---|
-| `resize_cover` (two sips calls) | 2.7 / 255 | **2.0 / 255** |
-| `resize_image` (one `sips -z`) | 2.7 / 255 | **61.8 / 255** |
+| `resize_cover`, sips vs ffmpeg | 2.7 / 255 | **1.0 / 255** |
+| `resize_image` vs cover-crop | 2.7 / 255 | 18.4 / 255 |
+
+The second row is **not a backend comparison** -- it is the cost of
+squashing instead of cropping, which is a choice, not a tool. It is kept
+only to justify why `resize_cover` exists as a separate operation.
+
+And sips is NOT faster: 128 ms against ffmpeg's 86 ms at 320x320. Its only
+real advantage is living in /usr/bin with nothing to bundle or sign.
 
 So they are two operations, not one with a flag. `resize_cover` computes
 the proportional target itself and then crops, rather than hoping a flag
@@ -186,3 +201,39 @@ disagree with — and `tags.py` writes the tags. The device and the index now
 agree *by construction*, because one piece of code reads and writes them,
 instead of agreeing because two tools happened to choose alike. afconvert's
 output is `ftyp|moov|free|mdat`, exactly the layout the M4A writer handles.
+
+## The re-evaluation register
+
+Every native candidate, and whether its conclusion has actually been
+earned. "Fair run" means: the challenger was researched and built until it
+does the *same job*, then compared on real data, with every difference
+chased to a cause.
+
+| candidate | fair run? | verdict | evidence |
+|---|---|---|---|
+| **Spotlight** vs ffprobe | **yes, on the second attempt** | adopted as default | 4,049 files, 4047/4047 on every text field, 130 s -> 22.7 s. The first attempt's "capability gaps" were a line-counting parser. |
+| **afconvert** vs ffmpeg | **yes, on the second attempt** | adopted | identical audio md5; bit depth from the source's format flags after the 32-bit default was caught |
+| **sips** vs ffmpeg | **yes, after correcting the comparison** | adopted, narrowly | 1.0 / 255 on a real photo. Not faster -- 128 ms vs 86 ms. Adopted for having nothing to bundle, not for speed. |
+| **DiskArbitration** vs polling | **yes** | adopted | verified with a real disk image attach/detach: 136 ms vs 1,514 ms |
+| **FSEvents** vs mtime walk | **yes** | adopted | real file written into a watched directory, event returned with the right path |
+| **our readers** vs ffprobe | **yes** | adopted for tags | 1,170 files field by field; and they see an 870 KB cover ffmpeg's own ID3 walk misses |
+| `qlmanage` for artwork | **NO** | rejected on one invocation | 757 ms vs 95 ms and the wrong image. `-s` was never tried. **Re-test before citing this.** |
+| Accelerate / vImage for RGB565 | **n/a** | not worth it | bulk slicing is 28x on its own (30.3 ms -> 1.1 ms); vImage would save ~11 s once per library |
+| CommonCrypto for hash58 | **n/a** | already native | `hashlib` uses the ARMv8 SHA-1 instructions: 0.34 ms over the whole database |
+
+### Known caveat: this drive is usually unplugged
+
+Spotlight indexes a volume while it is attached. Files changed elsewhere
+while it was away leave the index **stale but present**, which is more
+dangerous than absent, because an absent record falls back to ffprobe and
+a stale one answers confidently.
+
+`probe_fast` therefore refuses Spotlight's answer when the file on disk is
+not the size Spotlight recorded, or has been written since Spotlight last
+looked. One `stat`. Measured on this machine: indexing is enabled on the
+T7, the store dates from 2023, and it had already picked up a retag made
+minutes earlier -- size and album both current.
+
+**Not yet tested:** a volume with indexing disabled (`mdutil -i off`), and
+a drive reattached after changes made on another machine. Both fall back
+to ffprobe by design; neither has been exercised.

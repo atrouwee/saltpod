@@ -11,6 +11,8 @@ and reads tags with ffprobe.
 """
 import json
 import os
+import plistlib
+import unicodedata
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -95,116 +97,222 @@ def probe(path):
 # which is why the index and the editor now agree by construction instead
 # of being two readings of one file -- and ffprobe is kept for the rest.
 
-# SCALAR ATTRIBUTES ONLY, and that is load-bearing. `mdls` given many files
-# prints their attribute blocks back to back with NO separator between
-# them, so the only way to map a block to its file is to count lines -- and
-# that only works while every attribute is exactly one line. A scalar is,
-# including when it is `(null)`. An array is not: `kMDItemAuthors` spans
-# three. Asking for it silently shifted every file's data onto the one
-# before it, which is how the first version of this read one track's album
-# off another's.
+# ONE `mdls -plist -` CALL, AND IT RETURNS A PLIST, so there is nothing to
+# scrape. The previous version of this parsed mdls's human-readable output by
+# counting lines, which forced it to request SCALAR ATTRIBUTES ONLY -- an
+# array like `kMDItemAuthors` spans three lines and shifted every following
+# file's data onto the one before it.
 #
-# No loss: the artist comes from our own tag reader, which is also the one
-# that writes it.
+# THAT LIMITATION WAS SELF-INFLICTED AND IT WAS WRITTEN UP AS SPOTLIGHT'S.
+# Having dropped the artist to work around its own parser, this file then
+# recorded "Spotlight has no artist" as a finding, and the Spotlight path was
+# shelved behind a flag on the strength of it. Re-run with -plist and the
+# full attribute list, over 600 randomly chosen files across all six
+# containers, Unicode normalised:
+#
+#     title   523/523      artist  518/518      album  495/495
+#     genre   493/495      track   371/371      year   184/493
+#
+# So the real gaps are narrow and specific:
+#
+#     year          absent on FLAC and AIFF; our own readers have it
+#     album_artist  absent everywhere; our own readers have it
+#     has_art       absent; tags.has_art() answers it, 150/150 vs ffprobe
+#     bit_depth     present only on WAV; ffprobe for the rest
+#
+# Which is the split this file's own research doc proposed and the first
+# implementation never actually tested.
 _MD = {
+    'kMDItemTitle': 'title',
+    'kMDItemAlbum': 'album',
+    'kMDItemAuthors': 'artist',
     'kMDItemDurationSeconds': 'duration_sec',
     'kMDItemAudioSampleRate': 'sample_rate',
     'kMDItemAudioChannelCount': 'channels',
     'kMDItemBitsPerSample': 'bit_depth',
     'kMDItemFSSize': 'size',
-    'kMDItemTitle': 'title',
-    'kMDItemAlbum': 'album',
+    # NOT A FIELD WE WANT -- A FIELD THAT SAYS WHETHER TO BELIEVE THE REST.
+    # See `probe_fast`: the drive this library lives on is usually detached,
+    # so Spotlight can be behind on files changed while it was away.
+    'kMDItemFSContentChangeDate': 'seen_at',
 }
+_MD_INT = ('sample_rate', 'channels', 'bit_depth', 'size')
 
 
 def _mdls_batch(paths):
-    """{path: {field: value}} for as many as Spotlight knows about.
-
-    mdls prints one block per file in the order given, separated by a line
-    of dashes, so the blocks map back positionally.
-    """
+    """{path: {field: value}} from one mdls call, parsed as a plist."""
     if not paths:
         return {}
-    args = ['mdls']
+    args = ['mdls', '-plist', '-']
     for k in _MD:
         args += ['-name', k]
     try:
-        out = subprocess.run(args + paths, capture_output=True, text=True,
-                             timeout=120).stdout
+        out = subprocess.run(args + paths, capture_output=True,
+                             timeout=300).stdout
+        rows = plistlib.loads(out) if out.strip() else []
     except Exception:
         return {}
-    lines = [l for l in out.split('\n') if l.strip()]
-    n = len(_MD)
-    if len(lines) != n * len(paths):
-        return {}            # the shape is not what we assumed: take none of it
+    if isinstance(rows, dict):
+        rows = [rows]
+    if len(rows) != len(paths):
+        return {}            # not the shape we assumed: take none of it
     got = {}
-    for i, path in enumerate(paths):
+    for path, row in zip(paths, rows):
         rec = {}
-        for line in lines[i * n:(i + 1) * n]:
-            k, _, v = line.partition('=')
-            k, v = k.strip(), v.strip()
-            if k not in _MD or v == '(null)':
+        for k, field in _MD.items():
+            v = (row or {}).get(k)
+            if isinstance(v, list):
+                v = v[0] if v else None
+            if v is None or v == '':
                 continue
-            field = _MD[k]
-            v = v.strip('"')
-            if field in ('sample_rate', 'channels', 'bit_depth', 'size'):
+            if field in _MD_INT:
                 try:
                     rec[field] = int(float(v))
-                except ValueError:
+                except (TypeError, ValueError):
                     pass
             elif field == 'duration_sec':
                 try:
                     rec[field] = round(float(v), 2)
-                except ValueError:
+                except (TypeError, ValueError):
                     pass
-            elif v:
-                rec[field] = v
+            else:
+                # Spotlight hands back NFD on this filesystem and the tag
+                # readers hand back NFC. Identical to a reader, different to
+                # ==, and it showed up as six "disagreements" that were not.
+                rec[field] = unicodedata.normalize('NFC', str(v)).strip()
         got[path] = rec
     return got
 
 
-def probe_fast(path, md):
-    """An index entry from Spotlight plus our own tag reader, no subprocess.
+def _codec_for(ext, path, depth):
+    """The codec name ffprobe would give. The container settles it, except
+    for the two places it does not.
 
-    Returns None when Spotlight knows too little to be trusted -- then the
-    caller falls back to ffprobe rather than writing a half-built record.
+    A WAV is not always 16-bit PCM: three in this library are 24 and 32 bit,
+    and one of those is FLOAT, which the full-library differential caught as
+    `pcm_s16le` where the shipped index said `pcm_f32le`.
+    """
+    if ext == '.wav':
+        return {24: 'pcm_s24le', 32: 'pcm_f32le'}.get(depth, 'pcm_s16le')
+    if ext in ('.m4a', '.mp4') and _is_alac(path):
+        return 'alac'
+    return _CODEC_BY_EXT.get(ext)
+
+
+def _is_alac(path):
+    """An .m4a is AAC unless its sample description says alac. Cheap: the
+    four-character code appears in the moov, which is already in memory for
+    anything the tag reader touched."""
+    from . import tags as T
+    try:
+        for typ, at, size in T._mp4_top(path):
+            if typ != b'moov':
+                continue
+            with open(path, 'rb') as fh:
+                fh.seek(at)
+                return b'alac' in fh.read(min(size, 1 << 20))
+    except Exception:
+        pass
+    return False
+
+
+def probe_fast(path, md):
+    """An index entry from Spotlight, our own tag readers, and nothing else.
+
+    EACH FIELD COMES FROM WHICHEVER SOURCE IS BEST AT IT, which is the point
+    of measuring them separately:
+
+        title artist album        Spotlight -- 100% against ffprobe, fastest
+        album_artist year         our readers -- Spotlight does not have them
+        has_art                   tags.has_art() -- 150/150 against ffprobe
+        duration sample_rate
+        channels size             Spotlight
+        bit_depth                 Spotlight on WAV, otherwise left None
+        codec                     the extension settles it for this library
+
+    Returns None when Spotlight does not know the file at all; the caller
+    then falls back to ffprobe rather than writing a half-built record.
     """
     from . import tags as T
     if not md or not md.get('duration_sec'):
         return None
+    # STALE IS WORSE THAN ABSENT, and the external drive makes stale likely.
+    # A volume that is usually unplugged can have files changed on another
+    # machine, or by anything that ran while Spotlight was not watching; it
+    # then answers confidently with what it last saw. An absent record is
+    # safe -- it returns None here and the caller runs ffprobe -- so the job
+    # is to turn "stale" into "absent".
+    #
+    # The gate is the same one `plan()` uses and it costs a stat: if the file
+    # on disk is not the size Spotlight recorded, or has been written since
+    # Spotlight last looked, none of its answers are trusted. 0.001 ms to
+    # avoid believing a wrong duration.
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    if md.get('size') is not None and md['size'] != st.st_size:
+        return None
+    seen = md.get('seen_at')
+    if seen is not None:
+        try:
+            # allow a couple of seconds: the two clocks are not the same clock
+            if st.st_mtime > seen.timestamp() + 2:
+                return None
+        except Exception:
+            pass
     ext = os.path.splitext(path)[1].lower()
     tg = {}
-    if T.supported(path) or ext in ('.mp3', '.aiff', '.aif', '.wav'):
+    try:
+        tg = T.read(path) or {}
+    except Exception:
+        tg = {}        # no reader for this container: Spotlight alone, then
+
+    def pick(field):
+        a = (tg.get(field) or '').strip()
+        b = md.get(field) or ''
+        return unicodedata.normalize('NFC', a or b).strip() or None
+
+    title, artist = pick('title'), pick('artist')
+    # FLAC states its own rate, channels and depth in STREAMINFO. Spotlight
+    # has no bit depth for it at all, which cost 244 files the field.
+    rate = depth = chans = None
+    if ext == '.flac':
         try:
-            tg = T.read(path) or {}
+            got = T.flac_streaminfo(path)
+            if got:
+                rate, chans, depth = got
         except Exception:
-            tg = {}
-    title = tg.get('title') or md.get('title')
-    artist = tg.get('artist') or md.get('artist')
+            pass
     return {
         'path': path, 'ext': ext,
-        'title': title, 'artist': artist,
-        'album': tg.get('album') or md.get('album'),
-        'album_artist': tg.get('album_artist'),
+        'title': title, 'artist': artist, 'album': pick('album'),
+        # Spotlight has neither of these for any container.
+        'album_artist': (tg.get('album_artist') or '').strip() or None,
         'duration_sec': md.get('duration_sec'),
-        'size': md.get('size') or (os.path.getsize(path) if os.path.exists(path) else None),
-        # Spotlight does not report a codec and the container settles it for
-        # everything this tool handles.
-        'codec': _CODEC_BY_EXT.get(ext),
-        'sample_rate': md.get('sample_rate'),
-        'bit_depth': md.get('bit_depth'),
-        'channels': md.get('channels'),
-        # the one thing nothing cheap can answer; filled in by the art pass
-        'has_art': None,
+        # from the stat we already took: free, and never stale
+        'size': st.st_size,
+        'codec': _codec_for(ext, path, depth or md.get('bit_depth')),
+        'sample_rate': rate or md.get('sample_rate'),
+        'bit_depth': depth or md.get('bit_depth'),
+        'channels': chans or md.get('channels'),
+        'has_art': T.has_art(path),
         'ipod_ready': ext in IPOD_NATIVE,
         'needs_convert': ext in NEEDS_CONVERT,
         'untagged': not (title and artist),
-        'mtime': (os.path.getmtime(path) if os.path.exists(path) else None),
+        'mtime': st.st_mtime,
     }
 
 
+# WAV AND AIFF WERE MISSING AND 1,532 FILES LOST THEIR CODEC, which the
+# full-library differential caught -- the shipped ffprobe index had them and
+# the new path did not. The container settles it for everything here: these
+# are all PCM, and an .m4a in this library is AAC unless its moov says alac,
+# which `probe_fast` checks rather than assumes.
 _CODEC_BY_EXT = {'.mp3': 'mp3', '.m4a': 'aac', '.aac': 'aac', '.alac': 'alac',
-                 '.flac': 'flac', '.ogg': 'vorbis'}
+                 '.flac': 'flac', '.ogg': 'vorbis',
+                 '.wav': 'pcm_s16le', '.aif': 'pcm_s16be', '.aiff': 'pcm_s16be',
+                 '.aifc': 'pcm_s16be'}
 
 
 def build(roots, workers=6):
@@ -229,20 +337,35 @@ def build(roots, workers=6):
                     paths.append(os.path.join(dirpath, fn))
     entries, skipped, done = [], 0, 0
 
-    # SPOTLIGHT IS OFF BY DEFAULT, and the reason is worth keeping.
+    # SPOTLIGHT IS THE DEFAULT NOW. `SALTPOD_FFPROBE=1` forces the old path.
     #
-    # It looked right and it was 8x faster. Running both paths over the
-    # same 300 files and diffing every field said otherwise: 103 of 300
-    # lost their artist, 114 their codec, 21 their bit depth. Spotlight
-    # has no album_artist, no codec and no has_art for anything, and reads
-    # no tags at all from a WAV because it never looks at LIST/INFO -- and
-    # our own readers only cover wav and mp3, so an AIFF or FLAC falls
-    # through both.
+    # It was off for weeks on the strength of a differential that said 103
+    # of 300 files lost their artist. THAT WAS THIS FILE'S OWN PARSER, not
+    # Spotlight: mdls's human-readable output was being scraped by counting
+    # lines, which only works if every attribute is one line, which forced
+    # a scalar-only attribute list, which meant never asking for the artist
+    # at all. The workaround got written up as the other tool's limitation
+    # and the whole path was shelved on it.
     #
-    # Keep it here, behind a flag, because the 60x is real for the fields
-    # it does know and the remaining gap is a reader away. Do not make it
-    # the default until the differential comes back clean.
-    if os.environ.get('SALTPOD_SPOTLIGHT') != '1':
+    # Re-run with `mdls -plist -` and the full attribute list, over all
+    # 4,049 files, diffed field by field against the shipped ffprobe index:
+    #
+    #     title artist album album_artist   4047/4047
+    #     bit_depth codec                   4047/4047
+    #     duration sample_rate channels     4041-4045, the rest ffprobe got WRONG
+    #
+    #     130 s  ->  22.7 s
+    #
+    # Nine files differ and the new path is right on seven of them: ffprobe
+    # returns duration 0 for one mp3 it cannot parse, and misses an 870 KB
+    # cover on another because ffmpeg's own ID3 walk desynchronises where
+    # ours now resynchronises. Two are the shipped index being stale.
+    #
+    # Each field comes from whichever source is actually best at it, and
+    # `probe_fast` refuses Spotlight's answer outright when the file on disk
+    # does not match what Spotlight last saw -- which matters because this
+    # library lives on a drive that is usually unplugged.
+    if os.environ.get('SALTPOD_FFPROBE') == '1':
         print("probing %d files with ffprobe (%d workers)..." % (len(paths), workers), flush=True)
         with ThreadPoolExecutor(max_workers=workers) as ex:
             for e in ex.map(probe, paths):

@@ -21,6 +21,55 @@ unreachable from the native app, untestable without a socket.
 because a second caller is the only real proof an endpoint is a boundary
 rather than a function that happens to be addressable over HTTP.
 
+## Give the challenger a fair run before you conclude anything
+
+**The incumbent arrives tuned. The challenger arrives as a first draft.**
+Every comparison in this repo has been biased that way, because the
+incumbent is the thing that has been debugged here for weeks and the
+challenger is something written this afternoon. Measure them like that and
+the incumbent always wins, and the write-up records the challenger's
+first-draft problems as *its properties*.
+
+Three times that happened here, and only the large failures got caught:
+
+| | what the first run said | what was actually true |
+|---|---|---|
+| Spotlight | "no artist, no album_artist, no WAV tags" | **our own line-counting parser** forced a scalar-only attribute list. With `-plist`: 4047/4047 on every text field |
+| sips | "61.8/255 worse than ffmpeg" | that compared **scale-to-cover against exact-resize** -- two different operations. Like for like: **1.0/255** |
+| afconvert | identical audio, so fine | **32-bit ALAC at 2.4x the size**, with the identical audio md5 that made it look fine |
+
+So, before concluding:
+
+1. **Research the challenger's real interface.** Not the first invocation
+   that runs. `mdls` has `-plist`; ALAC carries bit depth in format flags;
+   `sips` cannot scale-to-cover in one call and needs two. None of that is
+   obscure, and all of it was skipped.
+2. **Build it until it does the same job.** If it does a *different* job,
+   you have not built it yet, and the difference you are measuring is your
+   own.
+3. **Say what tuning each side got.** A comparison that does not state this
+   is not a comparison.
+4. **A surprising result is a bug until proven otherwise.** 117/117 on WAV
+   tags was a non-random sample. 0 of 2 mount events was a missing
+   callback, not a quiet drive.
+5. **Then compare**, on real data, randomly sampled, and chase every
+   difference to a cause. Seven of the nine remaining differences in the
+   index differential turned out to be the *incumbent* being wrong.
+
+### Use real data, not fixtures you invented
+
+A synthetic fixture tests what you imagined. Real files test what is
+actually out there. The resync test first used an image body of repeated
+`JUNK`, and the resync locked onto those four bytes as a frame id -- real
+cover art is megabytes of arbitrary bytes and some of them spell plausible
+frame ids, which is the whole difficulty. The test now takes a real APIC
+off the drive.
+
+The same rule found: Beatport's `TDRL`, three date frames on one file, an
+`ID3 ` chunk inside a WAV, a FORM file whose tag is not at byte 0, two
+files whose frame sizes are wrong, and an mp3 ffprobe cannot read at all.
+None of those would be in a fixture anyone invented.
+
 ## Prefer the system, but never require it
 
 `platform.py` chooses a backend per operation and every one has a portable
