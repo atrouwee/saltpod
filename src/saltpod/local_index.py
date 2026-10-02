@@ -345,13 +345,21 @@ _CODEC_BY_EXT = {'.mp3': 'mp3', '.m4a': 'aac', '.aac': 'aac', '.alac': 'alac',
                  '.aifc': 'pcm_s16be'}
 
 
-def build(roots, workers=6):
+def build(roots, workers=6, _write=True):
     """ffprobe is IO-bound, so threads help a lot; 7k files serial takes an hour.
 
     Kept modest on purpose -- this machine has 18 GB and has fallen over before
     on wide parallel batches. ffprobe itself is light, the risk is the spawn
     storm, not the memory.
     """
+    # A ROOT THAT IS NOT THERE IS NOT AN EMPTY ROOT. Rebuilding with the
+    # library drive unplugged would walk nothing, find nothing, and write
+    # an index with 80 tracks over one with 4,050 -- silently, and the
+    # next sync would read it as "almost everything was deleted". Refuse.
+    absent = [r for r in roots if not os.path.isdir(os.path.expanduser(r))]
+    if absent:
+        raise MissingRoot('not mounted: %s' % ', '.join(absent))
+
     paths = []
     for root in roots:
         root = os.path.expanduser(root)
@@ -409,6 +417,9 @@ def build(roots, workers=6):
                               if os.path.exists(e['path']) else None)
                 entries.append(e)
         os.makedirs(os.path.dirname(INDEX), exist_ok=True)
+        entries = fold_copies(entries, roots)
+        if not _write:
+            return entries, skipped
         with open(INDEX, "w") as f:
             json.dump({"roots": roots, "count": len(entries), "tracks": entries}, f, indent=1)
         return entries, skipped
@@ -439,10 +450,154 @@ def build(roots, workers=6):
                 e['mtime'] = (os.path.getmtime(e['path'])
                               if os.path.exists(e['path']) else None)
                 entries.append(e)
+    entries = fold_copies(entries, roots)
+    if not _write:
+        return entries, skipped
     os.makedirs(os.path.dirname(INDEX), exist_ok=True)
     with open(INDEX, "w") as f:
         json.dump({"roots": roots, "count": len(entries), "tracks": entries}, f, indent=1)
     return entries, skipped
+
+
+class MissingRoot(Exception):
+    """A configured library root is not mounted."""
+
+
+def add_root(root, workers=6):
+    """Index ONE root and fold it into the index already on disk.
+
+    The whole-library rebuild is the wrong tool for adding a folder: it
+    needs every root mounted at once, and the usual reason for adding one
+    is that another is unplugged. This walks only the new root and merges,
+    so an index built against the T7 survives having a laptop folder added
+    while the T7 is away.
+
+    Files already known under another root are not added again -- they
+    become `copies` of the entry that is already there, which is what makes
+    the same purchase in two places one track instead of two.
+    """
+    root = os.path.expanduser(root)
+    if not os.path.isdir(root):
+        raise MissingRoot(root)
+    have = load(resolved=False)
+    fresh, skipped = build([root], workers=workers, _write=False)
+
+    roots = list(have.get('roots') or [])
+    merged = fold_copies(have.get('tracks', []) + fresh, roots + [root])
+    if root not in roots:
+        roots.append(root)
+    os.makedirs(os.path.dirname(INDEX), exist_ok=True)
+    with open(INDEX, "w") as f:
+        json.dump({"roots": roots, "count": len(merged), "tracks": merged},
+                  f, indent=1)
+    added = len(merged) - len(have.get('tracks', []))
+    return {'root': root, 'walked': len(fresh), 'new_tracks': added,
+            'copies_of_known': len(fresh) - added, 'skipped': skipped,
+            'total': len(merged), 'roots': roots}
+
+
+def copy_key(path, size):
+    """What makes two files in two roots THE SAME TRACK, not two tracks.
+
+    Filename plus exact byte size. Two audio files that share a name and
+    agree to the byte are the same file -- a copy, not a coincidence, and
+    the check is cheap enough to run over every root on every index.
+
+    Verified before it was trusted, on 80 files copied from an external
+    drive into a folder on the internal disk: all 80 matched on name AND
+    size, and reading the tags out of the local copies gave the same
+    artist and title as the index held for the original, 80 of 80.
+
+    NOT a content hash, deliberately. Hashing 2 GB to notice a duplicate
+    costs more than the duplicate does, and the thing being protected
+    against -- two roots holding the same purchase -- is not an adversary.
+    `verify` already hashes audio where it actually matters, before a
+    write.
+    """
+    return (os.path.basename(path).lower(), size)
+
+
+def fold_copies(entries, roots=None):
+    """One entry per track, with every place that track can be found.
+
+    THE SAME PURCHASE IN TWO ROOTS IS ONE TRACK. Indexing a drive and a
+    folder that holds copies of some of it should not produce two rows
+    that sync would then treat as two songs. The first root given wins the
+    `path`; the rest land in `copies`, and `resolve()` picks whichever is
+    actually mounted when someone needs the bytes.
+
+    Order of roots is therefore a preference, not just a walk order --
+    `library_roots[0]` is where saltpod will look first.
+    """
+    rs = sorted((os.path.expanduser(r).rstrip(os.sep) for r in (roots or [])),
+                key=len, reverse=True)
+
+    def which_root(path):
+        for r in rs:
+            if path == r or path.startswith(r + os.sep):
+                return r
+        return None
+
+    out, seen = [], {}
+    for e in entries:
+        k = copy_key(e['path'], e.get('size'))
+        prior = seen.get(k)
+        if e.get('size') is None or prior is None:
+            seen[k] = len(out)
+            e.setdefault('copies', [])
+            out.append(e)
+            continue
+        first = out[prior]
+        # TWO FILES IN ONE ROOT ARE TWO FILES. The first version of this
+        # folded on name and size alone, and merging an index of 4,050 with
+        # 80 new files produced 3,932 -- it had quietly collapsed 118 pairs
+        # that were both on the T7 (the same track at the root and again
+        # inside an album folder). Those are duplicates the owner may well
+        # want to see and decide about; they are not one track in two
+        # places, and an index is not the place to make that call. Only a
+        # match ACROSS roots is a copy.
+        if which_root(e['path']) == which_root(first['path']):
+            e.setdefault('copies', [])
+            out.append(e)
+            continue
+        if e['path'] != first['path'] and e['path'] not in first['copies']:
+            first['copies'].append(e['path'])
+    return out
+
+
+def resolve(entry):
+    """The path to use right now: the first copy that exists.
+
+    An index built while the T7 was attached points at the T7. With it
+    unplugged, the same track may still be readable from a folder on the
+    internal disk -- and everything downstream (tags, artwork, loudness,
+    conversion) only needs SOME copy, not a particular one. Returns the
+    recorded `path` unchanged when nothing exists, so callers still get a
+    path to report in an error rather than None.
+    """
+    for c in [entry.get('path')] + list(entry.get('copies') or []):
+        if c and os.path.exists(c):
+            return c
+    return entry.get('path')
+
+
+def load(resolved=True):
+    """The index, as one call, with `path` pointing at a copy that exists.
+
+    Four places were each doing their own `json.load` on index.json, which
+    is how `copies` would have been quietly ignored by three of them.
+    """
+    if not os.path.exists(INDEX):
+        return {'roots': [], 'count': 0, 'tracks': []}
+    with open(INDEX) as f:
+        d = json.load(f)
+    if resolved:
+        for e in d.get('tracks', []):
+            r = resolve(e)
+            if r != e.get('path'):
+                e['elsewhere'] = e['path']   # keep the recorded original
+                e['path'] = r
+    return d
 
 
 def stats():

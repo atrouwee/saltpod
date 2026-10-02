@@ -676,6 +676,57 @@ def _tracks_in(db_path):
     return I.read(db_path)['tracks']
 
 
+def t_fold_copies_respects_roots():
+    """The same name and size in ONE root is two files; across roots it is
+    one file in two places.
+
+    This test exists because the first version got it backwards and the
+    damage was real: folding an index of 4,050 T7 tracks together with 80
+    files copied to the internal disk returned 3,932. It had collapsed 118
+    pairs that were BOTH on the T7 -- the same track at the root of the
+    drive and again inside an album folder -- and written the smaller index
+    over the larger one. Nothing would have reported that; the next sync
+    would simply have seen 118 tracks "deleted".
+
+    Duplicates inside one root are a real thing the owner may want to see
+    and decide about. An index is not the place to make that call.
+    """
+    from saltpod import local_index as L
+    rootA, rootB = '/Volumes/Drive/Music', '/Users/me/Music'
+    entries = [
+        # two genuinely separate files in ONE root, same name and size
+        {'path': rootA + '/track.mp3', 'size': 100},
+        {'path': rootA + '/Album/track.mp3', 'size': 100},
+        # the same file, present in the other root -- a copy
+        {'path': rootB + '/track.mp3', 'size': 100},
+        # same name, different size: never a copy
+        {'path': rootB + '/other.mp3', 'size': 100},
+        {'path': rootA + '/other.mp3', 'size': 999},
+    ]
+    out = L.fold_copies([dict(e) for e in entries], [rootA, rootB])
+    paths = [e['path'] for e in out]
+    assert rootA + '/track.mp3' in paths, 'lost the root-level file'
+    assert rootA + '/Album/track.mp3' in paths, \
+        'collapsed two files inside one root -- the bug this test is for'
+    assert rootB + '/track.mp3' not in paths, 'cross-root copy was not folded'
+    first = [e for e in out if e['path'] == rootA + '/track.mp3'][0]
+    assert rootB + '/track.mp3' in first['copies'], 'copy was dropped, not recorded'
+    assert len([p for p in paths if p.endswith('other.mp3')]) == 2, \
+        'different sizes must never fold'
+
+    # and resolve() must prefer a copy that exists over one that does not
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        real = os.path.join(d, 'here.mp3')
+        open(real, 'wb').write(b'x')
+        e = {'path': '/Volumes/Gone/here.mp3', 'copies': [real]}
+        assert L.resolve(e) == real, 'resolve did not fall through to the copy'
+        e2 = {'path': '/Volumes/Gone/a.mp3', 'copies': ['/Volumes/Gone/b.mp3']}
+        assert L.resolve(e2) == '/Volumes/Gone/a.mp3', \
+            'with nothing mounted, resolve must still return a path to report'
+    return '5 entries -> %d, cross-root folded, same-root kept' % len(out)
+
+
 def t_stale_index_gate():
     """A Spotlight record that is behind the file must be REFUSED.
 
@@ -882,6 +933,7 @@ def main():
     check('artwork renders to the exact sizes', t_artwork_render, slow=True)
     check('play counts: delta once, paired right', t_playcounts)
     check('a stale Spotlight record is refused', t_stale_index_gate)
+    check('two roots, one track; one root, two files', t_fold_copies_respects_roots)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

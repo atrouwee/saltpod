@@ -44,6 +44,29 @@ TARGETS = ('apple', 'rockbox')
 REQUIRED = {'apple': ('firewire_guid',), 'rockbox': ()}
 
 
+def set_roots(roots):
+    """Write `library_roots` back to data/device.json, keeping the rest.
+
+    Rewrites the file the user hand-edits, so it reads it first and puts
+    back exactly what was there apart from the roots -- including the
+    `_note` and anything a later version adds that this one does not know
+    about. A singular `library_root` is folded in and dropped, because
+    leaving both would give two answers to one question.
+    """
+    d = {}
+    if os.path.exists(PATH):
+        with open(PATH) as f:
+            d = json.load(f)
+    d['library_roots'] = list(roots)
+    d.pop('library_root', None)
+    tmp = PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=1)
+        f.write('\n')
+    os.replace(tmp, PATH)
+    return d['library_roots']
+
+
 def detect_target(mount):
     """Which firmware this device is running, BY LOOKING. None if unsure.
 

@@ -17,10 +17,14 @@ def _repo_root():
 
 
 def _local_index():
-    import json as _json
-    p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__)))), "data", "local", "index.json")
-    return _json.load(open(p))["tracks"] if os.path.exists(p) else []
+    """Index entries with `path` already pointing at a copy that exists.
+
+    Goes through local_index.load() rather than reading the json here, so
+    a track with copies in two roots resolves to the mounted one for every
+    verb at once instead of only the ones that remembered to look.
+    """
+    from . import local_index as _LI
+    return _LI.load()["tracks"]
 
 
 def _mhod_of(node, typ):
@@ -187,6 +191,11 @@ def main(argv=None):
 
     p = sub.add_parser("index", help="index the audio files you own, so sync knows where they are")
     p.add_argument("roots", nargs="*", help="folders to walk; default the library root in data/device.json")
+
+    p = sub.add_parser("sources", help="the folders your music lives in; add one and the index learns it without forgetting the rest")
+    p.add_argument("what", choices=["list", "add", "remove"], nargs="?", default="list")
+    p.add_argument("folder", nargs="?", help="for add/remove")
+    p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("state", help="the curation state: rebuild it, or print its counts")
     p.add_argument("what", choices=["rebuild", "stats", "buylist", "vinyl", "collections"], nargs="?", default="stats")
@@ -998,6 +1007,83 @@ def main(argv=None):
     if a.cmd == "reconcile":
         from . import reconcile
         return reconcile.main(["--mount", a.mount] if a.mount else [])
+    if a.cmd == "sources":
+        import json as _json
+        from . import local_index as LI, config as CFG
+        cfg = CFG.load()
+        roots = list(cfg.get("library_roots") or [])
+        d = LI.load(resolved=False)
+
+        if a.what == "list":
+            tracks = d.get("tracks", [])
+            rows = []
+            for r in roots:
+                rp = os.path.expanduser(r)
+                # A track counts for a root if ANY of its copies is under it.
+                n = sum(1 for e in tracks
+                        if any((c or "").startswith(rp)
+                               for c in [e.get("path")] + list(e.get("copies") or [])))
+                rows.append({"root": r, "mounted": os.path.isdir(rp), "tracks": n})
+            reachable = sum(1 for e in tracks if os.path.exists(LI.resolve(e)))
+            if a.json:
+                print(_json.dumps({"roots": rows, "indexed": len(tracks),
+                                   "reachable_now": reachable}, indent=2))
+                return 0
+            for r in rows:
+                receipt(r["root"], "%d tracks   %s"
+                        % (r["tracks"], "mounted" if r["mounted"] else "NOT MOUNTED"),
+                        tone="good" if r["mounted"] else "warn")
+            extra = [r for r in (d.get("roots") or []) if r not in roots]
+            for r in extra:
+                note("%s is in the index but not in device.json" % r)
+            receipt("tracks indexed", str(len(d.get("tracks", []))))
+            receipt("readable right now", str(reachable),
+                    tone="good" if reachable else "warn")
+            if reachable < len(d.get("tracks", [])):
+                note("the rest live on a root that is not mounted")
+            return 0
+
+        if not a.folder:
+            fail("which folder?", "saltpod sources %s '/path/to/music'" % a.what)
+        folder = os.path.abspath(os.path.expanduser(a.folder))
+
+        if a.what == "remove":
+            if folder not in [os.path.abspath(os.path.expanduser(r)) for r in roots]:
+                fail("not a source: " + folder, "`saltpod sources list` shows them")
+            kept = [r for r in roots
+                    if os.path.abspath(os.path.expanduser(r)) != folder]
+            CFG.set_roots(kept)
+            receipt("removed", folder, tone="good")
+            note("the index still holds its tracks -- `saltpod index` rebuilds, "
+                 "and needs every remaining root mounted")
+            return 0
+
+        # add
+        if not os.path.isdir(folder):
+            fail("no such folder: " + folder)
+        if folder in [os.path.abspath(os.path.expanduser(r)) for r in roots]:
+            note("already a source"); return 0
+        step("walking %s" % folder)
+        try:
+            res = LI.add_root(folder)
+        except LI.MissingRoot as e:
+            fail("could not read " + str(e))
+        CFG.set_roots(roots + [folder])
+        if a.json:
+            print(_json.dumps(res, indent=2)); return 0
+        receipt("files found", str(res["walked"]))
+        receipt("new tracks", str(res["new_tracks"]),
+                tone="good" if res["new_tracks"] else None)
+        receipt("copies of tracks already indexed", str(res["copies_of_known"]),
+                tone="good" if res["copies_of_known"] else None)
+        if res["skipped"]:
+            note("%d could not be probed" % res["skipped"])
+        receipt("tracks indexed in total", str(res["total"]))
+        if res["copies_of_known"]:
+            note("those are now second locations for tracks saltpod already knew -- "
+                 "it will read whichever copy is mounted")
+        return 0
+
     if a.cmd == "index":
         from . import local_index, config
         roots = a.roots or config.load().get("library_roots") or []
