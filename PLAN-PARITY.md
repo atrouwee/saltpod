@@ -46,6 +46,26 @@ and the device holds 259.
 3. Update the `mhli` count and every enclosing length.
 4. Set the track's artwork flags in the `mhit` so the firmware looks.
 
+**WHAT THE FIRST HARDWARE WRITE ACTUALLY SHOWED (2 October).** The cover
+did NOT appear: the screen showed the iPod's grey placeholder. Two
+candidate causes and they must be separated before anything else is
+written.
+
+1. **Music.app synced the device after the write.** It was running, it saw
+   a mounted iPod, and the iTunesDB grew from 1,052,964 to 1,175,660 bytes
+   with the smart playlists materialised -- which is what a Music sync
+   does. If it rebuilt the ArtworkDB it would have dropped our entry, and
+   the test says nothing about our code.
+2. **The `mhit` flag really is required.** `mhit`+0x1D is 0 on 243 of the
+   253 tracks that have artwork and 1 on 393 of the 400 that do not. The
+   write deliberately left it alone so this could be tested; it has not
+   been tested yet, because of cause 1.
+
+**The retest, in order:** quit Music.app, reconnect, check whether our
+entry survived. If it did and there is still no cover, set 0x1D and write
+again. If it did not, Music.app is the finding and the sync has to happen
+with Music quit.
+
 **Verification gate:**
 - round trip an untouched ArtworkDB byte-identically (already a check)
 - add art for one track against a BACKUP, re-parse, confirm exactly one
@@ -156,6 +176,28 @@ Stored as Apple's encoding so the firmware understands it:
 
 **Still open:** whether to cap gain for the five tracks whose true peak
 would still sit above -1 dBFS after attenuation.
+
+## Phase 3b -- Media type, and audiobooks filed as podcasts
+
+**Scope changed 2 October 2026.** Previously "music only, out of scope".
+Now everything that goes on the iPod, podcasts included -- and audiobooks
+are to be filed AS podcasts, which is deliberately not what iTunes did.
+
+Every track on the device is `mediatype = 0x1`. The ten DeepCast episodes
+are podcasts and can only be reached under Artists.
+
+**What it buys beyond the menu:** resume position. A podcast remembers
+where it stopped, and `bookmark_ms` is already read and never set. For a
+93-minute mix that is the difference between usable and not.
+
+**What to be careful of**, from the format notes: mediatype 0 duplicates a
+track into Videos; a podcast flag inconsistent with the mediatype makes
+iTunes drop the track on the next sync; two playlists with the podcast
+flag means none are shown.
+
+**How a track is classified** is the open question -- by folder, by a tag,
+by duration, or by an explicit decision in the page. Not started, and worth
+deciding deliberately rather than inferring.
 
 ## Phase 4 -- Things the device creates that a sync ignores
 

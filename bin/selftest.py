@@ -457,6 +457,51 @@ def t_published_tree_imports():
     return '%d modules ship, every import resolves' % len(names)
 
 
+def t_artworkdb_clone():
+    """A new ArtworkDB entry is a CLONE of one the firmware already took.
+
+    Four numbers change -- the image id, the song dbid, and the three
+    offsets into the .ithmb files -- and every other byte is copied. Same
+    rule the iTunesDB writer follows, and the reason it has never produced
+    an empty library.
+
+    Does not write: it parses the real database, clones in memory, and
+    checks the clone. The full rehearsal (append to the .ithmb files, add
+    the entry, verify the bytes are where the database says) copies 63 MB
+    of thumbnails and belongs in `saltpod art rehearse`, not here.
+    """
+    from saltpod import artworkdb as ADB
+    src = '/Volumes/IPOD/iPod_Control/Artwork/ArtworkDB'
+    if not os.path.exists(src):
+        return None
+    root = ADB.parse(src)
+    assert ADB.serialise(root) == open(src, 'rb').read(), 'round trip differs'
+    fmts = ADB.formats(root)
+    assert fmts, 'the device declares no artwork formats'
+    for corr, size in fmts.items():
+        assert ADB.__dict__ and size > 0, corr
+
+    tmpl = ADB.images(root).children[0]
+    refs = ADB._mhnis(tmpl)
+    assert len(refs) == len(fmts), ('template has %d image refs, the device '
+                                    'declares %d formats' % (len(refs), len(fmts)))
+    want = 0x1122334455667788
+    offs = {c: 4096 * (i + 1) for i, c in enumerate(sorted(fmts))}
+    m = ADB.clone(tmpl, want, 999, offs)
+    got = m.get32(0x14) | (m.get32(0x18) << 32)
+    assert got == want, 'dbid not patched: %016x' % got
+    assert m.get32(0x10) == 999, 'image id not patched'
+    import struct as _st
+    for mhod, corr in ADB._mhnis(m):
+        at = _st.unpack_from('<I', mhod.body, 0x14)[0]
+        assert at == offs[corr], 'format %d offset %d, wanted %d' % (corr, at, offs[corr])
+    # and the template itself must be untouched by the clone
+    for mhod, corr in ADB._mhnis(tmpl):
+        at = _st.unpack_from('<I', mhod.body, 0x14)[0]
+        assert at != offs[corr] or offs[corr] == at == 0, 'the clone mutated its template'
+    return '%d formats: %s' % (len(fmts), ' '.join('%d=%dB' % kv for kv in sorted(fmts.items())))
+
+
 def t_art_survives_conversion():
     """A cover must come out of a conversion, and the audio must not move.
 
@@ -831,6 +876,7 @@ def main():
     section('layers — the boundary and the design system')
     check('every module imports', t_imports)
     check('the published tree imports too', t_published_tree_imports)
+    check('an ArtworkDB entry is cloned, not authored', t_artworkdb_clone)
     check('a cover survives conversion', t_art_survives_conversion, slow=True)
     check('two targets, two sets of settings', t_target_config)
     check('artwork renders to the exact sizes', t_artwork_render, slow=True)

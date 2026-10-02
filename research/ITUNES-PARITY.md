@@ -130,7 +130,7 @@ in iTunes was always desktop plays + iPod plays.
 | gapless playback data | computed and stored | **not computed** | **gap** -- unmeasured whether the Classic needs it |
 | volume normalisation (Sound Check) | computed | **not computed** | **gap**, see §2 |
 | equaliser preset per track | supported (`mhod` 7) | preserved, never set | **divergent** |
-| media type (music/podcast/audiobook/video) | set per track | music only | **divergent** -- scope |
+| media type (music/podcast/audiobook/video) | set per track | music only, all 653 tracks are `0x1` | **GAP** -- scope changed 2 October 2026, see below |
 
 ## 6. Artwork
 
@@ -178,16 +178,43 @@ So they are never mistaken for gaps:
 2. **Sequence is the product.** `state.collection_order` is the truth and
    sync never sorts. iTunes re-sorted by whatever column you last clicked.
 3. **We never delete the `Play Counts` sidecar.** §4.
-4. **No store, no Genius, no games, no ringtones.** `iTunesControl` is
+4. **Media type was "music only" and is not any more.** The owner, 2
+   October 2026: *"scope is now everything that goes on ipod.. incl
+   podcasts - going forward we will probably also file audiobooks under
+   podcasts as that was not so much a thing back in the day, but it is
+   now."*
+
+   Measured: every one of the 653 tracks on the device is `mediatype =
+   0x1`, audio. Including all ten DeepCast episodes, which are podcasts,
+   run to an hour and a half, and can only be found under Artists.
+
+   Two things follow from setting it, and the second is the better reason:
+   the Podcasts menu starts working, and a podcast gets RESUME-POSITION
+   behaviour -- the `bookmark_ms` field we already read and never set --
+   so a 93-minute mix picks up where it stopped instead of restarting.
+
+   **Audiobooks are to be filed as podcasts**, deliberately and against
+   what iTunes did. Audiobooks were barely a category when this firmware
+   shipped; the owner's judgement is that the podcast menu is where people
+   now look for long spoken-word audio, and resume behaviour is the same
+   either way.
+
+   **Handle with care.** The format notes record several ways this field
+   misbehaves: a mediatype of 0 duplicates the track into Videos; a podcast
+   flag inconsistent with the mediatype makes iTunes drop the track on the
+   next sync; two playlists carrying the podcast flag means NONE are shown.
+   A one-byte change with several documented ways to break a library.
+
+5. **No store, no Genius, no games, no ringtones.** `iTunesControl` is
    156 MB holding a 7.7 MB plist of iTunes Store endpoints for a store that
    no longer serves this device; `Extras.itdb` is a Genius database for a
    discontinued feature. We leave both alone rather than reclaim the space,
    because deleting something the firmware might open is not worth 0.1% of
    a 160 GB disk. **Noted, not acted on.**
-5. **One library, no "auto sync" mode.** iTunes had manual and automatic
+6. **One library, no "auto sync" mode.** iTunes had manual and automatic
    management and could wipe a device to match. Every sync here is
    explicit and additive.
-6. **Flat playlists.** No folders, no podcast list.
+7. **Flat playlists.** No folders, no podcast list.
 
 ## 8. The gaps, ranked by what they cost
 

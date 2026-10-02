@@ -12,6 +12,17 @@ from . import __version__
 from .console import receipt, step, note, fail
 
 
+def _repo_root():
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _local_index():
+    import json as _json
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "data", "local", "index.json")
+    return _json.load(open(p))["tracks"] if os.path.exists(p) else []
+
+
 def _ident(v):
     """A key or a path, told apart by looking rather than by a flag.
 
@@ -225,6 +236,15 @@ def main(argv=None):
     p.add_argument("key", help="the track key, as `saltpod state stats` lists them")
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("art", help="cover art on the device: what is missing, rehearse it, write it")
+    p.add_argument("what", choices=["status", "rehearse", "write"], nargs="?", default="status",
+                   help="status: how many covers the iPod cannot show; "
+                        "rehearse: do it all against COPIES and verify; "
+                        "write: do it for real, after a backup")
+    p.add_argument("--limit", type=int, default=0, help="only this many tracks (0 = all)")
+    p.add_argument("--mount")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("plays", help="play counts and ratings: what the iPod recorded, and fold it into the library")
     p.add_argument("what", choices=["show", "device", "adopt", "merge"], nargs="?", default="show",
                    help="show: what the library holds; device: what is on the iPod right now; "
@@ -249,6 +269,127 @@ def main(argv=None):
 
     if a.cmd in ("track", "tags", "undo", "discard", "recover", "decide"):
         return _service(a)
+
+    if a.cmd == "art":
+        import json as _json
+        from . import artworkdb as ADB, artwork as AW, tags as T, state as S
+        from . import itunesdb_write as W, config as CFG
+        mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
+        adir = os.path.join(mount, "iPod_Control", "Artwork")
+        dbp = os.path.join(mount, "iPod_Control", "iTunes", "iTunesDB")
+        if not os.path.exists(dbp):
+            fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+
+        root = W.parse(open(dbp, "rb").read())
+        mhits = []
+        for sect in root.children:
+            for lst in sect.children:
+                if getattr(lst, "magic", None) == b"mhlt":
+                    mhits = [c for c in lst.children if c.magic == b"mhit"]
+
+        def mstr(m, t):
+            for c in m.children:
+                if c.magic == b"mhod" and W.mhod_type(c) == t:
+                    return W.mhod_string(c)
+            return ""
+
+        adb = ADB.parse(os.path.join(adir, "ADB" if False else "ArtworkDB"))
+        have = ADB.dbids(adb)
+        fmts = ADB.formats(adb)
+        idx = {}
+        for e in _local_index():
+            idx[S.key_for(e.get("artist"), e.get("title"))] = e
+
+        todo = []
+        import struct as _st
+        for m in mhits:
+            dbid = _st.unpack_from("<Q", m.hdr, 0x70)[0]
+            if dbid in have:
+                continue
+            e = idx.get(S.key_for(mstr(m, 4), mstr(m, 1)))
+            if e and e.get("has_art") and os.path.exists(e["path"]):
+                todo.append((dbid, e["path"], mstr(m, 4), mstr(m, 1)))
+        if a.limit:
+            todo = todo[:a.limit]
+
+        receipt("tracks on the device", str(len(mhits)))
+        receipt("covers the device holds", str(len(have)))
+        receipt("formats it wants", " ".join("%d(%dB)" % kv for kv in sorted(fmts.items())))
+        receipt("covers we could add", str(len(todo)),
+                tone="good" if todo else None)
+        if a.what == "status":
+            for _d, _p, ar, ti in todo[:12]:
+                print("   %-30s %s" % (str(ar)[:30], str(ti)[:38]))
+            if len(todo) > 12:
+                note("and %d more" % (len(todo) - 12))
+            return 0
+        if not todo:
+            note("nothing to add"); return 0
+
+        if a.what == "rehearse":
+            import shutil as _sh
+            import tempfile as _tf
+            work = _tf.mkdtemp(prefix="saltpod-art-rehearse-")
+            step("copying the artwork files so nothing on the device is touched")
+            _sh.copy2(os.path.join(adir, "ArtworkDB"), work)
+            for c in fmts:
+                _sh.copy2(os.path.join(adir, "F%d_1.ithmb" % c), work)
+            target, where = work, "the copies"
+        else:
+            target, where = adir, "THE DEVICE"
+            from . import apply as A
+            import time as _t
+            A._cfg()
+            step("backing up before writing to " + where)
+            # apply.backup() copies iPod_Control/iTunes and would NOT have
+            # covered the artwork files this is about to change. The undo for
+            # an append-only operation is the old database plus the previous
+            # lengths, so that is what gets kept -- 199 KB, not 63 MB.
+            snap = os.path.join(_repo_root(), "backups",
+                                "artwork-%s" % _t.strftime("%Y-%m-%d-%H%M%S"))
+            A.backup(mount)
+            ADB.snapshot(adir, snap)
+            receipt("undo point", os.path.relpath(snap, _repo_root()))
+
+        step("rendering %d covers" % len(todo))
+        entries = []
+        for dbid, path, ar, ti in todo:
+            art = T.art_bytes(path)
+            if not art:
+                continue
+            try:
+                entries.append((dbid, AW.render_all(art[1], {c: AW.CLASSIC_FORMATS[c]
+                                                             for c in fmts})))
+            except Exception as e:
+                note("skipped %s - %s: %s" % (str(ar)[:20], str(ti)[:20], e))
+        res = ADB.add(target, entries)
+        receipt("added", "%d covers to %s" % (len(res["added"]), where))
+        for c in sorted(res["before"]):
+            receipt("F%d_1.ithmb" % c, "%d -> %d bytes" % (res["before"][c], res["after"][c]))
+        if res["skipped"]:
+            for d, why in res["skipped"][:5]:
+                note("skipped %016x: %s" % (d, why))
+
+        # the gate: every blob is where the database says it is
+        after = ADB.parse(os.path.join(target, "ArtworkDB"))
+        bad = 0
+        for dbid, blobs in entries:
+            m = next((x for x in ADB.images(after).children
+                      if (x.get32(0x14) | (x.get32(0x18) << 32)) == dbid), None)
+            if not m:
+                bad += 1; continue
+            for mhod, corr in ADB._mhnis(m):
+                ofs = _st.unpack_from("<I", mhod.body, 0x14)[0]
+                size = _st.unpack_from("<I", mhod.body, 0x18)[0]
+                with open(os.path.join(target, "F%d_1.ithmb" % corr), "rb") as fh:
+                    fh.seek(ofs)
+                    if fh.read(size) != blobs[corr]:
+                        bad += 1
+        receipt("verified", "every blob is at the offset the database claims"
+                if not bad else "%d MISMATCHES" % bad, tone="good" if not bad else "bad")
+        if a.what == "rehearse":
+            note("nothing on the device was touched; the copies are in " + target)
+        return 0 if not bad else 1
 
     if a.cmd == "plays":
         import datetime
