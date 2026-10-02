@@ -1102,8 +1102,14 @@ def main(argv=None):
                 tone="warn" if rows else "good")
         if not rows:
             note("every track's recorded size matches the file"); return 0
-        tpl = [r for r in rows if r["was"] == 3629903]
+        tpl = [r for r in rows if 3629903 in (r["was"], r["was_mirror"])]
         off = [r for r in rows if r["delta"] == -56]
+        mirror_only = [r for r in rows if r["was"] == r["now"] and r["was_mirror"] != r["now"]]
+        if mirror_only:
+            receipt("  only the 0x12C mirror is wrong", str(len(mirror_only)),
+                    tone="warn")
+            note("an earlier repair wrote 0x24 and missed its mirror -- "
+                 "the two disagreed until now")
         if tpl:
             receipt("  carrying the template's size", "%d  (3629903 bytes)" % len(tpl))
             worst = max(tpl, key=lambda r: r["now"])

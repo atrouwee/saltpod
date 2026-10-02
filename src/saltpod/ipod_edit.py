@@ -329,6 +329,12 @@ def track_add(root, meta, location):
     return tid
 
 
+# The file size is written twice: at the documented 0x24 and again at
+# 0x12C, which the format research does not name. Measured as an exact
+# mirror on 653 of 653 tracks.
+SIZE_MIRROR = 0x12C
+
+
 def write_db(path, blob):
     """Write a database to the device and DO NOT RETURN until it is on the
     disk.
@@ -396,7 +402,15 @@ def size_audit(root, mount):
     12:31 one. Recorded as open rather than guessed at -- but the repair
     stands on its own, because it writes the measured truth either way.
 
-    Returns [{'mhit', 'location', 'was', 'now', 'delta'}, ...].
+    THE SIZE IS STORED TWICE. 0x12C mirrors 0x24 exactly -- on this device
+    it equalled the pre-repair 0x24 on 653 of 653 tracks, so it is the same
+    quantity written at the same moment, at an offset the format research
+    does not name. The first repair fixed 0x24 alone and left 0x12C, which
+    took the device from "two fields consistently wrong" to "two fields
+    disagreeing on 344 tracks" -- arguably worse, since nobody knows which
+    one the firmware reads. Both are checked and both are written.
+
+    Returns [{'mhit', 'location', 'was', 'was_mirror', 'now', 'delta'}, ...].
     """
     out = []
     for t in tracks(root):
@@ -407,10 +421,11 @@ def size_audit(root, mount):
             real = os.path.getsize(path)
         except OSError:
             continue
-        was = t.get32(0x24)
-        if was != real:
+        was, mirror = t.get32(0x24), t.get32(SIZE_MIRROR)
+        if was != real or mirror != real:
             out.append({'mhit': t, 'location': loc, 'was': was,
-                        'now': real, 'delta': real - was})
+                        'was_mirror': mirror, 'now': real,
+                        'delta': real - was})
     return out
 
 
@@ -423,6 +438,7 @@ def size_repair(root, mount):
     rows = size_audit(root, mount)
     for r in rows:
         r['mhit'].set32(0x24, r['now'])
+        r['mhit'].set32(SIZE_MIRROR, r['now'])
     return rows
 
 
