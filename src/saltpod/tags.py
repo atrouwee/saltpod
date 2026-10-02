@@ -965,7 +965,11 @@ def _mp4_children(b, start, end, skip=0):
             size = end - o
         if size < 8 or o + size > end:
             break
-        out.append((b[o + 4:o + 8], o, size))
+        # bytes(), not a slice: a bytearray slice is a bytearray, and the
+        # callers use this as a dict key. Fine for years because every
+        # caller passed immutable bytes, until one passed a buffer it was
+        # about to edit.
+        out.append((bytes(b[o + 4:o + 8]), o, size))
         o += size
     return out
 
@@ -1164,6 +1168,149 @@ def write_m4a(path, tags):
         fh.seek(mo[1])
         fh.write(blob)                      # mdat does not move: stco holds
     return len(new_moov)
+
+
+# Containers to DESCEND THROUGH when hunting for a nested atom. Not the
+# same set as _MP4_PARENT, which exists for the version-and-flags skip that
+# `meta` needs -- `stco` lives at moov/trak/mdia/minf/stbl and three of
+# those are not in that set, so a search using it stops at `trak` and
+# reports there are no chunk offsets at all.
+_MP4_CONTAINERS = {b'moov', b'trak', b'mdia', b'minf', b'stbl', b'udta',
+                   b'edts', b'dinf', b'mvex', b'moof', b'traf'}
+
+
+def _mp4_find_all(buf, start, end, want):
+    """Every atom of one type at any depth, as (offset, size)."""
+    out = []
+    for typ, o, sz in _mp4_children(buf, start, end, 0):
+        if typ == want:
+            out.append((o, sz))
+        elif typ in _MP4_CONTAINERS:
+            out += _mp4_find_all(buf, o + 8, o + sz, want)
+    return out
+
+
+def _mp4_shift_chunks(moov, delta):
+    """Add `delta` to every chunk offset in the sample tables.
+
+    THE REASON THE FREE ATOM MATTERED. `stco` holds ABSOLUTE file offsets
+    into mdat, so anything that moves mdat invalidates all of them -- which
+    is why growing moov into the `free` atom is the preferred trick and why
+    ffmpeg dropping that atom was so destructive.
+
+    But `free` is only as big as it is. afconvert leaves 1,540 bytes, and a
+    cover is 100 KB, so the trick runs out and mdat genuinely has to move.
+    Then the offsets must be rewritten rather than the write refused.
+
+    `stco` is 32-bit offsets, `co64` is 64-bit; both are
+    version+flags, count, then the table.
+    """
+    buf = bytearray(moov)
+    moved = 0
+    for magic, width, pack in ((b'stco', 4, '>I'), (b'co64', 8, '>Q')):
+        for off, size in _mp4_find_all(buf, 0, len(buf), magic):
+            n = struct.unpack_from('>I', buf, off + 12)[0]
+            base = off + 16
+            if base + n * width > off + size:
+                raise TagError('%s claims %d entries but will not fit'
+                               % (magic.decode(), n))
+            for i in range(n):
+                at = base + i * width
+                v = struct.unpack_from(pack, buf, at)[0]
+                struct.pack_into(pack, buf, at, v + delta)
+            moved += n
+    if not moved:
+        raise TagError('no stco/co64 to correct; refusing to move the audio')
+    return bytes(buf), moved
+
+
+def write_art(path, image_bytes, mime=None):
+    """Put a cover INTO an m4a, replacing whatever `covr` it had.
+
+    WHY THIS EXISTS: conversion was losing artwork. afconvert carries no
+    metadata at all -- which is the better starting point for the text
+    tags, because there is nothing to disagree with -- and our own writer
+    then put the seven text fields back and nothing else. Measured: a 98 KB
+    cover went in and none came out.
+
+    It bites nobody on this drive today, because none of the 244 FLACs here
+    carry art. It would bite the first person whose do, and it bites harder
+    under Rockbox, which reads embedded art from ID3 and MP4 containers and
+    never from a Vorbis comment -- so for a converted file the embedded
+    copy is the whole story.
+
+    Same `free`-atom bargain as `write_m4a`: grow the moov, shrink the
+    free, and mdat never moves so `stco` stays true.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in ('.m4a', '.m4b', '.mp4'):
+        raise TagError('no artwork writer for %s yet' % (ext or '(no extension)'))
+    if not image_bytes:
+        raise TagError('no image')
+    flag = {'image/png': 14}.get((mime or _sniff_mime(image_bytes)).lower(), 13)
+    mo, moov, chain = _mp4_ilst(path)
+    if not chain:
+        raise TagError('no moov/udta/meta/ilst to put a cover in')
+    off, size = chain[-1]
+
+    kept = b''
+    for typ, o, sz in _mp4_children(moov, off + 8, off + size):
+        if typ != b'covr':
+            kept += moov[o:o + sz]
+    body = kept + _mp4_item(b'covr', flag, image_bytes)
+    new_ilst = struct.pack('>I', 8 + len(body)) + b'ilst' + body
+
+    new_moov = bytearray(moov[:off] + new_ilst + moov[off + size:])
+    delta = len(new_ilst) - size
+    for a_off, a_size in chain[:-1]:
+        struct.pack_into('>I', new_moov, a_off, a_size + delta)
+    new_moov = bytes(new_moov)
+
+    after = [a for a in _mp4_top(path) if a[1] > mo[1]]
+    if not after:
+        with open(path, 'r+b') as fh:
+            fh.truncate(mo[1])
+            fh.seek(mo[1])
+            fh.write(new_moov)
+        return len(image_bytes)
+    free = after[0]
+    if free[0] not in (b'free', b'skip'):
+        raise TagError('no free atom after moov to absorb %+d bytes' % delta)
+    newfree = free[2] - delta
+    if newfree >= 8:
+        blob = new_moov + struct.pack('>I', newfree) + b'free' + b'\x00' * (newfree - 8)
+        with open(path, 'r+b') as fh:
+            fh.seek(mo[1])
+            fh.write(blob)
+        return len(image_bytes)
+
+    # THE FREE ATOM RAN OUT, so mdat moves and every chunk offset with it.
+    # Keeps a fresh 64 KB of padding so the NEXT edit lands in place again
+    # rather than rewriting the file a second time.
+    PAD = 65536
+    top = _mp4_top(path)
+    mdat = next((a for a in top if a[0] == b'mdat'), None)
+    if mdat is None:
+        raise TagError('no mdat to move')
+    new_mdat_at = mo[1] + len(new_moov) + 8 + PAD
+    shifted, n = _mp4_shift_chunks(new_moov, new_mdat_at - mdat[1])
+    tmp = path + '.art.tmp'
+    try:
+        with open(path, 'rb') as src, open(tmp, 'wb') as dst:
+            dst.write(src.read(mo[1]))                      # ftyp and anything before
+            dst.write(shifted)
+            dst.write(struct.pack('>I', PAD + 8) + b'free' + b'\x00' * PAD)
+            src.seek(mdat[1])
+            while True:
+                chunk = src.read(1 << 20)
+                if not chunk:
+                    break
+                dst.write(chunk)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return len(image_bytes)
 
 
 # --------------------------------------------------------------- dispatch

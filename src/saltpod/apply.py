@@ -130,6 +130,18 @@ def convert_to_alac(src, dst):
         except Exception as e:
             O.event('warn', 'convert', 'tags not written to the converted file',
                     path=os.path.basename(dst), err=str(e))
+    # AND THE COVER, which this used to drop on the floor. afconvert carries
+    # no metadata and the line above writes only the seven text fields, so a
+    # 98 KB cover went in and nothing came out -- measured. It bites nobody
+    # here yet (none of the 244 FLACs on this drive carry art) and it bites
+    # the first person whose do.
+    try:
+        art = T.art_bytes(src)
+        if art:
+            T.write_art(dst, art[1], art[0])
+    except Exception as e:
+        O.event('warn', 'convert', 'cover not carried to the converted file',
+                path=os.path.basename(dst), err=str(e))
     O.event('info', 'convert', 'converted to alac', backend=r['backend'],
             src=os.path.basename(src), fields=sorted(want))
 

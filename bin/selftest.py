@@ -457,6 +457,55 @@ def t_published_tree_imports():
     return '%d modules ship, every import resolves' % len(names)
 
 
+def t_art_survives_conversion():
+    """A cover must come out of a conversion, and the audio must not move.
+
+    It did not. afconvert carries no metadata and our writer put back only
+    the seven text fields, so a 98 KB cover went in and nothing came out.
+    Then the obvious fix failed too: the `free` atom afconvert leaves is
+    1,540 bytes and a cover is 100 KB, so mdat genuinely has to move -- and
+    `stco` holds ABSOLUTE offsets into it, so they all have to be rewritten.
+
+    The proof that the rewrite is right is the audio md5: identical before
+    and after the cover was added, with mdat at a different offset.
+    """
+    from saltpod import apply as A, tags as T
+    src = _a_file('.mp3', with_art=True)
+    if not src:
+        return None
+    art = T.art_bytes(src)
+    if not art:
+        return None
+    tmp = tempfile.mkdtemp(prefix='saltpod-selftest-')
+    try:
+        bare = os.path.join(tmp, 'bare.m4a')
+        full = os.path.join(tmp, 'full.m4a')
+        from saltpod import platform as P
+        r = P.to_alac(src, bare)
+        if not r['ok']:
+            return None
+        before = _audio_md5(bare)
+        shutil.copy2(bare, full)
+        T.write_art(full, art[1], art[0])
+        got = T.art_bytes(full)
+        assert got, 'the cover did not survive'
+        assert got[1] == art[1], ('cover changed: %d bytes in, %d out'
+                                  % (len(art[1]), len(got[1])))
+        after = _audio_md5(full)
+        assert before and after and before == after, (
+            'the audio changed when mdat moved: %s -> %s' % (before, after))
+        return '%d KB cover kept, audio md5 unchanged across the move' % (len(art[1]) // 1024)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _audio_md5(path):
+    import subprocess as _sp
+    r = _sp.run(['ffmpeg', '-v', 'error', '-i', path, '-map', '0:a:0', '-f', 'md5', '-'],
+                capture_output=True, text=True)
+    return (r.stdout or '').strip()
+
+
 def t_target_config():
     """Two firmwares, two sets of required settings, one config file.
 
@@ -782,6 +831,7 @@ def main():
     section('layers — the boundary and the design system')
     check('every module imports', t_imports)
     check('the published tree imports too', t_published_tree_imports)
+    check('a cover survives conversion', t_art_survives_conversion, slow=True)
     check('two targets, two sets of settings', t_target_config)
     check('artwork renders to the exact sizes', t_artwork_render, slow=True)
     check('play counts: delta once, paired right', t_playcounts)
