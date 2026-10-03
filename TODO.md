@@ -207,7 +207,18 @@ happened, so this is the shape:
 | rekordbox | DJ play history | `~/Library/Pioneer/rekordbox/master.db` (encrypted; format widely documented) | none known |
 | Spotify | streamed plays | the owner's data export -- every play, timestamped | none |
 
-Not built. Apple Music has no XML export on this Mac; its snapshot in
+**Apple Music: BUILT 3 October** (`src/saltpod/listening.py`, `saltpod plays
+overall`). Read from Music.app with the iPod ejected -- it answered in 5.2 s,
+no wedge: 4,892 tracks, 3,467 played, 18,768 plays, no ratings. The overlap
+was measured before combining: on the 70 tracks iTunes left a count on, the
+iPod's count EQUALS Apple Music's on 49, is lower on 2, higher on none --
+iTunes wrote the library total onto the iPod. So overall = Apple Music's
+count (or the adopted iPod count where Apple Music has no copy) + plays
+saltpod collected from the iPod since. 3,025 overall across the curated
+tracks, where saltpod alone knew of 334. rekordbox and Spotify history still
+to come.
+
+Apple Music has no XML export on this Mac; its snapshot in
 `data/local/apple_music.json` never captured play counts at all. Seven dated
 library snapshots in `~/Music/Music/Previous Libraries.localized` (2023 to
 2 October 2026) could give history over time, not just totals.

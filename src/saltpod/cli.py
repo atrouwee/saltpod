@@ -265,7 +265,7 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("plays", help="play counts and ratings: what the iPod recorded, and fold it into the library")
-    p.add_argument("what", choices=["show", "device", "adopt", "merge"], nargs="?", default="show",
+    p.add_argument("what", choices=["show", "device", "adopt", "merge", "overall"], nargs="?", default="show",
                    help="show: what the library holds; device: what is on the iPod right now; "
                         "adopt: take the counts iTunes left in the iTunesDB; "
                         "merge: add the Play Counts delta (the file is never deleted)")
@@ -544,6 +544,24 @@ def main(argv=None):
                       if t.get("last_played") else "-")
                 print("   %-28s %-28s %4d  %s"
                       % (str(t["artist"])[:28], str(t["title"])[:28], t["play_count"], lp))
+            return 0
+        if a.what == "overall":
+            from . import listening as LS
+            st = S.load()
+            recs = st["tracks"]
+            if not any(r.get("am_plays") is not None for r in recs.values()):
+                note("Apple Music play counts not read yet -- they are read with the iPod EJECTED")
+            ranked = sorted(recs.items(), key=lambda kv: -LS.overall(kv[1]))
+            if a.json:
+                print(_json.dumps([dict(key=k, artist=r["artist"], title=r["title"], **LS.breakdown(r))
+                                   for k, r in ranked if LS.overall(r)], indent=2)); return 0
+            receipt("overall plays", str(sum(LS.overall(r) for r in recs.values())), tone="good")
+            receipt("  from Apple Music", str(sum(r.get("am_plays") or 0 for r in recs.values())))
+            receipt("  collected from the iPod", str(sum(LS.collected(r) for r in recs.values())))
+            for k, r in ranked[:20]:
+                b = LS.breakdown(r)
+                print("   %4d  %-44s %s" % (b["overall"], ("%s - %s" % (r["artist"], r["title"]))[:44],
+                                          ("+%d iPod" % b["collected_from_ipod"]) if b["collected_from_ipod"] else ""))
             return 0
         if a.what in ("adopt", "merge"):
             if not os.path.exists(dbp):

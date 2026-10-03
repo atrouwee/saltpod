@@ -900,6 +900,29 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_listening_overall():
+    """Apple Music plays and iPod plays combine without counting anything
+    twice.
+
+    Measured on the owner's data: on 49 of 51 shared tracks the count iTunes
+    wrote onto the iPod EQUALS Apple Music's, and never exceeds it -- iTunes
+    merged iPod plays into the library and wrote the total back. So the
+    adopted iPod count is already inside Apple Music's; only plays saltpod
+    collected since it took over are new.
+    """
+    from saltpod import listening as L
+    in_am = {'am_plays': 30, 'plays_adopted': 30, 'plays': 33}      # adopted 30, +3 collected
+    assert L.overall(in_am) == 33, 'the adopted plays were counted twice: %d' % L.overall(in_am)
+    not_in_am = {'plays_adopted': 5, 'plays': 7}
+    assert L.overall(not_in_am) == 7, 'a track Apple Music lacks lost its iPod plays'
+    mac_only = {'am_plays': 12}
+    assert L.overall(mac_only) == 12
+    newer_on_mac = {'am_plays': 40, 'plays_adopted': 30, 'plays': 31}
+    assert L.overall(newer_on_mac) == 41, 'desktop plays since the last sync were lost'
+    assert L.collected({'plays': 2, 'plays_adopted': 5}) == 0, 'collected went negative'
+    return 'no double count; Mac-only, iPod-only and both handled'
+
+
 def t_spotify():
     """The Spotify client pages, refreshes its token, skips what is not a
     track, and matches by ISRC first and by name only when durations agree.
@@ -1443,6 +1466,7 @@ def main():
     check('genius-style mixes, previewed', t_mixes)
     check('a grown Play Counts file counts only what grew', t_playcounts_grow)
     check('spotify: pages, one token, ISRC first', t_spotify)
+    check('Apple Music and iPod plays, nothing twice', t_listening_overall)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)
