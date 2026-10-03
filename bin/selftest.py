@@ -900,6 +900,63 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_spotify():
+    """The Spotify client pages, refreshes its token, skips what is not a
+    track, and matches by ISRC first and by name only when durations agree.
+
+    Runs against a fake API -- no network, no credentials -- so the logic
+    is proven before the owner's app exists.
+    """
+    import io, json, urllib.parse
+    from saltpod import spotify as SP
+
+    def tr(i, isrc, name, artist, secs):
+        return {'type': 'track', 'id': i, 'name': name, 'duration_ms': secs * 1000,
+                'external_ids': {'isrc': isrc} if isrc else {},
+                'artists': [{'name': artist}], 'album': {'name': 'Alb'}}
+    pages = {
+        '/me/tracks': [{'items': [{'track': tr('s1', 'GBABC1100001', 'One', 'Ann', 200), 'added_at': 'x'},
+                                  {'track': {'type': 'track', 'id': None, 'name': 'local file'}}],
+                        'next': 'PAGE2'}],
+        'PAGE2': [{'items': [{'track': tr('s2', None, 'Two', 'Bob', 180), 'added_at': 'y'},
+                             {'track': {'type': 'episode', 'id': 'e1'}}], 'next': None}],
+        '/me/playlists': [{'items': [], 'next': None}],
+        '/me/player/recently-played': [{'items': []}],
+        '/me/top/tracks': [{'items': []}],
+    }
+    calls = {'token': 0}
+
+    class R(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def opener(req, timeout=None):
+        url = req.full_url
+        if url.startswith(SP.TOKEN):
+            calls['token'] += 1
+            return R(json.dumps({'access_token': 'T', 'expires_in': 3600}).encode())
+        path = url.replace(SP.API, '').split('?')[0]
+        key = 'PAGE2' if url == 'PAGE2' else path
+        assert req.get_header('Authorization') == 'Bearer T', 'no bearer token sent'
+        return R(json.dumps(pages[key][0]).encode())
+
+    c = SP.Client({'client_id': 'a', 'client_secret': 'b', 'refresh_token': 'r'},
+                  opener=opener, save=lambda cfg: None)
+    lib = SP.fetch_library(c)
+    assert sorted(lib['saved']) == ['s1', 's2'], 'paging or skipping went wrong: %r' % lib['saved']
+    assert calls['token'] == 1, 'the access token should be fetched once and reused'
+    assert lib['tracks']['s1']['isrc'] == 'GBABC1100001'
+    idx = [{'path': '/a.mp3', 'isrc': 'GB-ABC-11-00001', 'artist': 'Someone Else', 'title': 'Renamed', 'duration_sec': 1},
+           {'path': '/b.mp3', 'artist': 'Bob', 'title': 'Two', 'duration_sec': 181.5},
+           {'path': '/c.mp3', 'artist': 'Bob', 'title': 'Two (Radio Edit)', 'duration_sec': 150}]
+    hits = SP.match(lib['tracks'], idx)
+    assert hits['s1'] == {'how': 'isrc', 'path': '/a.mp3'}, 'ISRC should match despite different tags'
+    assert hits['s2'] == {'how': 'name', 'path': '/b.mp3'}, 'name match within 3 s'
+    far = SP.match({'x': {'title': 'Two', 'artist': 'Bob', 'artists': ['Bob'], 'seconds': 140}}, idx)
+    assert far == {}, 'a name match 40 s off was accepted'
+    return 'paging, one token, skips local and episodes, ISRC then name'
+
+
 def t_playcounts_grow():
     """A Play Counts file that grew is counted for what grew, not again in
     full.
@@ -1385,6 +1442,7 @@ def main():
     check('on-the-go lists are kept, by position', t_otg)
     check('genius-style mixes, previewed', t_mixes)
     check('a grown Play Counts file counts only what grew', t_playcounts_grow)
+    check('spotify: pages, one token, ISRC first', t_spotify)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

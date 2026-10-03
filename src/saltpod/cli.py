@@ -330,6 +330,13 @@ def main(argv=None):
     p.add_argument("--mount")
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("spotify", help="Spotify as a library source: saved tracks and playlists, matched to what you own by ISRC")
+    p.add_argument("what", choices=["status", "login", "library", "match"], nargs="?", default="status",
+                   help="status: what is set up; login: authorize once in the browser; "
+                        "library: fetch saved tracks, playlists, recent and top; "
+                        "match: which of them you already own, and which are not")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("log", help="what the server and the terminal have been doing, and what failed")
     p.add_argument("-n", type=int, default=25, help="how many recent events (default 25)")
     p.add_argument("--level", choices=["debug", "info", "warn", "error"],
@@ -1238,6 +1245,53 @@ def main(argv=None):
         if miss:
             note("genres with no family: " + ", ".join(miss))
         note("a preview -- nothing was written to the device")
+        return 0
+
+    if a.cmd == "spotify":
+        import json as _json
+        from . import spotify as SP, local_index as LI
+        if a.what == "status":
+            try:
+                cfg = SP.load_config()
+            except SP.SpotifyError as e:
+                fail(str(e))
+            receipt("app", "client id ...%s" % cfg.get("client_id", "")[-6:])
+            receipt("logged in", "yes" if cfg.get("refresh_token") else "no -- run `saltpod spotify login`",
+                    tone="good" if cfg.get("refresh_token") else "warn")
+            if os.path.exists(SP.CACHE):
+                lib = SP.load_cache()
+                receipt("last read", "%s  %d tracks, %d saved, %d playlists"
+                        % (lib["read_at"], len(lib["tracks"]), len(lib["saved"]), len(lib["playlists"])))
+            return 0
+        try:
+            cfg = SP.load_config()
+            if a.what == "login":
+                SP.login(cfg)
+                receipt("connected", "refresh token kept in data/spotify.json (gitignored)", tone="good")
+                return 0
+            if a.what == "library":
+                lib = SP.fetch_library(SP.Client(cfg))
+                SP.save_cache(lib)
+                receipt("tracks", str(len(lib["tracks"])), tone="good")
+                receipt("saved", str(len(lib["saved"])))
+                receipt("playlists", str(len(lib["playlists"])))
+                receipt("with an ISRC", str(sum(1 for t in lib["tracks"].values() if t.get("isrc"))))
+                return 0
+        except SP.SpotifyError as e:
+            fail(str(e))
+        # match
+        if not os.path.exists(SP.CACHE):
+            fail("nothing read from Spotify yet", "run `saltpod spotify library`")
+        lib = SP.load_cache()
+        hits = SP.match(lib["tracks"], LI.load()["tracks"])
+        if a.json:
+            print(_json.dumps({"owned": hits, "tracks": len(lib["tracks"])}, indent=2)); return 0
+        isrc = sum(1 for h in hits.values() if h["how"] == "isrc")
+        receipt("Spotify tracks", str(len(lib["tracks"])))
+        receipt("already owned", "%d  (%d by ISRC, %d by name and duration)" % (len(hits), isrc, len(hits) - isrc),
+                tone="good")
+        receipt("not owned -- candidates to buy", str(len(lib["tracks"]) - len(hits)))
+        note("matching only; nothing was added to the buy list yet")
         return 0
 
     if a.cmd == "log":

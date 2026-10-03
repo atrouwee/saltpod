@@ -190,6 +190,37 @@ written as ordinary playlists.
   on the left, source and right panes; the gear's busy dot and the folded
   filter dot are colour-only
 
+## 5a. PROPOSED: one listening history, from every source
+
+The owner, 3 October: *"We should include apple music playcounts.. as its
+played by me overall"*, and Spotify *"to compliment or replace apple music
+as streaming service to build the library"*.
+
+**Each source stored separately, with provenance; "overall" computed once.**
+Summing into a single `plays` number is how the 3 October double count
+happened, so this is the shape:
+
+| source | holds | read from | overlap |
+|---|---|---|---|
+| Apple Music | desktop plays, plus iPod plays iTunes merged before saltpod | Music.app (iPod ejected first -- 12:31), or the library files | contains the 197 plays adopted from the iTunesDB: those must NOT be added on top |
+| iPod sidecar | plays since saltpod took over | Play Counts, growth-aware merge | none -- Music.app never saw them |
+| rekordbox | DJ play history | `~/Library/Pioneer/rekordbox/master.db` (encrypted; format widely documented) | none known |
+| Spotify | streamed plays | the owner's data export -- every play, timestamped | none |
+
+Not built. Apple Music has no XML export on this Mac; its snapshot in
+`data/local/apple_music.json` never captured play counts at all. Seven dated
+library snapshots in `~/Music/Music/Previous Libraries.localized` (2023 to
+2 October 2026) could give history over time, not just totals.
+
+**Spotify as a library source**, alongside or instead of Apple Music. Every
+Spotify track carries an ISRC (`external_ids.isrc`), and `tags.read_extra`
+now reads ISRC from the files (790 carry one) -- exact recording identity
+instead of artist + title. Saved tracks and playlists map through ISRC
+first, the existing duration-checked match second; what is not owned goes
+to the existing buy list, so purchasing is unchanged. Needs the owner's own
+Spotify developer app for the API, or only the data export for history.
+PlayPi's provider research (ADR 0014) covers the API already.
+
 ## 6. Unknowns
 
 | | how to find out |
