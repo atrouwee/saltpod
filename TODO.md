@@ -21,7 +21,17 @@ Three patterns are worth naming, because each one has cost something:
 
 ---
 
-## 0. OPEN AND BLOCKING: the Podcasts menu will not open
+## 0. RESOLVED 3 October: the Podcasts menu opens
+
+**Confirmed on the device by the owner: Podcasts opens, grouped under the
+show, and is fast.** The regression was the size repair leaving 0x12C
+behind (diagnosis below); the attempts after it were masked by the
+duplicate-id show header, fixed in the fourth write. Which of the fourth
+write's changes were strictly necessary has not been isolated -- reverting
+them one at a time would find out, but it works and the cost of breaking
+it again is a cable round-trip, so it waits until there is a reason.
+
+## 0a. The diagnosis, kept for the record
 
 **THE CAUSE, FOUND 3 OCTOBER, from the owner's correction** that Podcasts
 DID open -- slowly -- until the empty-library incident. Diffing the backup

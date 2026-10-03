@@ -781,7 +781,8 @@ def _sync(mount=None, eject=True, exclude=None):
     if os.path.exists(pc):
         from . import playcounts as _PC
         try:
-            got = _PC.merge(st, _PC.read(pc, dbp), _PC.fingerprint(pc))
+            got = _PC.merge(st, _PC.read(pc, dbp), _PC.fingerprint(pc),
+                            entries=len(_PC.parse(pc)))
             print('  play counts: %s' % (got.get('skipped') or
                   '%d plays merged before the database was replaced' % got.get('added', 0)))
         except Exception as e:
@@ -822,6 +823,11 @@ def _sync(mount=None, eject=True, exclude=None):
         # place it would describe the wrong tracks to anything that read it
         # before the iPod rebuilt it.
         os.remove(pc)
+        # A NEW LINEAGE STARTS HERE. The iPod will write a fresh sidecar from
+        # zero, and the memory of the old one must go with it -- otherwise a
+        # track played more times than its old count would look like growth
+        # of the same file and be under-counted.
+        st.pop(_PC.LAST, None)
     if changed_tracks and otg_ok:
         # Read and kept above; positional, so left in place they would name
         # the wrong songs against the database just written.

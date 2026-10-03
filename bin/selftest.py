@@ -900,6 +900,40 @@ def _apic_bytes(path):
 
 
 # ------------------------------------------------------------------- main
+def t_playcounts_grow():
+    """A Play Counts file that grew is counted for what grew, not again in
+    full.
+
+    Reproduces 3 October: the iPod kept adding to the sidecar, a merge at
+    22:20 consumed nine plays, and the next morning the same file plus one
+    play was merged as ten -- nine counted twice. Also pins the two ways a
+    file is genuinely new (fewer entries, or a count that fell) and the
+    lineage reset after sync removes the file.
+    """
+    from saltpod import playcounts as PC
+    def row(i, plays, title):
+        return {'index': i, 'plays': plays, 'skips': 0, 'rating': 0, 'last_played': 0,
+                'bookmark_ms': 0, 'artist': 'A', 'title': title}
+    st = {'tracks': {'a|one': {'plays': 0}, 'a|two': {'plays': 0}}}
+    first = [row(1, 9, 'one')]
+    assert PC.merge(st, first, 'fp1', entries=500)['added'] == 9
+    grown = [row(1, 9, 'one'), row(2, 1, 'two')]
+    r = PC.merge(st, grown, 'fp2', entries=500)
+    assert r['added'] == 1 and r['mode'] == 'delta', 'a grown file was counted again in full: %r' % r
+    assert st['tracks']['a|one']['plays'] == 9 and st['tracks']['a|two']['plays'] == 1
+    assert PC.merge(st, grown, 'fp2', entries=500)['added'] == 0, 'the same file twice'
+    # a count that FELL means the iPod started a new file: count it all
+    fresh = [row(1, 2, 'one')]
+    r = PC.merge(st, fresh, 'fp3', entries=500)
+    assert r['mode'] == 'full' and r['added'] == 2, 'a reset file was treated as growth: %r' % r
+    # and after sync removes the file the memory goes, so even growth-shaped
+    # numbers count in full
+    st.pop(PC.LAST, None)
+    r = PC.merge(st, [row(1, 5, 'one')], 'fp4', entries=500)
+    assert r['mode'] == 'full' and r['added'] == 5
+    return 'grown file +1 not +10; reset counted in full'
+
+
 def t_mixes():
     """Mixes group by style family and era, leave out jingles, and say where
     every raw genre went -- including the ones that went nowhere."""
@@ -1350,6 +1384,7 @@ def main():
     check('an added track gets its own identity', t_track_add_identity)
     check('on-the-go lists are kept, by position', t_otg)
     check('genius-style mixes, previewed', t_mixes)
+    check('a grown Play Counts file counts only what grew', t_playcounts_grow)
     check('adapters, and both backends agree', t_platform, slow=True)
     check('the event log', t_observe)
     check('one implementation, two adapters', t_one_implementation)

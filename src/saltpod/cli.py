@@ -556,7 +556,7 @@ def main(argv=None):
                 rows = PC.read(side, dbp)
             except PC.PlayCountError as e:
                 fail(str(e), "")
-            out = PC.merge(st, rows, PC.fingerprint(side))
+            out = PC.merge(st, rows, PC.fingerprint(side), entries=len(PC.parse(side)))
             S.save(st)
             for k, v in out.items():
                 receipt(str(k), str(v))

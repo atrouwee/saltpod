@@ -149,14 +149,44 @@ if __name__ == '__main__':
 LEDGER = 'playcounts_merged'          # list of fingerprints, in state
 
 
-def merge(st, rows, fp, when=None):
+LAST = 'playcounts_last'
+
+
+def merge(st, rows, fp, when=None, entries=None):
     """Add a sidecar's delta into state. Returns what it did, and changes
-    nothing when this exact file has already been counted."""
+    nothing when this exact file has already been counted.
+
+    THE SIDECAR GROWS, AND THE FINGERPRINT LEDGER DID NOT KNOW IT. The iPod
+    keeps adding to `Play Counts` until something clears it, and saltpod by
+    design never does -- so a file merged at 22:20 was still there the next
+    morning with one more play in it. A new fingerprint looked like a fresh
+    delta, and the whole file was added again: 10 plays where 1 was new,
+    nine counted twice. Measured against the two sidecars, corrected in
+    state on 3 October.
+
+    So the last file merged is remembered entry by entry, and a later file
+    from the same lineage -- same number of entries, nothing gone DOWN --
+    contributes only what rose since. A file that is shorter, or where any
+    count fell, is a new file the iPod started fresh, and counts in full.
+    `entries` is the sidecar's total entry count (rows only carries the
+    non-zero ones).
+    """
     import datetime
     seen = st.setdefault(LEDGER, [])
     if fp in seen:
         return {'ok': True, 'skipped': 'already counted', 'added': 0, 'tracks': 0}
     from . import state as S
+    last = st.get(LAST) or {}
+    prev_p = {int(k): v for k, v in (last.get('plays') or {}).items()}
+    prev_s = {int(k): v for k, v in (last.get('skips') or {}).items()}
+    cur_p = {r['index']: r['plays'] for r in rows if 'index' in r}
+    cur_s = {r['index']: r['skips'] for r in rows if 'index' in r}
+    same_lineage = (bool(last) and entries is not None and last.get('entries') == entries
+                    and all(cur_p.get(i, 0) >= v for i, v in prev_p.items())
+                    and all(cur_s.get(i, 0) >= v for i, v in prev_s.items()))
+    if same_lineage:
+        rows = [dict(r, plays=r['plays'] - prev_p.get(r['index'], 0),
+                     skips=r['skips'] - prev_s.get(r['index'], 0)) for r in rows]
     added = touched = 0
     for r in rows:
         key = S.key_for(r.get('artist'), r.get('title'))
@@ -179,12 +209,16 @@ def merge(st, rows, fp, when=None):
             rec['skips'] = (rec.get('skips') or 0) + r['skips']
     seen.append(fp)
     del seen[:-200]                    # a ledger, not an archive
+    st[LAST] = {'fp': fp, 'entries': entries,
+                'plays': {str(i): v for i, v in cur_p.items() if v},
+                'skips': {str(i): v for i, v in cur_s.items() if v}}
     st.setdefault('playcounts_log', []).append({
         'at': (when or datetime.datetime.now()).isoformat(timespec='seconds'),
         'fingerprint': fp, 'plays_added': added, 'tracks': touched,
     })
     del st['playcounts_log'][:-50]
-    return {'ok': True, 'added': added, 'tracks': touched}
+    return {'ok': True, 'added': added, 'tracks': touched,
+            'mode': 'delta' if same_lineage else 'full'}
 
 
 def adopt_db_counts(st, db_path):
