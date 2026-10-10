@@ -369,21 +369,209 @@ def t_layer_census():
 
 
 def t_token_census():
-    """No literal radii, tracking, sizes or whites outside :root."""
+    """No literal radii, tracking, sizes, colours or whites outside :root."""
     import re
     css = open(os.path.join(ROOT, 'src', 'saltpod', 'curate.html')).read()
     css = css.split('<style>')[1].split('</style>')[0]
-    body = css.split('}', 1)[1]
+    # every :root { ... } block is the place literals live (two after vendoring)
+    roots = re.findall(r':root\s*\{[^}]*\}', css)
+    body = css
+    for blk in roots:
+        body = body.replace(blk, '')
+    body = re.sub(r'/\*.*?\*/', '', body, flags=re.S)
     bad = {}
     for label, pat in (('font size', r'font(?:-size)?:\s*(?:[^;]*?\s)?([\d.]+px)'),
                        ('radius', r'border-radius:\s*([\d.]+px)'),
                        ('tracking', r'letter-spacing:\s*([\d.]+em)'),
+                       ('negative tracking', r'letter-spacing:\s*(-[^;]*)'),
+                       ('colour function', r'(rgba?\([^)]*\))'),
+                       ('hex colour', r'(#[0-9a-fA-F]{3,8})(?![\w-])'),
                        ('white', r'(?<![\w-])#fff(?![\w\d])|rgba\(255,\s*255,\s*255')):
         hits = sorted(set(re.findall(pat, body)))
         if hits:
             bad[label] = hits
     assert not bad, 'literals outside :root: %s' % bad
-    return 'no literals outside :root'
+    selfref = []
+    for blk in roots:
+        for name, val in re.findall(r'(--[\w-]+)\s*:\s*([^;]*);', blk):
+            if re.search(r'var\(\s*%s\s*[,)]' % re.escape(name), val):
+                selfref.append(name)
+    assert not selfref, 'custom properties that reference themselves: %s' % selfref
+    return 'no literals outside %d :root block(s), no self-references' % len(roots)
+
+
+def t_ground_band():
+    """The vendored band answers Part 1's three sleeves, and ground.check
+    agrees with a fresh computation.
+
+    A white sleeve needs a heavy scrim, a mid one a moderate one, a dark one
+    the floor. If these move, the page's ground moves with them, so they
+    are pinned here as well as upstream. The values are what the stated
+    arithmetic gives (.82, .52, .30 -- saltglass's test_band.py pins the
+    same); the brief's ".80 / .45" were estimates, and .45 on the mid
+    sleeve leaves the composite at Y = .06, over the ceiling.
+
+    The scrim is the bisection's upper bound ROUNDED to two places, so it
+    may sit up to half a step under the exact crossing: the composite is
+    allowed that rounding (.002 in Y) over the ceiling, no more.
+    """
+    from saltpod import glassband as B
+    want = (((230, 228, 225), .82), ((110, 100, 95), .52), ((40, 35, 50), .30))
+    got = []
+    for mean, exp in want:
+        s = B.scrim_for(mean)
+        assert abs(s - exp) <= .03, 'scrim_for%s = %.2f, expected about %.2f' % (mean, s, exp)
+        assert B.SCRIM_MIN <= s <= B.SCRIM_MAX
+        if s > B.SCRIM_MIN:
+            y = B.luminance(B.composite(mean, s))
+            assert y <= B.Y_MAX + .002, 'composite Y %.4f over the ceiling at %.2f' % (y, s)
+            assert B.luminance(B.composite(mean, s - .02)) > B.Y_MAX, 'scrim %.2f is not the smallest' % s
+        got.append('%.2f' % s)
+    assert abs(B.luminance(B.GROUND) - .0119) < .0005, 'the default ground moved'
+    return 'white %s, mid %s, dark %s' % tuple(got)
+
+
+def t_ground_payload():
+    """Every payload row carries `ground`: {'y', 'scrim'} or None.
+
+    The page reads it and never computes it, so the field has to be there
+    on every row, measured or not. A measured row's scrim must be inside the
+    band's range.
+    """
+    from saltpod import curate as C, glassband as B
+    rows = C.tracks_payload()['tracks']
+    if not rows:
+        return None
+    missing = [t['key'] for t in rows if 'ground' not in t]
+    assert not missing, '%d rows have no ground field, e.g. %s' % (len(missing), missing[:2])
+    measured = [t for t in rows if t['ground'] is not None]
+    for t in measured:
+        g = t['ground']
+        assert set(g) == {'y', 'scrim'}, 'ground carries %s' % sorted(g)
+        assert B.SCRIM_MIN <= g['scrim'] <= B.SCRIM_MAX, '%s scrim %r' % (t['key'], g['scrim'])
+    unart = [t['key'] for t in rows if not t['art'] and t['ground'] is not None]
+    assert not unart, 'a row with no art carries a ground: %s' % unart[:2]
+    return '%d rows, %d measured' % (len(rows), len(measured))
+
+
+def t_mosaic_tiles():
+    """Four, three, two and one covers tile into a 300x300 JPEG whose
+    quadrants are the covers they should be.
+
+    Colour squares made by ffmpeg's lavfi (no fixture files), tiled by
+    mosaic.make, read back as raw RGB by ffmpeg, and each quadrant's centre
+    averaged: four is A B / C D; three repeats A in the last tile; two is A
+    on the left half and B on the right; one is A everywhere.
+    """
+    import shutil as _sh
+    if not _sh.which('ffmpeg'):
+        return None
+    from saltpod import mosaic as M
+    cols = {'A': (230, 40, 40), 'B': (40, 200, 60), 'C': (40, 70, 230), 'D': (235, 225, 40)}
+    tmp = tempfile.mkdtemp(prefix='saltpod-mosaic-')
+    try:
+        src = {}
+        for n, (r, g, b) in cols.items():
+            p = os.path.join(tmp, n + '.jpg')
+            # non-square inputs on purpose: the tiles crop to fill, never stretch
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i',
+                            'color=c=0x%02x%02x%02x:s=%s' % (r, g, b, '240x200' if n == 'B' else '200x200'),
+                            '-frames:v', '1', p], check=True)
+            src[n] = p
+        S = 2 * M.TILE
+
+        def quads(path):
+            pr = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                                 '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path],
+                                capture_output=True, text=True, check=True)
+            assert pr.stdout.strip() == '%d,%d' % (S, S), 'size %s' % pr.stdout.strip()
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', path, '-f', 'rawvideo',
+                                  '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
+            out = []
+            for qy in (0, 1):
+                for qx in (0, 1):
+                    acc, n = [0, 0, 0], 0
+                    for y in range(qy * M.TILE + 30, qy * M.TILE + M.TILE - 30, 4):
+                        for x in range(qx * M.TILE + 30, qx * M.TILE + M.TILE - 30, 4):
+                            i = (y * S + x) * 3
+                            acc[0] += raw[i]; acc[1] += raw[i + 1]; acc[2] += raw[i + 2]
+                            n += 1
+                    out.append(tuple(v / n for v in acc))
+            return out
+
+        cases = (('ABCD', 'ABCD'), ('ABC', 'ABCA'), ('AB', 'ABAB'), ('A', 'AAAA'))
+        for given, want in cases:
+            out = os.path.join(tmp, 'm_%s.jpg' % given)
+            assert M.make('t', [src[c] for c in given], out) == out
+            got = quads(out)
+            for qi, (c, m) in enumerate(zip(want, got)):
+                d = max(abs(a - b) for a, b in zip(cols[c], m))
+                assert d <= 24, '%s covers: quadrant %d is %s, expected %s (%s)' % (
+                    len(given), qi, tuple(round(v) for v in m), c, cols[c])
+        none = os.path.join(tmp, 'm_none.jpg')
+        assert M.make('t', [], none) is None and not os.path.exists(none), 'no covers made a file'
+    finally:
+        _sh.rmtree(tmp, ignore_errors=True)
+    return 'four, three, two, one: quadrants right'
+
+
+def t_playlists_payload_art():
+    """Every /api/playlists row carries `art`: the mosaic URL, or None.
+
+    The page reads it and never makes a mosaic, so the field must be on
+    every row, made or not; a URL must name a file that exists. Runs on the
+    real index where there is one, and always on one synthetic playlist (no
+    export, so no mosaic: `art` is None and nothing is queued for it).
+    """
+    from saltpod import curate as C, mosaic as M
+    real = C.playlists_payload()['playlists']
+    orig = C.am_index
+    C.am_index = lambda: {'playlists': [{'name': 'Selftest No Such List', 'tracks': 3,
+                                         'created': '2026-01-05T00:00:00.000Z'}],
+                          'keys': [], 'read_at': None}
+    try:
+        fake = C.playlists_payload()['playlists']
+    finally:
+        C.am_index = orig
+    assert fake and 'art' in fake[0] and fake[0]['art'] is None, 'synthetic row: %r' % fake
+    assert 'selftest-no-such-list' not in C.MOSAICING, 'an unimported playlist was queued'
+    missing = [p['name'] for p in real if 'art' not in p]
+    assert not missing, '%d rows have no art field, e.g. %s' % (len(missing), missing[:2])
+    made = [p for p in real if p['art'] is not None]
+    for p in made:
+        assert p['art'] == '/api/art?playlist=' + p['slug'], p['art']
+        assert os.path.exists(M.out_path(p['slug'])), 'no file behind %s' % p['art']
+    return '%d rows, %d with a mosaic' % (len(real), len(made))
+
+
+def t_vendored_glass():
+    """The vendored saltglass blocks are one commit's bytes, untouched.
+
+    The page carries the design system's CSS and ground.js inline, and the
+    server carries band.py as glassband.py, each between markers naming the
+    saltglass commit it came from. All three must name the same commit, and
+    each must equal what scripts/vendor_glass.py would write from that
+    commit: a hand edit to a vendored block is an edit the next vendoring
+    silently throws away. Skips where the saltglass repo is not checked out
+    beside this one (the public tree, a fresh clone). A newer saltglass
+    commit is reported, not failed -- re-vendoring is a decision.
+    """
+    sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+    import vendor_glass as V
+    try:
+        why = V.check(V.DEFAULT_SRC)
+    except V.VendorError:
+        page = open(V.PAGE).read()
+        band = open(V.BAND).read() if os.path.exists(V.BAND) else ''
+        have = V.found(page, band)
+        assert len(have) == 3, 'not vendored: %s' % sorted({'css', 'js', 'band'} - set(have))
+        shas = {v[0] for v in have.values()}
+        assert len(shas) == 1, 'vendored blocks disagree on the source sha: %s' % shas
+        return None
+    if why and why.startswith('stale:'):
+        return why
+    assert not why, why
+    return 'css, js, band all @%s' % V.found(open(V.PAGE).read(), '')['css'][0][:10]
 
 
 def t_js_parses():
@@ -1472,6 +1660,11 @@ def main():
     check('one implementation, two adapters', t_one_implementation)
     check('inline script parses', t_js_parses)
     check('no literals outside :root', t_token_census)
+    check('vendored saltglass is one commit, untouched', t_vendored_glass)
+    check('the band: three sleeves, three scrims', t_ground_band)
+    check('every row carries its ground', t_ground_payload)
+    check('a playlist mosaic tiles its covers', t_mosaic_tiles)
+    check('every playlist row carries its art', t_playlists_payload_art)
     check('front end does not decide', t_layer_census)
     check('the page behaves (pagetest.py)', t_pagetest, slow=True)
 

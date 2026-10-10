@@ -1,8 +1,60 @@
 # saltpod in glass: the design direction
 
-**Status: PROPOSED. Nothing in this document is measured as built.** It extends
-`publish/DESIGN.md` (which is measured and enforced) and is the direction the
-owner reads before any code changes. Every factual sentence is tagged:
+**Status: JUDGED 2026-10-04 for Mac width, and built there; the phone is
+still PROPOSED.** The owner judged the direction on two working pages and
+reversed part of it (below). What landed on the `glass-mac` branch is
+recorded in Part 11 as built and gated; everything about the phone (Parts
+3.2, 3.3, the phone columns, Phase 3 onward) is still a proposal and is
+tagged as before. It extends `publish/DESIGN.md` (which is measured and
+enforced).
+
+> **Judged 2026-10-04.** Decided, not open:
+>
+> - **The ground is the selected track's cover**, blurred, under header,
+>   every pane and footer. No cover square at the top of a list.
+> - **The glass is Apple's own web recipe**: blur 16px, saturate 180%, a fill
+>   of the ground colour at **.60** (not .85), a 1px rim, a 1px top
+>   highlight, a soft shadow. It goes only where something floats or sits on
+>   the picture: the header bar, the footer bar, menus, dialogs, and exactly
+>   one row, the selected one. Never on every row.
+> - **The selected row is clear glass, no blue**: ink at 14% over a blur, the
+>   rim, the highlight. Blue is retired as "where you are"; it stays only for
+>   the one primary action (Sync, as tinted glass since the chrome pass) and
+>   drop targets. Orange is allowed on the
+>   selected row again.
+> - **Side panes are open, no tint, no inset glass cards.**
+> - **The one action is accent-tinted glass** (the chrome, judged the same
+>   day on a fourth pass): Sync is the accent at .55 over a light blur, not
+>   a blue gradient, and no gradient is left on the page. Every other button
+>   is a clear capsule, every field an icy wash. The footer names the keys
+>   for what you are looking at; Apple Music playlists show a mosaic like an
+>   album; Review sync and Data are rebuilt from the system's parts. Part 3.1.
+> - **Surfaces end by their own fill** (the endings, judged the same day on a
+>   third pass): no seam between panes, none under a title strip or a count.
+>   The pane title strips are tinted glass (the ground at .35 over the blur)
+>   and the lists scroll under them; the counts are floating pills; the
+>   filter is a popover from the funnel, not a row. Etched seams remain in
+>   the system for edges without a fill; the page uses none (the floating
+>   menu's and dialog's own title strips keep theirs, and the bars draw their
+>   own edge). Part 3.1.
+> - **The ground follows the selection only after it has rested** (settle
+>   250 ms), then crossfades 700 ms between two decoded layers with a 5%
+>   drift. Reduce Motion keeps the fade and drops the drift. Reduce
+>   Transparency, Increase Contrast and no `backdrop-filter` give no image, a
+>   flat ground, solid chrome and real 1px borders.
+> - **The luminance band**: the server measures every cover's mean colour and
+>   hands the page the scrim alpha that keeps the composite ground at or
+>   under relative luminance Y = .05 (scrim between .30 and .85). The page
+>   never measures colour. A bright sleeve after a dark one is then a change
+>   of hue, not a flash.
+> - **Build order**: the system first (`saltglass`, app-agnostic, its own
+>   repository), then saltpod at Mac width (>= 1000px). The phone is next.
+>
+> The two pages the owner judged on: phone ground
+> https://claude.ai/artifact/HZNw5NsGWL7Hx4EPX9kjgx ; Mac window
+> https://claude.ai/artifact/7QUCuMy5F6XLTRszPgAT7x
+
+Before the judgement, every factual sentence was tagged:
 SOURCED (a URL a research finding fetched, cited by finding), MEASURED (run
 against the repo, the captured Apple assets, the owner's covers, or the
 findings' own arithmetic, cited by finding and section), or INFERRED (a
@@ -30,7 +82,10 @@ hold still today keep holding still. The type moves to the system stack. The
 phone is the same DOM shown one pane at a time behind a glass tab bar and a
 one-slot glass shelf that never minimise, never collapse and never leap. At
 Mac width a person who knows the page sees new corners, a new face and a
-glass menu, and nothing else moved. At phone width they see iPhone Music's
+glass menu, and nothing else moved. (That was the proposal. As judged on
+2026-10-04 they see more: the selected cover as the ground of the window,
+glass bars, one glass row, tinted title strips the lists scroll under,
+floating count pills and no seams; Part 3.1.) At phone width they see iPhone Music's
 bottom chrome holding saltpod's own facts.
 
 The owner's own precondition for glass is that the UI has to stop moving
@@ -213,10 +268,11 @@ What changes at rest:
    `fc-list` and `system_profiler` all empty for Plex; `<head>` carries no
    `<link>`).
 2. **Header controls become capsules.** `#q` (400x32) takes `--r-pill`;
-   `#dosync` (55.6x32) takes `--r-pill` and keeps its blue fill; `#gear`
-   (32x32) becomes a circle. No `backdrop-filter` on any of them: the band is
-   flat `--ground` and glass over a flat token changes zero pixels (MEASURED,
-   desktop-glass s4 option G). Three groups is the HIG ceiling; one primary
+   `#dosync` (55.6x32) takes `--r-pill` and keeps its blue fill (as built
+   since the chrome pass: the accent as tinted glass, `.gl-action`); `#gear`
+   (32x32) becomes a circle. No `backdrop-filter` on the controls
+   themselves; since 2026-10-04 the header band they sit in is a glass bar
+   over the art ground (see "Reversed" below). Three groups is the HIG ceiling; one primary
    action, trailing, tinted (SOURCED, HIG toolbars via glass-principles s7).
 3. **The floating layer is regular glass.** `#menu` and `#dlgbox` take the
    glass recipe (Part 3.4) and the new `--r-lg` corner. `#toast` stays what it
@@ -224,10 +280,16 @@ What changes at rest:
    is the most legible element on the page, an interrupt of about two seconds,
    and glass on it would stack on the open glass sheet on the phone
    (verify-legibility s3, recommended; failure-modes G5). `#sp`, `#tp`,
-   `#lsheet`, `#rsheet` stay opaque `--ground`: large, text-dense, two of them
-   over a load-bearing scrim, and Apple's own rule that a full-height sheet
-   goes opaque (SOURCED via glass-principles s4). They gain only the
-   tokenised rim and shadow they already draw.
+   `#lsheet`, `#rsheet` were to stay opaque `--ground`: large, text-dense,
+   two of them over a load-bearing scrim, and Apple's own rule that a
+   full-height sheet goes opaque (SOURCED via glass-principles s4). As
+   built (the conformance pass, F8): they are heavy glass. On the art ground
+   a flat `--ground` panel was a dead slab sliding over a lit room, and
+   Apple's opaque is the material thickened, not a flat colour; so they
+   carry `.gl-glass .gl-heavy` (the ground at 88% over the blur), the rim on
+   the inner edge only, secondary text at the glass weight, and become the
+   flat ground under every twin as the other glass does. The toast stays
+   opaque.
 4. **The selected row is repaired.** `--on-sel-dim`, `--on-sel-line` and
    `--on-sel-hi` are defined as references to themselves at `curate.html`
    42-44 and compute to invalid, so the selected row's secondary text falls
@@ -236,7 +298,10 @@ What changes at rest:
    s9, verifier-laws). Setting them to `DESIGN.md`'s values makes the
    selected row look different, and correctly so. In the same change the blue
    fills start at a new `--sel-top` so white text passes at the row centre
-   (Part 4).
+   (Part 4). As built: the repair landed (Phase 0, with the clear-glass
+   values in Part 4.1), and then the selected row stopped being blue at all;
+   `--sel-top` is the system's accent (`--gl-accent`), which Sync wears as
+   tinted glass; the gradient it once started is gone (the chrome, below).
 
 Smaller visible changes at Mac width, each a repair of a law rather than a
 redesign: `.col.on.pend .cnt` becomes an orange dot beside an `--ink` count
@@ -246,14 +311,178 @@ bottom appear, closing the hole where `nudge()` is keyboard-only today
 (MEASURED, touch-interaction s2.3); `#undoc` in the footer becomes clickable
 (today a span with no handler; MEASURED, verifier-laws law 7); the segment
 pill "Library" in the source pane is renamed "Drive" so that one word means
-one thing (Part 3.2).
+one thing (Part 3.2). As built (F9): all four landed. The open
+collection's pending count is `--ink` with a 7px orange dot (`.pdot`); the
+row menu gains the four Move rows, offered exactly where the keys work;
+`#undoc` is a button that calls the existing undo; the segment reads Drive
+(the centre strip and the T7 titles still say Library).
 
-Not changed at Mac width, and said so because findings proposed them: no
-inset glass sidebar (walked back in macOS 27; over `--ground` it blurs
-nothing; it breaks the 24px fold rails: desktop-glass s2, s3, s4); no
-scroll-edge effect (nothing floats over the lists; "shouldn't be used where
-there aren't any floating UI elements", SOURCED WWDC25 356 via
-glass-principles s4); no large title; no per-album backdrop under panes.
+**Reversed by the owner, 2026-10-04.** This section first said no
+per-album backdrop under the panes, and that the header controls take shape
+but no blur because glass over a flat token changes nothing. Both rested on
+the page ground being flat. The owner judged the other way on the Mac
+window page: the ground is now the selected track's cover, blurred, under
+the whole window, and once there is a picture behind it the glass has
+something to do. So, as built: the header and footer are glass bars
+(`.gl-glass-bar`, their old 2px seam strip and hairline gone; the bar's rim
+and etched line draw the edge); the selected row is selection glass
+(`.gl-sel`, ink 14% over its own blur) and no longer the blue gradient. The
+first build bounded the three left panes with etched structure seams and put
+the inner seam under strips and substats; the endings below took them off.
+What made it safe is the band, not the fade: the server picks a scrim
+per cover so a white sleeve and a near-black one land on grounds of the same
+luminance (Part 4.1). The flash that a per-album backdrop was feared for is
+a luminance jump, and the band removes it.
+
+**The endings, judged 2026-10-04 (third pass) and built.** A surface ends
+by its own fill; lines only where there is no fill.
+
+- *No seams.* None between the panes, none under a title strip, a count or
+  the old filter row. The four panes carry `.gl-ends` (the idiom, named).
+  The header's and footer's own edges are unchanged: the bars draw them.
+- *Strips over the lists.* The four pane title strips are `.gl-strip`:
+  tinted glass, the ground at .35 over the 16px blur and 180% saturation,
+  no border, no shadow, a step darker than the ground. They sit over their
+  scroller (absolute, z-index 2), and the scroller is padded by `--strip-h`
+  (46px) with the same scroll-padding, so the list scrolls under the glass
+  and a keyboard move never lands a row beneath it. Only in the unfolded
+  state: a folded pane's 24px rail keeps its rotated flow layout. The four
+  panels' strips (`#sp`, `#tp`, `#lsheet`, `#rsheet`) are `.gl-strip` in
+  flow, their bodies already starting below them.
+- *Count pills.* The source pane's "N of M readable right now" (`#sstat`)
+  and the right pane's "N to buy · € · N ready · N synced" (`#rstat`) are
+  `.gl-pill`: the strip's material in a capsule, a 1px ink .18 rim with a
+  1px ink .10 top highlight, the pill shadow, ink text, inset
+  `--gl-pill-inset` (10px) from the pane's sides and bottom; the scroller
+  leaves `--pill-clear` (56px) under the list. An empty pill (every file
+  readable) is not drawn. `#sp`'s and `#tp`'s bottom blocks carry buttons
+  and stay action bars in flow.
+- *No source note in the list.* The "N of M readable right now -- the rest
+  are on a volume that is not mounted" paragraph the T7 list appended is
+  gone: the count lives once, in the source pane's pill, and the cause where
+  it already was, in the footer's health strip.
+- *The filter is a popover.* The filter row under the centre strip is gone
+  (markup, rules, its two tokens and its remembered open state). The funnel
+  in the strip (`#fltoggle`, `aria-haspopup="menu"`, `aria-expanded`) opens
+  the row menu itself on its own material, `--fpop-w` (220px) wide,
+  anchored under the funnel at the strip's right edge: a strip "Show", then
+  one `menuitemradio` row per filter the list offers, a check on the active
+  one, and at the right the count the server sent (`totals`: to buy, to
+  sync, needs a drive, to remove, on the iPod), the list's own row count
+  for All, nothing for the rest. The page computes no count. Choosing a row
+  sets the filter, closes and draws; arrows and Home/End move, Enter or
+  Space choose, Escape closes and returns focus to the funnel, a click
+  outside closes; `f` still cycles. With a filter other than All on, its
+  name sits beside the funnel (`.fname`) and opens the popover too; the
+  orange "filter on" dot is gone, since the name says it.
+- *Dense pill rows.* In the iPod pane and the source pane a `.col` row is
+  `--gl-row-dense` (28px) tall, padding 4px 0 4px 12px, 1px apart, at the
+  capsule radius; the open one is `.gl-open`, an ink .10 wash with an ink
+  .18 rim (no backdrop filter, so it may sit on every open group), and
+  drops the raised fill and the seam-light rim; album thumbnails are
+  `--thumb` (24px); section labels sit 14px above and 4px below; the
+  hover-revealed dots are a 28px square; a drop target keeps its blue
+  outline at the pill radius. The right pane's cards, the panels' rows and
+  the centre's track rows are unchanged.
+
+**The chrome, judged 2026-10-04 (fourth pass) and built.** The owner
+approved the mock as it stood. Three controls join the system, the footer
+learns the context, the Apple Music playlists get pictures, and the two
+busiest panels are rebuilt from parts the system already had.
+
+- *Sync, the one action.* `#dosync`, every `button.go` and every primary a
+  script builds (Confirm, Save, Delete) carry `.gl-action`: the accent at
+  `--gl-action-a` (.55) over `blur(12px) saturate(160%)`, a 1px ink .22 rim,
+  a 1px ink .18 top highlight, a capsule `--gl-hit` (32px) tall, a white
+  label (`--gl-on-accent`). One per screen. The blue gradient is gone from
+  the stylesheet (the two Sync rules and the track panel's "use the guess"
+  chip; pagetest asserts no `linear-gradient` is left); `--sel-top` and
+  `--sel-lo` stay as tokens. Sync's hover brightness filter went with it: a
+  filter on the button breaks the backdrop its own glass samples. Disabled,
+  the one action is the secondary's disabled wash.
+- *Secondary actions.* Every other button wears `.gl-btn`'s declarations
+  (written on the element, so a button the script builds matches): the open
+  row's wash (ink .10) and its ink .18 rim, no stroke, no hover stroke;
+  disabled is ink .05 with no rim and a dim label. The gear keeps its ring.
+- *Fields.* `#q`, the new-collection and dialog inputs, the Data panel's
+  select and filter and the menu's new-playlist field carry `.gl-field`, and
+  the generic input/select rule wears the same icy wash so an unclassed
+  field matches: ink .105, no stroke, a 1px ink .14 top highlight;
+  `--r-pill` for search, `--r-sm` for inputs and selects; the system draws
+  a 1px `--gl-rim` focus ring, so the four `:focus` border-colour rules are
+  gone. The track panel's underline fields are a form's rule and unchanged.
+- *The context footer.* The keys are a lookup table in the page (`KEYS`),
+  one row per context, and the context is read off the page's own state:
+  the right pane focused (`#rbody` is focusable, so a click there means the
+  buy list), then the active source, then whether a collection is open.
+  The keys that matter come first in ink, the rest dim, then `?` "all
+  keys". As built:
+  - an iPod collection open: space play · s sync · x take out · ⇧J ⇧K move
+    | c collection · i info · . menu · / search;
+  - any other iPod view (All on iPod, a smart list, the device lists): the
+    same without take out and move;
+  - an Apple Music playlist: c add to collection · b buy · v vinyl · space
+    preview | i info · . menu · / search;
+  - an album on the drive: c add to collection · space play · i info | v
+    vinyl · . menu · / search;
+  - the buy list: b buy · v vinyl | space preview · i info · / search.
+
+  Two caps differ from the mock because the keydown handler does: reorder
+  is shift-J / shift-K (`nudge`), not a modifier chord; and the buy list
+  has no "x drop", because no key drops a buy-list row (x there means "not
+  on the iPod"). `b` on an Apple Music playlist sets the sync tier, which
+  for a track you do not own is the buy list. `?` (the cap or the key)
+  opens a popover on the menu's material listing every key with its verb in
+  four groups; Escape closes it. The health strip has 28px of air
+  (`margin-left: auto; padding-left: 28px`) and never wraps; the keys clip.
+  With a selection live, the selection strip is unchanged apart from the
+  `?` at its end.
+- *Apple Music playlists like albums.* In the source pane's Music tab each
+  playlist row is a dense `.col` with a `.mosaic` at `--thumb`, the name
+  over "N tracks · YYYY-MM" (the payload's own `tracks` and `created`), and
+  the count at the right. The server makes the picture (Part 4.2, "The
+  mosaic"), so the slot holds the one tiled image the payload names, or the
+  empty `--seam` thumbnail until the `mosaics` data event brings it; the
+  page never tiles and draws no canvas. The "All in Apple Music" row keeps
+  no thumbnail (it is not a playlist); the iPod's own lists are unchanged.
+- *Review sync (`#sp`), re-patterned.* The summary is a `.fact` with the
+  numbers in ink; section labels are the `.month` style; each planned
+  change is a row with a + / - / ~ mark in an 18px column (`--mark-w`)
+  before the 44px art, the name, then album · duration · what happens; an
+  "after" gauge (free space as a thin bar, the numbers from `/api/plan` and
+  the ticked rows' sizes) with a stat line sits after the changes; the four
+  infrastructure rows are steps with a dot, filled when done, orange while
+  doing or on error; the sync log is the `.log` pattern (mono on
+  `--log-wash`, `--r-md`). The foot is a `.gl-strip` floating over the end
+  of the list, the stat on the left, Cancel as the secondary capsule and
+  Confirm as the one action; the scroller leaves `--bar-clear` (90px) under
+  it. Album, duration and cover are looked up on the track the page already
+  holds. The plan says only whether a file is converted, not from what, so
+  a row reads "→ ALAC" or "as is" where the mock showed "FLAC → ALAC"; the
+  page does not guess the source format. Every behaviour stayed: the
+  checkboxes, ticking a row out, a section's all/none, the step states and
+  row marks from the log's `@@` lines, the gauge's numbers, undo.
+- *Data (`#rsheet`), re-patterned.* The intro and every section's facts are
+  `.fact` prose with numbers in ink and paths in `<code>`; section labels
+  in the `.month` style; every action a secondary capsule in an `.acts` row,
+  the imported-playlist select a field; two columns at the sheet's own width
+  (`.two`, a container query folds it to one under 560px); the job box is
+  the `.log` pattern labelled with the job's name and state (`#jobbox`,
+  `#jobname`, `#jobstate`, `#joblog`); the long-way-round playlist list is
+  `.col` rows with the count and an import capsule. Data has no one action,
+  so it has no floating action bar. Both panels: no `.box`, no `.brow`, no
+  colour in an inline `style=`, no `<pre>` without the wash; every handler
+  and id the script uses kept, no logic moved.
+
+Still not changed at Mac width: no inset glass sidebar (walked back in macOS
+27; it breaks the 24px fold rails: desktop-glass s2, s3, s4); the panes stay
+open, no tint and no glass cards; no scroll-edge effect; no large title; the
+art ground, the band, the clear-glass selected row, the glass menus and
+dialog, the heavy-glass panels, the capsule geometry, the header and
+footer bars. Landed since the first build: the system face and mono (item 1, F3),
+the Move rows, a clickable `#undoc` and the Drive rename (F9). Not built:
+the toast's `hidden` and the `#midh` split. They remain the direction,
+unscheduled.
 
 ### 3.2 Phone width (< 700px): one pane at a time, the same DOM
 
@@ -390,24 +619,62 @@ bar never minimises.
 ### 3.4 Material system
 
 Regular glass only. Clear is never used: its three conditions are not met
-anywhere on a dark page of lists. Glass is never on rows, never on a pane
-body, never on a bar that nothing scrolls under.
+anywhere on a dark page of lists. Glass is never on rows (save the one
+selected row, since 2026-10-04), never on a pane body, never on a bar that
+has no picture or content behind it.
 
 | Surface | Mac width | Phone width | Dimming layer |
 |---|---|---|---|
-| Page ground, panes, `.pbody`, rows, cards | flat `--ground` | flat `--ground` | none |
-| Header band | flat; controls take capsule shape, no blur | flat, in flow | none |
-| `.plabel` strips, `.filters`, `.substat` | flat, in flow | flat, in flow (hard style by construction: opaque plus hairline) | none |
-| Footer | flat | hidden | none |
+| Page ground | the art ground (`#ground`, `.gl-ground`): the selected cover, blurred, under the server's scrim; flat `--ground` under the twins | flat `--ground` (phone ground not built) | the band's scrim |
+| Panes, `.pbody`, rows, cards | open over the ground, no tint, no seams: a pane ends by its own fill (`.gl-ends`) | flat `--ground` | none |
+| Selected row | selection glass (`.gl-sel`), the one row with a backdrop filter | proposed: flat | none |
+| Header band | GLASS bar (`.gl-glass-bar .gl-bar-top`); controls are capsules | flat, in flow | none |
+| Pane `.plabel` strips | STRIP (`.gl-strip`): the ground at .35 over the blur, no border, no shadow, over the scroller, the list scrolling under it; in flow on a folded rail | proposed: flat, in flow (hard style by construction: opaque plus hairline) | none |
+| Count `.substat` in the source and right panes | PILL (`.gl-pill`): the strip's material in a capsule with rim, top highlight and pill shadow, floating `--gl-pill-inset` from the pane's sides and bottom | proposed: flat, pinned above the shelf | none (the list scrolls under) |
+| The open row in a list of names (`.col.on`) | OPEN (`.gl-open`): an ink .10 wash with an ink .18 rim, capsule radius; no backdrop filter | proposed: flat | none |
+| The filter | a popover on `#menu`'s material from the funnel; no filter row | proposed: `.filters` row on the pushed page (Part 3.2) | none |
+| Footer | GLASS bar (`.gl-glass-bar .gl-bar-bottom`); the keys for the current context from the page's `KEYS` table, `?` opening the all-keys popover on `#menu`'s material | hidden | none |
+| The one action (`#dosync`, `button.go`, a panel's Confirm) | ACTION (`.gl-action`): the accent at .55 over its own 12px blur, rim and top highlight, white label; one per screen | proposed: same, at `--hit` | none |
+| Every other button | BUTTON (`.gl-btn`): the open row's wash and rim, no backdrop filter; disabled a fainter wash, no rim | proposed: same | none |
+| Fields (`#q`, inputs, selects) | FIELD (`.gl-field`): ink .105 wash, no stroke, top highlight, a `--gl-rim` focus ring | proposed: same, 16px type | none |
+| Apple Music playlist rows (source pane) | open, a dense `.col` with the server's mosaic at `--thumb` | proposed: flat | none |
 | `#menu` | GLASS regular, `--r-lg`, anchored | GLASS regular, medium-detent sheet, `--r-sheet` | `--scrim` on phone only |
 | `#toast` | OPAQUE inverted pill, as today; hidden with the `hidden` attribute, never `opacity: 0` | same, placed above the shelf | none |
 | `#dlgbox` | GLASS regular, `--r-lg` | same | `--scrim-deep` (the existing .72) |
-| `#sp` sync review | OPAQUE, rim and shadow tokens | OPAQUE large-detent sheet, `--r-sheet` top corners | `--scrim` (the existing .55, load-bearing) |
-| `#tp` track panel | OPAQUE body; the art region is the one art-backed surface (Part 7) | OPAQUE large-detent sheet | `--scrim` |
-| `#lsheet`, `#rsheet` | OPAQUE as today | OPAQUE large-detent sheets | `--scrim` |
+| `#sp` sync review | HEAVY GLASS (`.gl-glass .gl-heavy`, ground 88%), rim on the inner edge, shadow token; its strip a `.gl-strip` in flow; its action bar a `.gl-strip` floating over the end of the list, Confirm the one action; plan rows, gauge, steps, `.fact`, `.log` | OPAQUE large-detent sheet, `--r-sheet` top corners | `--scrim` (the existing .55, load-bearing) |
+| `#tp` track panel | HEAVY GLASS body; the art region (proposed) is the one art-backed surface (Part 7) | OPAQUE large-detent sheet | `--scrim` |
+| `#lsheet`, `#rsheet` | HEAVY GLASS, strip in flow; `#rsheet` in the panel parts (`.fact`, `.month`, `.acts`, `.log`), two columns at its width, one under 560px | OPAQUE large-detent sheets | `--scrim` |
 | Shelf | n/a | GLASS regular capsule; SOLID twin while any sheet, menu or dialog is open | none (content scrolls under) |
 | Tab bar | n/a | GLASS regular capsule; SOLID twin while any sheet, menu or dialog is open | none |
 | Scroll edge under bars | none (nothing floats) | none: the 27 kit draws no bottom scroll edge (MEASURED, ios27 s2b); the top strips are in flow | none |
+
+The endings (built 2026-10-04). Three materials join the glass, all from
+saltglass, none a new hue. The strip and the pill are tinted glass: the
+ground at `--gl-strip-a` (.35) over the chrome's blur and saturation, a step
+darker than the bars' .60 fill would read because they sit inside a pane,
+not over the window's edge. The strip has no border and no shadow: it ends
+by its fill and the list under it is the reason it exists, so there is no
+strip without a scroller under it. The pill adds the floating cues (rim,
+top highlight, `--gl-shadow-pill`) because it floats over the end of a list,
+never over a bar. The open row is a wash, not glass: no backdrop filter, so
+a list may carry it on every open group, but never on the same element as
+the one selected row's `.gl-sel`. Under the twins and Solid the strip and
+the pill drop the filter and become `--gl-ground` with a real 1px
+`--gl-rim-hc` border; the open row has no filter to lose. A host that draws
+a strip or a pill does not also draw a seam on the same edge.
+
+The controls (built 2026-10-04, the chrome). saltglass now owns three
+controls and only three: `.gl-action` (the one primary action, accent-tinted
+glass, the only control with a backdrop filter), `.gl-btn` (a secondary
+action, a wash and a rim) and `.gl-field` (an input, a wash and a top
+highlight, its radius from the host). Toggles, sliders and pickers are not
+the system's (saltglass `GAPS.md`, gap 3). Under the twins and Solid all
+three become `--gl-ground`-based with a real `--gl-rim-hc` border, and
+`.gl-action` keeps its accent as a solid fill so the one action is still
+the one action. A panel's floating action bar is a `.gl-strip`, so the one
+action in it is tinted glass on tinted glass: the action's own blur is
+lighter (12px) than the strip's (16px), the same relation as the selected
+row inside a list.
 
 The phone stacking rule (verify-feasibility F1): while `#menu`, `#dlg`,
 `#sp`, `#tp` or any sheet is open at phone width, the tab bar and shelf take
@@ -432,7 +699,10 @@ fixed, `opacity: 0` and white-backed, so the page in a Safari 26 tab can
 already tint the toolbar white (MEASURED, `curate.html` 616-619); the
 `hidden` attribute fixes it.
 
-The fill alpha .85 is the floor at which `--ink` passes 4.5:1 over pure white
+Superseded 2026-10-04: the fill is .60 (Part 4.1), because the band keeps
+whatever is behind the glass at or under Y = .05, so the pure-white case
+below no longer occurs on the art ground. The arithmetic is kept as the
+record of why .85 was proposed. The fill alpha .85 is the floor at which `--ink` passes 4.5:1 over pure white
 behind the glass (10.65) and `--dim-glass` (.75) passes (6.82); `--dim`
 (.55) is 4.49 and fails by rounding, `--faint` as text is 1.93, ink at
 opacity .5 is 4.00 (MEASURED, verify-legibility s1 R1). So on every glass
@@ -457,9 +727,10 @@ What moves, and only this:
 | 4 | Shelf value change | `opacity` cross-fade of the three children, never of the glass | 150ms linear | keep the fade (a fade is Apple's own reduce-motion practice, SOURCED HIG accessibility via glass-motion s2), listed flat in the reduce block |
 | 5 | Toast | `@starting-style` fade in on `hidden` removal, or none | `--t-fast` | none |
 | 6 | `.eq` bars, `.loading` ring, `.look.on` pulse | as today | as today | `animation: none` (existing) |
+| 7 | The art ground follows the selection (built, Mac width) | waits until the selection has rested (settle), then `opacity` crossfade between two decoded layers, the incoming one drifting from scale 1.05 to 1 (zoom-through); a row without art goes through the same settle to a flat ground | settle `--gl-settle` 250ms, fade `--gl-fade` 700ms, drift `--gl-drift` 1.05 | Reduce Motion keeps the fade and drops the drift (`data-gl-drift="off"`); Reduce Transparency, Increase Contrast and no `backdrop-filter` show no picture at all |
 
 What never moves: the tab bar, the shelf's glass, the `.plabel` strips, the
-filter row, rows at rest, the page ground, the blur radius (a constant token;
+filter row, rows at rest, the blur radius (a constant token;
 what changes between detents is the fill alpha, glass-motion s5 row 4), the
 rim (static, no pointer-tracked highlight), the title (no large-title
 collapse). No springs: Apple publishes no millisecond values anywhere
@@ -494,14 +765,14 @@ cannot drift back (Part 11, phase 0).
 
 | Token | Today | Proposed | Why |
 |---|---|---|---|
-| `--on-sel-dim` | `var(--on-sel-dim)` (self-reference, invalid) | `rgba(255,255,255,.82)` | repair; `DESIGN.md`'s stated value (MEASURED defect, four findings) |
-| `--on-sel-line` | self-reference | `rgba(255,255,255,.55)` | same |
-| `--on-sel-hi` | self-reference | `rgba(255,255,255,.16)` | same |
-| `--sel-top` | none | `#2f6fd0` | the top stop of every blue fill (`.row.sel`, `#dosync`, `button.go`, `.drow:hover`, drop hovers). White on it is 4.87 at the top edge and 5.6 at the row centre; today's `--sel-hi` top gives 2.44 and 4.15 (MEASURED, accessibility 0.3, verify-legibility). `--on-sel-dim` on the new fill: 3.84 at the top edge (no text sits there), 4.58 at the centre, 4.88 where the subtitle sits (MEASURED, verify-legibility). `--sel-hi` itself is unchanged and keeps its jobs as a mark on the ground. The light still falls from the top; it starts one step lower |
-| `--glass-fill` | none | `rgba(20,29,41,.85)` | `--ground` at the contrast floor; a blue-black ground needs a blue-black fill, not Apple's neutral grey (MEASURED, web-player s5; INFERRED) |
-| `--glass-rim` | none | `rgba(255,255,252,.40)` | the floating edge: 3.77 on the ground, 3.14 over glass over white, the 3:1 non-text floor the checklist asks for (verify-legibility R3, fix 3; .30 was 2.70). Apple's web uses .20 and a shadow; a shadow is not readable under Increase Contrast |
-| `--glass-rim-hc` | none | `rgba(255,255,252,.50)` | 5.14 on the ground; the real 1px border under `prefers-contrast: more` and the Solid twin, as Apple's own web does (MEASURED, web-player s3). Also the `--faint` replacement on glass |
-| `--dim-glass` | none | `rgba(255,255,252,.75)` | secondary text on glass, 6.82 over white at .85 fill; `--dim` stays for opaque grounds only (5.92 there) |
+| `--on-sel-dim` | `var(--on-sel-dim)` (self-reference, invalid) | built: `rgba(255,255,252,.75)` | repair (MEASURED defect, four findings). Proposed at `DESIGN.md`'s .82 for the blue; landed at the values the clear-glass selection needs, `--ink`-based, the same .75 as secondary text on glass |
+| `--on-sel-line` | self-reference | built: `rgba(255,255,252,.45)` | same |
+| `--on-sel-hi` | self-reference | built: `rgba(255,255,252,.16)` | same; `--on-sel` is `var(--ink)` |
+| `--sel-top` | none | `#2f6fd0` | built; since the chrome pass it fills nothing directly: it is `--gl-accent`, which `.gl-action` mixes at .55, and no gradient remains. Proposed as the top stop of every blue fill (`.row.sel`, `#dosync`, `button.go`, `.drow:hover`, drop hovers). White on it is 4.87 at the top edge and 5.6 at the row centre; today's `--sel-hi` top gives 2.44 and 4.15 (MEASURED, accessibility 0.3, verify-legibility). `--on-sel-dim` on the new fill: 3.84 at the top edge (no text sits there), 4.58 at the centre, 4.88 where the subtitle sits (MEASURED, verify-legibility). `--sel-hi` itself is unchanged and keeps its jobs as a mark on the ground. The light still falls from the top; it starts one step lower |
+| `--glass-fill` | none | built as saltglass's `--gl-glass-fill`: `color-mix(in srgb, var(--gl-ground) 60%, transparent)` | **.60, judged 2026-10-04; proposed at .85.** Apple ships .60 on its own web chrome, and the band makes .60 safe: the .85 floor was computed against pure white behind the glass, and the server now keeps the ground behind every glass surface at or under Y = .05 (Part 4.2 below; saltglass's `DESIGN.md` section 6). Still the ground's own hue, not Apple's neutral grey (MEASURED, web-player s5; INFERRED) |
+| `--glass-rim` | none | built as `--gl-rim`: ink 40% | the floating edge: 3.77 on the ground, 3.14 over glass over white, the 3:1 non-text floor the checklist asks for (verify-legibility R3, fix 3; .30 was 2.70). Apple's web uses .20 and a shadow; a shadow is not readable under Increase Contrast |
+| `--glass-rim-hc` | none | built as `--gl-rim-hc`: ink 50% | 5.14 on the ground; the real 1px border under `prefers-contrast: more` and the Solid twin, as Apple's own web does (MEASURED, web-player s3). Also the `--faint` replacement on glass |
+| `--dim-glass` | none | built as `--gl-dim-glass`: ink 75% | secondary text on glass (6.82 over white at the proposed .85 fill); every glass host re-declares `--gl-dim` to it; `--dim` stays for the ground |
 | `--scrim` | literal `rgba(7,12,19,.55)` on `#spscrim` | token, same value | also the phone sheet scrim |
 | `--scrim-deep` | literal `rgba(7,12,19,.72)` on `#dlg` | token, same value | |
 | `--shadow-float` | literal `0 14px 28px rgba(0,0,0,.45)` on `#menu` | token, same value | applied to the dialog too: one floating idiom |
@@ -509,7 +780,41 @@ cannot drift back (Part 11, phase 0).
 | `--lift` | literal `rgba(255,255,252,.13)` on `#q:focus` | token, same value | |
 | `--drop-fill` / `--drop-wash` | two `rgba(106,169,244, ...)` literals | `color-mix(in srgb, var(--sel-hi) 12%, transparent)` / `7%` | derived from the blue they are; `color-mix` is already used on `.row.marked` (MEASURED, verify-feasibility) |
 | `--tab-on` | none | not a new token: the selected pill uses `--raised` (white .09) | "selected fill" is `--raised`'s stated job. Three hues stay three (ground, blue, orange; verifier-laws law 2). The glyph in `--sel-hi` on an ink pill over glass over white measures 3.43 at .08 and 3.23 at .10 (MEASURED, verify-legibility R2), so .09 is about 3.3, INFERRED by interpolation and to be asserted by gate G2. The kit's own `rgba(120,120,128,.32)` gives 3.26 but is a fourth hue; it is the owner's alternative (Part 12) |
+| `--glass-fill-heavy` | none | built as `--gl-glass-fill-heavy`: ground 88% | the four panels' fill (`.gl-heavy`, F8): Apple's opaque as the material thickened |
+| `--strip-fill` / `--strip-fill-light` | none | built as `--gl-strip-fill`: ground at `--gl-strip-a`; `--gl-strip-fill-light`: ink at `--gl-strip-a` x .3 | the endings: the title strips and the count pills, a step darker (the light twin is the system's, unused by the page) |
+| `--pill-rim` / `--pill-spec` | none | built as `--gl-pill-rim` ink 18% / `--gl-pill-spec` ink 10% | the pill's 1px rim and 1px top highlight |
+| `--open-fill` / `--open-rim` | none | built as `--gl-open-fill` ink 10% / `--gl-open-rim` ink 18% | the open row in a list of names (`.gl-open`) |
+| `--shadow-pill` | none | built as `--gl-shadow-pill`: `0 10px 24px` shadow 35% | a floating pill: lower and softer than a menu |
+| `--action-fill` / `--action-rim` / `--action-spec` | none | built as `--gl-action-fill`: accent at `--gl-action-a` (.55); `--gl-action-rim` ink 22%; `--gl-action-spec` ink 18% | the chrome: the one primary action as tinted glass |
+| `--on-accent` | none | built as `--gl-on-accent`: `#fff` | the one action's label; the one literal a host may override |
+| `--btn-fill` / `--btn-rim` / `--btn-off` | none | built as `--gl-btn-fill` (= `--gl-open-fill`, ink 10%), `--gl-btn-rim` (= `--gl-open-rim`, ink 18%), `--gl-btn-off` ink 5% | a secondary action and its disabled state |
+| `--field-fill` / `--field-spec` | none | built as `--gl-field-fill` ink 10.5%, `--gl-field-spec` ink 14% | the icy field and its top highlight |
+| `--log-wash` | none | page token: `--seam` 35% | the dark wash under a mono `.log` in the panels |
+| `--hover-glass` | none | page token: ink 10% | a hovered row on glass (menu, dialog lists, the new-collection sheet), replacing the retired blue |
 | `--ground`, `--seam`, `--ink`, `--dim`, `--faint`, `--panel`, `--raised`, `--sel-hi`, `--sel-lo`, `--orange` | unchanged | unchanged | the identity, read off the device |
+
+**The saltglass identity mapping (built).** The material tokens are not
+the page's own: they come from saltglass, vendored into `curate.html`
+between `saltglass:css` markers, and saltglass derives every one of them from
+five identity inputs with `color-mix()`. The page maps its palette onto
+those five and writes no rgba to do so:
+
+```css
+html:root { --gl-ground: var(--ground); --gl-ink: var(--ink); --gl-shadow: var(--seam);
+            --gl-accent: var(--sel-top); --gl-live: var(--orange); }
+```
+
+`html:root`, not `:root`, because the vendored `tokens.css` declares the same
+five names on `:root` later in the sheet and would win a tie. The values are
+the system's own defaults today, so the mapping changes nothing on screen; it
+is the seam a palette change goes through. The other tokens the page now
+paints with, all derived there: `--gl-sel` (ink 14%, the selected row),
+`--gl-sel-rim` (ink 40%), `--gl-spec` (ink 14%, the top highlight),
+`--gl-seam-dark` / `--gl-seam-light` (shadow 55% / ink 13%, structure) and
+`--gl-seam-dark-in` / `--gl-seam-light-in` (shadow 35% / ink 9%, inner),
+`--gl-shadow-float`, `--gl-r-lg` 14px, `--gl-r-pill`, and
+`--gl-scrim-unknown` .60, the scrim the ground uses for a cover the server
+has not measured yet.
 
 Scoping on glass (verify-legibility fix 1): `#menu`, `#dlgbox` and the phone
 menu sheet re-declare `--dim: var(--dim-glass); --faint:
@@ -525,7 +830,53 @@ as `--sel-top`.
 | Token | Value | Why |
 |---|---|---|
 | `--glass-blur` | `16px` | Apple's web chrome value (MEASURED, web-player s1); the kit's 30 is Sketch units with lensing, not CSS px (ios27 s2g); never animated |
-| `--glass-sat` | `180%` | the lower of Apple's own two web values (180-220, MEASURED prod.css). On a blue-black ground 220% pushes cover colours toward law 2's blue (4 of 35 covers were more than 30% blue under a sidebar, MEASURED desktop-glass s4). One eyeballed choice; check on the device |
+| `--glass-sat` | `180%` | the lower of Apple's own two web values (180-220, MEASURED prod.css). On a blue-black ground 220% pushes cover colours toward law 2's blue (4 of 35 covers were more than 30% blue under a sidebar, MEASURED desktop-glass s4). Decided 2026-10-04 at 180% |
+| `--gl-sel-blur` / `--gl-sel-sat` | `12px` / `160%` | built: the selected row's own backdrop, lighter than the chrome's because it sits inside a list |
+| `--gl-art-blur` / `--gl-art-sat` | `64px` / `1.2` | built: the ground picture is a wash of colour, never a picture; the layers sit 10% beyond the window so the drift never shows an edge |
+| `--gl-action-a` | `.55` | built (the chrome): the accent's alpha in the one action; the one number its fill derives from |
+| `--gl-action-blur` / `--gl-action-sat` | `12px` / `160%` | built: the one action's own backdrop, lighter than the chrome's, like the selected row's, because it sits inside a bar |
+| `--gl-strip-a` | `.35` | built (the endings): the ground's alpha in a strip or a pill, over the chrome's own blur and saturation; the one number the strip and pill fills derive from |
+
+As built, these are saltglass's `--gl-blur` 16px and `--gl-sat` 180%; the
+`--glass-*` names above are the proposal's.
+
+**The band (built, on the server).** The page never measures a colour. The
+server takes each cover's sRGB mean (ffmpeg, one pixel by area average),
+composites the ground `#141d29` over it at alpha a, and returns the smallest
+a in [.30, .85] that keeps the composite's relative luminance at or under
+Y = .05, to two places. The default ground alone is Y .0117. The three
+reference sleeves give: white (230,228,225) .82; mid (110,100,95) .52; dark
+(40,35,50) .30 (MEASURED, `t_ground_band`; an earlier estimate of .45 for
+the mid sleeve leaves it at Y .06, so the arithmetic, not the estimate, is
+the number). The arithmetic lives once, in saltglass's `band.py`, vendored as
+`src/saltpod/glassband.py`; `src/saltpod/ground.py` keeps the measurements in
+`data/local/ground.json` (`{key: {y, scrim, mean, src, at}}`, re-measured
+when `src` changes), a background worker in the lookup worker's shape fills
+it, and every `tracks_payload` row carries `ground: {y, scrim}` or null. When
+the queue drains the server pushes `{type: 'data', why: 'ground'}` and the
+page reloads as it does for any data. A null `ground` shows the cover under
+`--gl-scrim-unknown` (.60) until it is measured. CLI: `saltpod ground show
+[KEY]`, `saltpod ground scan [--limit N]` (with a ten-bin scrim histogram),
+`saltpod ground check` (every cached scrim inside the range and reproducible
+from its `mean` within .01).
+
+**The mosaic (built, on the server).** An imported Apple Music playlist's
+picture is its first four covers tiled 2x2 by ffmpeg (`xstack`, each scaled
+and cropped to 150x150): three covers repeat the first, two stand side by
+side, one is the cover itself, none makes no file. The covers are the
+pictures the tracks' rows show, resolved to a file by the same rule the
+ground uses (`ground.picture`, lifted out of `measure_key` so both read
+one rule). `src/saltpod/mosaic.py` caches the result at
+`data/local/art/playlist_<slug>.jpg` with its sources in
+`data/local/mosaics.json`, and re-makes it when the first four art sources
+change. `/api/playlists` rows carry `art: '/api/art?playlist=<slug>'` or
+null, and `/api/art` serves it (the slug validated, so no path leaves the
+cache). Asking for the playlists queues every imported one for a worker in
+the ground's pattern; a batch that made something pushes `{type: 'data',
+why: 'mosaics'}`, a batch that made nothing pushes nothing, so the page's
+reload cannot loop. CLI: `saltpod mosaic show [SLUG]`, `make [--all |
+SLUG]`, `check` (exit 1 when a file is missing, not a JPEG, or made from
+covers that are no longer the first four). No PIL.
 
 ### 4.3 Radius ladder, with concentricity
 
@@ -590,7 +941,17 @@ are kit constants, named, not spacing.
 | Token | Value | Why |
 |---|---|---|
 | `--hbtn` | 32px Mac / 44px phone | the header's three controls; 44 is Apple's touch target (SOURCED via accessibility s3) |
-| `--hit` | 44px | `min-height` / `min-width` on every phone pointer target: `.col`, `.drow`, `.more`, the back chevron, tab cells; `.pill` gets `padding: 0 8px` so adjacent 44 slops do not overlap (verify-legibility R8) |
+| `--hit` | 44px | `min-height` / `min-width` on every phone pointer target: `.col`, `.drow`, `.more`, the back chevron, tab cells; `.pill` gets `padding: 0 8px` so adjacent 44 slops do not overlap (verify-legibility R8). At Mac width the conformance pass used it (28px) for the filter row's pills and the endings removed it with the row; the phone proposal stands |
+| `--mh-h` | 58px | built (F1): the header bar; the 32px controls sit with 13px above and below |
+| `--strip-h` | 46px | built (the endings): a pane's title strip, and the padding-top and scroll-padding of the scroller under it; `#menu` and `#dlgbox` shorten it locally (34 / 40) |
+| `--pill-clear` | 56px | built: the room a scroller leaves under its floating count pill |
+| `--gl-pill-inset` | 10px | built (saltglass): a pill's distance from its pane's sides and bottom |
+| `--gl-row-dense` | 28px | built (saltglass): a dense row in a list of names; the two left panes' `.col` and the dots button |
+| `--thumb` | 24px | built: an album thumbnail in a dense side-pane row |
+| `--fpop-w` | 220px | built: the filter popover's width |
+| `--gl-hit` | 32px | built (saltglass, the chrome): a control's height (`.gl-action`, `.gl-btn`) at Mac width; a touch host raises it to 44px |
+| `--mark-w` | 18px | built: the + / - column before a plan row's art in Review sync |
+| `--bar-clear` | 90px | built: the room a panel's scroller leaves under its floating action bar |
 | `--tab-h` | 62px | kit (MEASURED) |
 | `--shelf-h` | 52px | Apple's web mini player (MEASURED) |
 | `--bar-inset` | 21px in standalone, 0 in a Safari tab | kit, Apple's own 26.1.1 change log (MEASURED); the tab-mode value from verify-feasibility F6 |
@@ -639,17 +1000,29 @@ link to the device only; the drive, Music and the pending count keep their
 own homes (verifier-laws fix 1). Select mode is not a shelf value (judge
 graft G5 withdrawn, verifier-laws fix 5).
 
-**Law 2, blue is space, orange is time. Kept, hue and meaning unchanged.**
-Glass has no hue of its own (SOURCED, HIG color via glass-principles s8). Blue
-fills start at `--sel-top` for legibility. Blue never sits as text on glass
-(4.36 over white, fails 4.5), only as a mark: the active tab glyph, the focus
-ring. Orange never sits as text on glass (3.29 over white) or on `--raised`
-(4.06): on those surfaces it is a dot or the `.eq` bars beside `--ink` text
-(judge graft G9, from proposal-artwork-ground s7). The three-hue discipline
-holds: the selected pill is ink-alpha, not the kit's grey. Apple Music's red
-is not introduced: it sits 30 degrees from the orange and has no job
-(MEASURED, type-colour s5.1). The scoping sentence design-structure-first
-proposed for this law is not needed and the law is not reworded.
+**Law 2, blue is space, orange is time. Amended 2026-10-04: blue is the one
+action; the material says where you are.** The proposal kept the law's hue
+and meaning and only moved the blue fills to start at `--sel-top`. The owner
+judged otherwise: blue is retired from the selection. Where you are is said
+by the material, the one row of clear selection glass (ink 14% over its own
+blur, a rim, a top highlight), not by a hue. Blue stays for the one primary
+action, Sync (its gradient starts at `--sel-top`, saltglass's `--gl-accent`),
+and for drop targets, which keep their blue wash because a drop is an
+action in progress. Orange is unchanged in meaning (what is happening now)
+and is allowed on the selected row again: the selected row's clock and
+equaliser are orange, which they could not be when the row was white on
+blue. That orange clock is text, and on the selection glass it measures
+3.41:1 over the default ground and 2.10 over a white sleeve at its banded
+scrim (MEASURED by the band arithmetic, ink 14% over the composite; `--ink`
+there is 11.03 and 6.80, ink .75 is 7.02 and 4.68). It was judged by eye on
+the Mac window and is below 4.5; whether the clock keeps orange text or
+becomes a dot beside `--ink` digits is open (Part 12). Glass has no hue of its own (SOURCED, HIG color via glass-principles
+s8). Blue never sits as text on glass (4.36 over white, fails 4.5).
+Orange never sits as text on `--raised` (4.06): there it is a dot or the
+`.eq` bars beside `--ink` text (judge graft G9, from proposal-artwork-ground
+s7). Three hues still: the ground, one accent for the one action, one live
+colour. Apple Music's red is not introduced: it sits 30 degrees from the
+orange and has no job (MEASURED, type-colour s5.1).
 
 **Law 3, full ink means you could act on it today. Kept.** The library view
 with the drive out dims 3,970 of 4,050 rows (98%), which flattens the law
@@ -771,7 +1144,7 @@ its children; idle is the default child. No new row state.
 |---|---|---|---|
 | **Header: brandline, `#q`, `.counts`, `#dosync`, `#gear`** | the band stays flat; `#q` a 400x32 capsule with placeholder "search everything /"; `#dosync` a blue capsule starting at `--sel-top`; `#gear` a circle | `h1` and `.counts` hidden; `#q` a 44 capsule ("Find in All on iPod"), `#gear` 44 with its orange `.busy` dot, `#dosync` 44 trailing with its count ("Sync · 2"), disabled with the `.lost` reason when unreachable; `#q` gets `appearance: none` so iOS draws the capsule (verify-feasibility F5) | flat; shape only |
 | **iPod pane `aside.left`** | as today: `.month` groups (collections, smart lists with their counts in `.cnt` and the word "smart" in the section label, "on the iPod", Podcasts 10); `.col.on.pend .cnt` = dot + ink; `.more.hold` reserved on every row | root tab iPod; the same body; `.col` at 44; `+` stays in the strip's action slot; list/album marks move into the gear sheet as two check rows | flat |
-| **Source pane `aside.srcpane`** | segments Music \| Drive in the strip (renamed from Library); rows as today; the note "80 of 4,050 readable right now" as the `.substat` | root tab Library; segments in the strip with 44 slop; when the drive is out, a `.month`-styled line under the segments: "Showing 80 of 4,050 · drive offline", `.off` dot, no orange (judge graft G6, from accessory-shelf (c)); rows at `.offline` as today | flat |
+| **Source pane `aside.srcpane`** | segments Music \| Drive in the strip (renamed from Library); rows as today; the note "80 of 4,050 readable right now" as the floating count pill (`#sstat`, built), the cause in the health strip | root tab Library; segments in the strip with 44 slop; when the drive is out, a `.month`-styled line under the segments: "Showing 80 of 4,050 · drive offline", `.off` dot, no orange (judge graft G6, from accessory-shelf (c)); rows at `.offline` as today | flat |
 | **Mid pane `section.mid`** | as today; `#midh` split into `.name` and a mono `.lib` span; menu rows Move up/down/top/bottom; Select in the strip's action slot (optional at this width) | the pushed page: back chevron, title in the face 17/600, Select / Done; `.filters` as one scrolling row (the funnel is dropped, it existed to fold a wrapping block); first block of `.pbody` = a static header: sharp cover 200 at `--r-lg` (the first member's art, or the album's), mono stat line ("17 tracks · 62 min · on the iPod"), then the two action capsules in `--panel`: Preview (plays the first row through `#au`) and the server's verb (Make it a collection / Arrange / `.inert` "a collection"); it scrolls away with the content, nothing cross-fades (judge graft G2, corrected). Rows 62, flat. Album page: track number in the art slot | flat |
 | **Buy pane `aside.right`** | as today | root tab Buy; segments Buy \| Vinyl; cards with `.more` at 44 and capsule action buttons 44 high, 12 apart; the stat foot pinned above the shelf; no swipes this pass | flat |
 | **Health strip `#hstrip`** | as today, hard style, opaque; the slot order unchanged; `.lost` as a value in the Mac slot when unreachable, with no iPod, Music or drive lights (they are unknown, not off) | hidden; its facts in the shelf's idle line (iPod state, GB free), the Library banner (drive), the Data sheet (all of them, plus Music and ffmpeg/config warnings) | flat |
@@ -783,7 +1156,7 @@ its children; idle is the default child. No new row state.
 | **Podcast show** | the `Podcasts` `.col` (10) opens a read-only list of `.row`s; an episode is a track (`mediatype 4`); the `.dur` slot carries elapsed / full in orange while playing and would carry a resume position in `--dim` if `bookmark_ms` reached the page (it does not today); `mmss(5648)` prints `94:08`, Apple's own format is `1:34:08` (an owner decision); no Follow, Save, Download or Played verbs: they do not exist here (non-track-surfaces s2) | the same, as a pushed page | flat |
 | **Mixes** | not a surface of the page today (the CLI previews them; `curate.html` has none). When built: a `.month` "mixes · preview" group in the iPod pane of `.col` rows via `colRow()` with `.nm.two` (family / era) and the size in `.cnt`; the tile a 2x2 of the first four members' real covers, which the server must name (mockdata carries no member keys; non-track-surfaces s1); plain, no chrome (a mix is an observed computation, not a decision) | the same | flat |
 | **Sources and the volume** | the Drive segment; `.away` in the provenance slot; the volume's state in the health strip | the Library banner; a Data sheet row per volume with its name and state word; never orange for a drive that is merely unplugged (non-track-surfaces s4.3) | flat |
-| **Buy list** | cards as today, `.substat` foot | see the Buy pane row | flat |
+| **Buy list** | cards as today, the count as a floating pill (`#rstat`, built) | see the Buy pane row | flat |
 | **Toast** | opaque inverted pill, hidden with `hidden` | the same, above the shelf | opaque |
 
 ---
@@ -857,13 +1230,13 @@ From findings/failure-modes.md G1-G15, each with its mitigation here.
 
 | # | Failure | Mitigation in this design |
 |---|---|---|
-| G1 | text over busy or bright content is illegible; a translucent surface has no fixed contrast | fill .85 is the floor computed against pure white, not the typical cover; `--dim-glass` on glass; nothing bright is ever full-bleed under glass; gate G2 |
+| G1 | text over busy or bright content is illegible; a translucent surface has no fixed contrast | proposed: fill .85 against pure white. Built: fill .60, safe because the band holds the ground behind every glass surface at or under Y = .05, so nothing bright reaches the glass; `--gl-dim-glass` on glass; gate G2 not yet written |
 | G2 | a washed-out bright bar on a bright page (Tahoe Music) | dark-only; the fill is derived from the ground; every glass surface draws its own 1px rim at >= 3:1 |
 | G3 | the bar hides content and competes for attention | 159px bottom clearance so the last row is never trapped; no scroll-edge slab; the shelf carries one fact |
 | G4 | fussy edges, shimmer, bubble animations | one static rim; no specular; no springs; blur never animates; Reduce Motion honoured by gate |
 | G5 | glass on glass, glass in the content layer, mixed variants | rows and panes flat; Regular only; the bars go Solid while a sheet is open; the toast is opaque |
 | G6 | tint everywhere dilutes meaning | tint only Sync; blue and orange stay marks on glass; no new hue in `:root` |
-| G7 | the active or selected state is lost on glass | the active tab is pill + filled glyph + weight; selection stays an opaque fill on flat rows and starts at `--sel-top` |
+| G7 | the active or selected state is lost on glass | the active tab is pill + filled glyph + weight; the selected row is the only glass row in the list, with its own rim and top highlight, so it reads by material rather than by hue (built 2026-10-04) |
 | G8 | people cannot get a solid UI; Safari cannot read Reduce Transparency | the Glass \| Solid control in the Data sheet; `prefers-contrast: more` auto-solid; `prefers-reduced-transparency` as an additive extra |
 | G9 | accessibility modes break layouts | the Solid state is a token swap, designed as a first-class twin and drawn in the mock; roles and roving focus unchanged (pagetest) |
 | G10 | heat and dropped frames from live blur over scrolling lists | no glass on rows; two live blurs at rest, 41k px; the device gate before code lands |
@@ -969,34 +1342,159 @@ the header, footer and playing row, the three-stop dial, the kit radii 20 /
 
 ## 11. Implementation phases and gates
 
-Each phase lands only when its gates pass; the owner's visual review is a
-gate, not a courtesy.
+Rewritten 2026-10-04 as what landed. The phases below are the ones that ran,
+in the order they ran, each with the gates that ran on it; the proposal's
+own Phase 0 and Phase 1 lists are folded in, and what they listed that did
+not land is named at the end of this part. The owner's visual review is
+still a gate, not a courtesy: no screenshot gate exists here, and the owner
+reviews the live page after integration.
 
-**Phase 0, repairs and the census.** Set `--on-sel-dim/-line/-hi` to their
-values; tokenise the eight `rgba` literals and `-.005em`; `.tag.skip` on the
-selected row; change the tier rule at `curate.html` 785 to `min-width:
-1000px` / `max-width: 999.98px`; replace the unreachable fallback at 3395
-with `{reach, since}` and `LASTGOOD`; extend the census (skip every `:root`
-block; `rgba(` outside `:root`; `letter-spacing: -?N em`; "no custom property
-references itself"; the "glass" class); add the comparator assertion. Gates:
-token census clean, pagetest 20/20, layer census at budget, no visible change
-except the selected row (say so in the commit).
+**The system: saltglass.** A separate repository, app-agnostic, written to
+be published: `tokens.css` (five identity inputs, everything else derived
+with `color-mix()`), `glass.css` (the art ground, glass, glass bar,
+selection glass, the two seam weights, and the four twins in order: reduce
+motion, reduce transparency, increase contrast, no `backdrop-filter`, plus
+an opt-in `[data-gl="solid"]`), `ground.js` (`Saltglass.Ground`: settle,
+two decoded layers, crossfade, drift; loads and does nothing in a DOM with
+no timers), `band.py` (the band and the ffmpeg mean), `test_band.py`,
+`check_tokens.py` (no literal colour, radius or duration in `glass.css`),
+`DESIGN.md` (the language), and a demo on covers it generates itself.
+Gates: its tests, the token check, and `ground.js` loading under `node`
+with no DOM. Vendored here first at fb2c278; the repository is now named
+saltGlass, and the page carries it at 60a980b (after 6840f70, 286f1c0 and
+fe152a5, below).
 
-**Phase 1, Mac width.** `--face`, `--mono`; capsule header controls;
-`--sel-top` on the blue fills; `--r-lg`; the glass recipe on `#menu` and
-`#dlgbox` with the scoped dim tokens, `--glass-rim` .40 and the opaque twins
-(`prefers-contrast: more`, `[data-glass="solid"]`, `@supports not`); the
-toast hidden with `hidden`; menu roles per variant; `.col.on.pend` dot + ink;
-Move rows; clickable `#undoc`; the segment renamed Drive; `#midh` split;
-`.offline` added to `DESIGN.md` Part 7 and the bar and shelf added to Part 3.
-Gates: token census, pagetest with G1-G3, layer census, a before/after
-screenshot diff at 1512 and 1024 (SF and Helvetica Neue have different
-advance widths; nowrap labels in `#stabs`, `.counts`, `.substat` may ellipsise
-differently), and the owner's visual review of the four-pane page with one
-menu open over the blue row and over cover thumbs, which is where .85 glass
-visibly reads (proposal-least-movement risk 1).
+**Vendoring.** `scripts/vendor_glass.py` inlines `tokens.css` and
+`glass.css` at the end of the page's stylesheet between `<!-- saltglass:css
+@sha -->` markers, `ground.js` in a `<script data-saltglass>` tag before the
+page's own script between `saltglass:js` markers, and copies `band.py` to
+`src/saltpod/glassband.py` with a provenance line. It reads the files at the
+recorded sha with `git show`, so the sha always describes the bytes; it is
+idempotent, and `--check` reports a stale or hand-edited block.
+`t_vendored_glass` in selftest fails when the three blocks disagree with
+their sha, and skips where the saltglass checkout is absent. One trap,
+explained in place in the page: an HTML comment marker inside a stylesheet
+is parsed by CSS as the prelude of a rule that swallows the next block
+(tokens.css's `:root`, checked in Chrome), so a CSS comment is left open on
+the line before the marker and closes inside tokens.css's own leading
+comment. Nothing may follow the closing marker.
 
-**Phase 2, server fields the phone needs.** `/api/health` gains `reach`-aware
+**Phase 0, repairs and the census.** `--on-sel`, `--on-sel-dim`,
+`--on-sel-line`, `--on-sel-hi` hold real values (Part 4.1); every colour,
+shadow, scrim and tracking literal outside `:root` became a token (`--lift`,
+`--shadow-float`, `--shadow-panel-l` / `-r`, `--shadow-sheet`,
+`--scrim-deep`, `--scrim`, `--drop-fill`, `--drop-wash`, `--ls-tight`), and
+`--sel-top` was added. `t_token_census` skips every `:root` block (there are
+four now, with the vendored one and the mapping), flags `rgb(`/`rgba(`/hex
+outside them and negative tracking, and fails on a custom property that
+references itself (gate G1's self-reference half). Visible change: only the
+selected row's secondary text and highlight, which had never rendered.
+
+**Phase 1, Mac width (the page).** The ground (`#ground`, first child of
+`<body>`, aria-hidden; header, `#work` and footer at z-index 1 above it);
+`followGround()` in `mark()`, the one place the cursor is repainted, hands
+Ground the row's own art and the server's scrim and computes neither; a row
+without art goes through the same settle to a flat ground, so holding j past
+it does not flash. The header and footer as glass bars, `#q`, `#dosync` and
+`#gear` as pills, Sync's gradient from `--sel-top`, `#menu` and `#dlgbox` as
+glass at `--gl-r-lg`; the selected row as selection glass, marked rows as an
+ink wash (7%, 10% on hover), orange back on the selected row's clock and
+equaliser, `.col.on` rimmed with the seam's light catch; etched seams on the
+three left panes and inner seams on strips and substats; `#sp`, `#tp`,
+`#lsheet`, `#rsheet` and `#toast` stay opaque. `bin/pagetest.py` learned the
+vendored page (two script tags, `style.setProperty`, whole reduce blocks)
+and gained four checks: the ground is present; the ground follows the
+selection after the settle with the server's scrim, the unknown default for
+an unmeasured row, and no layer for a row without art, and nothing moves
+before the settle; the page never measures (no `getContext`,
+`getImageData`, `createImageBitmap`); the four twins exist in order.
+
+**Phase 2, the server.** `src/saltpod/ground.py`, the worker, the payload
+field, the event and the `ground` verb (Part 4.2). `/api/art`'s resolution
+was lifted into one function so the measurement reads exactly the picture
+the page is served; an iTunes cover is downloaded once into the same cache,
+.4 s apart, and a failure is remembered for the process so an unreachable
+cover cannot loop the page's reloads. selftest gained `t_ground_band` and
+`t_ground_payload`; the publish manifest gained `ground.py`, `glassband.py`
+and `scripts/vendor_glass.py`.
+
+**Gates, on the integrated branch.** selftest 33 passed, 0 failed, 11
+skipped; pagetest 24 passed (the 20 before plus the four above);
+`bin/layer_census.py --strict` within budget, `glassband` reachable through
+`ground.py`; the publish leak gate passed; `saltpod ground scan --limit 40`
+then `saltpod ground check` exit 0 (48 of 943 covers measured at the time of
+writing; the worker measures the rest as the page asks for them).
+
+**Phase 1a, verification's minor findings.** Hovered rows on glass (the
+menu, the dialog lists, the new-collection sheet) take an ink wash,
+`--hover-glass`, instead of the retired blue; saltglass re-vendored at
+6840f70 (the bars carry the floating shadow; every twin hides the picture
+and raises the rims). This pass also added inner seams under the pane
+strips and the filter row; the endings removed them.
+
+**Phase 1b, conformance to the approved Mac mock (F1-F9).** Measured
+against the live page at 1200x800, in four commits. F1-F6: the header 58px
+(`--mh-h`) with the controls centred; the search field on `--panel` with a
+`--gl-rim-hc` rim, an inline magnifier and the `/` key cap; `--face` and
+`--mono` to the system stacks; the gear a ring; Sync's gradient and inset
+highlight at `--hbtn`; the filter row's geometry (superseded by the popover
+in 1c). F7: every button is the capsule, in the panels and sheets too, and
+`button.go` is the same blue object as Sync; inputs take `--r-sm` and the
+`--gl-rim-hc` border. F8: the four panels are heavy glass (saltGlass at
+286f1c0 adds `--gl-glass-fill-heavy` and `.gl-heavy`); flagged to the owner
+as the pass's one judgement call. F9: the four law repairs of Part 3.1 (the
+Drive segment, the pending dot, the Move rows, a clickable `#undoc`), with
+one pagetest check. Gates on each: selftest 33/0, pagetest 24 then 25,
+layer census strict, vendor check, publish leak gate.
+
+**Phase 1c, the endings (third pass, judged and built 2026-10-04).** The
+system first: saltGlass fe152a5 adds `.gl-strip`, `.gl-pill`, `.gl-open`,
+`.gl-ends` and their tokens (Part 4) with the twins and `DESIGN.md`'s
+"Endings"; vendored with no page change. Then the page, in five commits:
+edges off and the four pane strips over their lists, panel strips in flow
+(endings 1-2); the counts as floating pills and the source note out of the
+list (3-4); the filter row replaced by the popover from the funnel (5);
+dense pill rows in the two left panes and every new number a token (6-7);
+pagetest's `t_strips_and_pills` (8), beside `t_filter_popover` and
+`t_no_filter_row`, which landed with the popover. Finally a re-vendor at
+60a980b, the same bytes under the merged sha. Part 3.1 has what each looks
+like. Gates: pagetest 28 passed, the reduced-motion coverage unchanged (the
+endings add no transition), layer census strict, vendor check, publish leak
+gate.
+
+**Phase 1d, the chrome (fourth pass, judged and built 2026-10-04).** The
+system first: saltGlass 6a84fb9 adds `.gl-action`, `.gl-btn`, `.gl-field`
+and their tokens with the twins and `DESIGN.md`'s "Controls", merged to its
+main as f4ad1fd. The server, in two commits: `mosaic.py` and `saltpod
+mosaic` with `t_mosaic_tiles`; then `playlists_payload()`, `/api/art
+?playlist=`, the worker and the `mosaics` event with
+`t_playlists_payload_art`; `mosaic.py` joins the publish manifest. The page,
+after a vendor commit, in six: the controls and no gradient; the context
+footer and the `?` popover; the playlist mosaics; Review sync; Data; and
+pagetest's `t_action_is_glass`, `t_footer_context`, `t_playlist_rows` and
+`t_panels_patterned`. The two branches merged into `glass-mac`, then a
+re-vendor so the recorded sha is saltGlass main's (f4ad1fd, the same bytes
+as 6a84fb9). Part 3.1 has what each looks like. Gates: selftest 35 passed
+(11 skipped), pagetest 32 passed, layer census strict, vendor check,
+publish leak gate.
+
+**Listed by the proposal and not built in this pass.** From its Phase 0:
+the tier rule (still `max-width: 1000px`), the unreachable fallback and
+`LASTGOOD`, `.tag.skip` on the selected row, the comparator assertion. From
+its Phase 1: the toast's `hidden`, menu roles per variant (the filter
+popover alone has `role="menu"` and radio rows), the `#midh` split,
+`.offline` in `DESIGN.md` Part 7, gates G2 to G4, and the screenshot diff.
+None is withdrawn; none is scheduled. (`--face` and `--mono`, the
+`.col.on.pend` dot, the Move rows, a clickable `#undoc` and the Drive
+rename landed in Phase 1b.)
+
+### Next: the phone
+
+Unchanged from the proposal except where the judgement above reaches it:
+the phone's ground and its band are drawn on the phone ground page linked at
+the top, and the phone's glass is the same saltglass material.
+
+**Server fields the phone needs.** `/api/health` gains `reach`-aware
 `headline: {level, text}`, `job: {id, name, state, seconds}` for a running
 sync, `build` (hash or mtime of `curate.html`); a 409 on a second concurrent
 sync; `id:` on pushed events. Gates: layer census (no new rule in the page),
@@ -1011,7 +1509,7 @@ sequence on `visibilitychange`, `pageshow` and `online` (phone-liveness s8);
 sheets with `inert`; the medium-detent menu sheet; the Data sheet's Glass |
 Solid, Undo and Refresh rows; the Library banner; the three liveness states;
 `.pbody` clearance; `--bar-inset` under `display-mode: standalone`. Gates:
-pagetest 20/20 under the unchanged sandbox plus G2-G4, token census, layer
+pagetest (28 today) under the unchanged sandbox plus G2-G4, token census, layer
 census, the VoiceOver device pass F1-F5, and the owner's visual review of the
 ten phone screens in Part 3.2 plus the Solid twins and the 320 frame.
 
@@ -1021,13 +1519,14 @@ sheet's scrim asserting `--ink` >= 4.5 on the p99 pixel (only an orange mark
 may sit on the field, and only if the gate passes for it); the owner sees it
 once.
 
-**Deliberately deferred, with the reason:** the large title and its collapse
+**Deliberately deferred, with the reason** (the per-album backdrop under
+chrome and panes is no longer on this list: it was built as the art ground,
+with the band in place of the desaturation rule this list asked for): the large title and its collapse
 (the owner's condition); tab-bar minimise and the inline shelf (optional per
 the HIG; law 1; NN/g's complaint); swipe actions on rows (motion on a
 frequent interaction, SOURCED HIG motion via glass-motion s2; the spec is
 touch-interaction 5.2 when wanted); draggable detents and an Arrange-mode
-handle (the Move rows give the function); a per-album backdrop under chrome
-or panes (needs a desaturation rule and the owner's eye); an inset sidebar
+handle (the Move rows give the function); an inset sidebar
 (walked back by Apple); scroll-edge effects; a light appearance (type-colour
 s6 has the table; it doubles every contrast check and the ground is a
 photograph of a dark device); Apple Music's red; lensing, pointer-tracked
@@ -1049,20 +1548,26 @@ page on iOS 26.5+, SOURCED via touch-interaction s3.4).
 3. **Radii: 14 / 24 derived from the page's own padding (as drawn), or
    Apple's 20 / 34.** The kit values need different inner padding or a
    10px inner radius.
-4. **The selected tab pill: `--raised` ink-alpha (as drawn; three hues, about
-   3.3:1 for the glyph) or the kit's grey at 32% (3.26:1, a fourth hue).**
+4. ~~**The selected tab pill: `--raised` ink-alpha or the kit's grey at
+   32%.**~~ Decided 2026-10-04: ink-alpha. "Selected" is said by an ink
+   wash over the material everywhere now (the selected row is ink 14%), and
+   three hues stay three.
 5. **Tab wording: Library with the segment renamed Drive (as drawn), or the
    tab named Source and the segments left alone.**
 6. **The 98%-offline library view**: per-row dimming as today; or state it
    once at the pane and render rows at full ink (a law 3 wording change); or
    show only the readable 80 by default with the "needs a drive" chip for the
    rest (Apple's Downloaded filter).
-7. **Glass on by default (as drawn, because every text token on glass passes
-   at the .85 floor) or Solid by default.**
+7. ~~**Glass on by default or Solid by default.**~~ Decided 2026-10-04:
+   glass on, at a .60 fill, with the band holding the ground under Y = .05.
+   Solid is the system's twins (Reduce Transparency, Increase Contrast, no
+   `backdrop-filter`) and the opt-in `[data-gl="solid"]` on the root; an
+   in-page control for it is not built.
 8. **`.col` on the phone at 44 (Apple's target, about nine fewer rows per
    screen) or 40 (above Apple's 28 floor).**
-9. **`--glass-sat` 180% or 220%**: one token; it decides whether blue covers
-   under the bars rhyme with the selection blue. Judge on the device.
+9. ~~**`--glass-sat` 180% or 220%.**~~ Decided 2026-10-04: 180%, Apple's
+   own lower value. The question it carried (whether blue covers rhyme with
+   the selection blue) went away with the blue selection.
 10. **Status-bar style `black` (as drawn) or `default` + theme-color**, decided
     before the icon is added: iOS caches it at install time.
 11. **Episode durations as `1:34:08`** (Apple's own format) or `94:08` as
@@ -1070,6 +1575,36 @@ page on iOS 26.5+, SOURCED via touch-interaction s3.4).
     episode shows its position.
 12. **The mix tile**: a 2x2 of the members' real covers (needs the server to
     name them) or no tile until it does.
+
+Decided 2026-10-04, beyond the list above (the block at the top of this
+document has them in full):
+
+- The ground is the selected track's cover, blurred, under the whole window,
+  banded by a server-measured scrim (Y <= .05, scrim .30 to .85); no cover
+  square at the top of a list.
+- Glass is Apple's web recipe at a .60 fill, on the header bar, the footer
+  bar, menus, dialogs and the one selected row only.
+- The selected row is clear glass; blue is retired from the selection and
+  kept for Sync and drop targets; orange returns to the selected row.
+- Side panes are open, no tint. Surfaces end by their own fill (the
+  endings, third pass): no seams, title strips the lists scroll under,
+  floating count pills, the filter as a popover, dense pill rows on the
+  left. Etched seams remain in the system for edges without a fill; the
+  page uses none.
+- The four panels are heavy glass (F8, a judgement call flagged to the
+  owner), not opaque ground.
+- The ground settles 250 ms, crossfades 700 ms, drifts 5%, with the reduce
+  twins as stated.
+- The system is built first and separately (saltglass); saltpod at Mac width
+  is its first consumer; the phone comes after.
+
+Open after 2026-10-04:
+
+13. **The selected row's orange clock**: orange text on the selection glass
+    measures 3.41:1 on the default ground and 2.10 over a white sleeve at its
+    banded scrim (Part 5, law 2). Keep it as judged, or make the clock
+    `--ink` digits beside an orange dot, which is how this document already
+    treats orange on `--raised`.
 
 ---
 

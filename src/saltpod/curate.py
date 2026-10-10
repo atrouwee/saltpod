@@ -39,6 +39,8 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 from . import state as S  # noqa: E402
 from . import observe as O  # noqa: E402
 from . import platform as P  # noqa: E402
+from . import ground as G  # noqa: E402
+from . import mosaic as M  # noqa: E402
 
 LOCK = threading.Lock()
 JOBS = {}
@@ -815,13 +817,67 @@ def _guess_from_name(name):
 
 
 def _art_cached_or_makeable(key, dev):
-    # the same name /api/art writes; one rule, spelled once here
-    cache = os.path.join(ROOT, 'data', 'local', 'art',
-                         re.sub(r'[^A-Za-z0-9]+', '_', key)[:120] + '.jpg')
-    if os.path.exists(cache):
+    # the same name /api/art writes; one rule, spelled once in ground.art_path
+    if os.path.exists(G.art_path(key)):
         return True
     e = _local_maps()['key'].get(key) or _original(dev, key) or {}
     return bool(e.get('has_art'))
+
+
+def art_file(key):
+    """The cover /api/art serves for a key (or path), as a file in the art
+    cache -- made now if it can be. Returns (path, already_cached), or
+    (None, False) when there is no cover to be had.
+
+    Lifted out of the /api/art handler so the ground measurement reads
+    exactly the picture the page is served, by exactly this rule.
+
+    The T7 original first -- full quality, and the copy that reliably kept
+    its art. Resolved from the cached index maps, NOT by loading state: a
+    row of 200 covers would otherwise queue 200 reads of a 1.9 MB state
+    file behind one lock.
+
+    THE CACHE IS CHECKED FIRST, and that is not just a shortcut: a cover you
+    supplied yourself lives only there, so hunting for a file with embedded
+    art before looking would mean an uploaded cover could never be served.
+    It 404'd exactly that way once.
+    """
+    hit = G.art_path(key)
+    if os.path.exists(hit):
+        return hit, True
+    src = None
+    e = _local_maps()['key'].get(key) or {}
+    if e.get('path') and os.path.exists(e['path']) and e.get('has_art'):
+        src = e['path']
+    dev = {}
+    if not src:
+        with LOCK:
+            dev = ((S.load()['tracks'] or {}).get(key) or {}).get('device') or {}
+        e2 = _original(dev, key)
+        if e2.get('path') and os.path.exists(e2['path']) and e2.get('has_art'):
+            src = e2['path']
+    if not src and dev.get('location'):
+        from . import itunesdb as I, config as CFG
+        try:
+            cand = I.ipod_path(dev['location'], CFG.load()['mount'])
+            if os.path.exists(cand):
+                src = cand
+        except Exception:
+            src = None
+    if not src:
+        return None, False
+    out = G.art_path(key)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    if not os.path.exists(out):
+        try:
+            subprocess.run(['ffmpeg', '-v', 'quiet', '-y', '-i', src,
+                            '-an', '-vframes', '1', '-vf', 'scale=300:-1', out],
+                           timeout=20, check=False)
+        except Exception:
+            pass
+    if not os.path.exists(out) or not os.path.getsize(out):
+        return None, False
+    return out, False
 
 
 def write_tags(body):
@@ -1086,9 +1142,8 @@ def put_art(key, path, blob):
     ident = key or path
     if not ident:
         return {'ok': False, 'error': 'no track'}
-    cache = os.path.join(ROOT, 'data', 'local', 'art')
-    os.makedirs(cache, exist_ok=True)
-    out = os.path.join(cache, re.sub(r'[^A-Za-z0-9]+', '_', ident)[:120] + '.jpg')
+    out = G.art_path(ident)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     # normalised to jpeg at the size the Classic's largest thumbnail wants,
     # so the ArtworkDB step has nothing left to decide
     tmp = out + '.in'
@@ -1107,6 +1162,7 @@ def put_art(key, path, blob):
         return {'ok': False, 'error': 'could not read that image (%s)' % r['error']}
     O.event('info', 'art', 'cover normalised', backend=r['backend'],
             bytes=os.path.getsize(out))
+    G.forget(ident)                       # a new picture under the same src
     push({'type': 'data', 'why': 'art'})
     return {'ok': True, 'art': '/api/art?key=' + quote(ident),
             'bytes': os.path.getsize(out),
@@ -1383,6 +1439,126 @@ def want_lookup(keys):
             if k not in LOOKING:
                 LOOKING.add(k)
                 LOOKUP_Q.put(k)
+
+
+# THE GROUND, MEASURED IN THE BACKGROUND. Same shape as the lookup above:
+# tracks_payload queues every row that has a picture and no measurement,
+# this measures them one at a time, and when the queue drains the page is
+# told to reload -- it then finds `ground` on those rows. The arithmetic and
+# the cache are ground.py's; this is only the scheduling.
+#
+# A FAILURE IS REMEMBERED FOR THE LIFE OF THE PROCESS, not retried on the
+# next payload: a cover on an unplugged drive would otherwise be queued,
+# fail, push `data`, be queued again by the reload, and loop. A drain that
+# measured nothing pushes nothing, for the same reason. Restarting the
+# server, or `saltpod ground scan`, tries them again.
+GROUND_Q = queue.Queue()
+GROUNDING = set()
+GROUND_FAILED = {}              # key -> the art it failed on
+GROUND_LOCK = threading.Lock()
+
+
+def _ground_worker():
+    got = 0
+    while True:
+        key, art = GROUND_Q.get()
+        downloaded = False
+        try:
+            _entry, downloaded = G.measure_key(key, art, local=lambda i: art_file(i)[0])
+            got += 1
+        except Exception as e:
+            with GROUND_LOCK:
+                GROUND_FAILED[key] = art
+            O.event('debug', 'ground', 'not measured', key=key, error=str(e)[:200])
+        finally:
+            with GROUND_LOCK:
+                GROUNDING.discard(key)
+            GROUND_Q.task_done()
+            if GROUND_Q.empty() and got:
+                push({'type': 'data', 'why': 'ground'})
+                got = 0
+            if downloaded:
+                time.sleep(0.4)                # one cover per .4 s from Apple's CDN
+
+
+def want_ground(rows):
+    """Queue a measurement for (key, art) pairs that have none."""
+    with GROUND_LOCK:
+        for k, art in rows:
+            if k not in GROUNDING and GROUND_FAILED.get(k) != art:
+                GROUNDING.add(k)
+                GROUND_Q.put((k, art))
+
+
+# THE PLAYLIST MOSAICS, MADE IN THE BACKGROUND. Same shape as the ground:
+# playlists_payload queues every imported playlist, this asks mosaic.build for each
+# (which does nothing when the kept mosaic is still made from the playlist's
+# first four covers), and when a batch that MADE something drains, the page
+# is told to reload and finds `art` on those rows. A drain that made nothing
+# pushes nothing, so the reload's own /api/playlists cannot loop. A failure
+# is remembered for the life of the process, as the ground's is.
+MOSAIC_Q = queue.Queue()
+MOSAICING = set()
+MOSAIC_FAILED = set()
+MOSAIC_LOCK = threading.Lock()
+
+
+def _mosaic_worker():
+    made = 0
+    art_of = None
+    while True:
+        s = MOSAIC_Q.get()
+        downloaded = 0
+        try:
+            if art_of is None:                 # one state read per batch
+                art_of = track_art_of()
+            state, downloaded = M.build(s, art_of, S.key_for, local=lambda i: art_file(i)[0])
+            made += state == 'made'
+        except Exception as e:
+            with MOSAIC_LOCK:
+                MOSAIC_FAILED.add(s)
+            O.event('debug', 'mosaic', 'not made', playlist=s, error=str(e)[:200])
+        finally:
+            with MOSAIC_LOCK:
+                MOSAICING.discard(s)
+            MOSAIC_Q.task_done()
+            if MOSAIC_Q.empty():
+                art_of = None
+                if made:
+                    push({'type': 'data', 'why': 'mosaics'})
+                    made = 0
+            if downloaded:
+                time.sleep(0.4 * downloaded)   # one cover per .4 s from Apple's CDN
+
+
+def want_mosaics(slugs):
+    """Queue a mosaic check for each playlist slug not already queued."""
+    with MOSAIC_LOCK:
+        for s in slugs:
+            if s not in MOSAICING and s not in MOSAIC_FAILED:
+                MOSAICING.add(s)
+                MOSAIC_Q.put(s)
+
+
+def playlists_payload():
+    """Apple Music's playlists as the page's Music tab lists them.
+
+    From the cached index read (am_index): `name`, `tracks` (the count),
+    `created` and `last` (ISO times), plus `slug`, `imported`, and `art` --
+    the playlist's mosaic URL when one has been made, else None. Asking for
+    this queues the mosaics that are missing or stale (want_mosaics)."""
+    d = am_index()
+    have = set(playlist_slugs())
+    rows = d.get('playlists', [])
+    for p in rows:
+        p['slug'] = M.slug(p['name'])
+        p['imported'] = p['slug'] in have
+        p['art'] = M.url(p['slug'])
+    want_mosaics([p['slug'] for p in rows if p['imported']])
+    return {'playlists': rows, 'read_at': d.get('read_at'),
+            'library': len(d.get('keys', []))}
+
+
 LOCAL_KEYS = set()          # refreshed on every decision; see apply_decision
 
 
@@ -1590,6 +1766,33 @@ def _answers(t):
     }
 
 
+def row_art(k, r):
+    """The picture a track's row shows: the iTunes cover at 300px, else
+    your own file's cover through /api/art, else ''. One rule, read by the
+    payload and by `saltpod ground`."""
+    art = ((r.get('itunes') or {}).get('art') or '').replace('100x100bb', '300x300bb')
+    if not art and (_original(r.get('device') or {}, k) or {}).get('has_art'):
+        art = '/api/art?key=' + quote(k)
+    return art
+
+
+def track_art_of(tracks=None):
+    """`art_of(key)`: the picture a track's row shows (row_art), or a cover
+    you supplied that sits in the art cache, or ''. What a playlist mosaic
+    is made of (mosaic.py); `tracks` is the state's, loaded once if absent."""
+    if tracks is None:
+        with LOCK:
+            tracks = S.load()['tracks'] or {}
+
+    def art_of(k):
+        r = tracks.get(k)
+        art = row_art(k, r) if r else ''
+        if not art and os.path.exists(G.art_path(k)):
+            art = '/api/art?key=' + quote(k)
+        return art
+    return art_of
+
+
 def tracks_payload(scope=''):
     st = S.load()
     am_keys = set(am_index().get('keys') or [])
@@ -1600,9 +1803,7 @@ def tracks_payload(scope=''):
         if scope and not any(p.startswith(scope) for p in r['playlists']):
             continue
         it = r.get('itunes') or {}
-        art = (it.get('art') or '').replace('100x100bb', '300x300bb')
-        if not art and (_original(r.get('device') or {}, k) or {}).get('has_art'):
-            art = '/api/art?key=' + quote(k)
+        art = row_art(k, r)
         dev = r.get('device') or {}
         # Which libraries hold this, and which one a click would play from.
         # `t7` is a file we own; `device` is a copy on the iPod; `am` is that it
@@ -1651,10 +1852,14 @@ def tracks_payload(scope=''):
             'released': it.get('released'), 'price': it.get('price'),
             'seconds': it.get('seconds'), 'url': it.get('url'),
             'preview': it.get('preview'), 'art': art,
+            # the scrim that keeps this cover's ground inside the band, as
+            # measured by the server (ground.py); None until it has been
+            'ground': G.lookup(k, art),
             'bandcamp': (r.get('bandcamp') or {}).get('url'),
             'bc_verdict': (r.get('bandcamp') or {}).get('verdict'),
         })
         out[-1].update(_answers(out[-1]))
+    want_ground([(t['key'], t['art']) for t in out if t['art'] and t['ground'] is None])
     order = {p: i for i, p in enumerate(sorted({p for t in out for p in t['playlists']}))}
     out.sort(key=lambda t: (order.get(t['playlists'][0], 99) if t['playlists'] else 99,
                             t['artist'].lower(), t['title'].lower()))
@@ -1936,14 +2141,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == '/api/tracks':
             return self._send(200, json.dumps(tracks_payload((q.get('scope') or [''])[0])))
         if u.path == '/api/playlists':
-            d = am_index()
-            have = set(playlist_slugs())
-            for p in d.get('playlists', []):
-                p['slug'] = re.sub(r'^-|-$', '', re.sub(r'[^a-z0-9]+', '-', p['name'].lower()))
-                p['imported'] = p['slug'] in have
-            return self._send(200, json.dumps({'playlists': d.get('playlists', []),
-                                               'read_at': d.get('read_at'),
-                                               'library': len(d.get('keys', []))}))
+            return self._send(200, json.dumps(playlists_payload()))
         if u.path == '/api/events':
             q = queue.Queue(maxsize=64)
             with CLIENTS_LOCK:
@@ -1998,52 +2196,20 @@ class Handler(BaseHTTPRequestHandler):
             # key OR path: an untagged file has no key, because a key is
             # artist|title and it has neither. Same identity rule as put_art.
             _q = parse_qs(u.query)
+            if 'playlist' in _q:
+                # a playlist's mosaic, made by the worker (mosaic.py); never
+                # made here, so a request costs a file read at most
+                pl = (_q.get('playlist') or [''])[0]
+                path = M.out_path(pl) if M.valid(pl) else None
+                if not path or not os.path.exists(path):
+                    return self._send(404, b'', 'image/jpeg')
+                return self._send(200, open(path, 'rb').read(), 'image/jpeg')
             key = (_q.get('key') or [''])[0] or (_q.get('path') or [''])[0]
-            # The T7 original first -- full quality, and the copy that
-            # reliably kept its art. Resolved from the cached index maps, NOT
-            # by loading state: a row of 200 covers would otherwise queue 200
-            # reads of a 1.9 MB state file behind one lock.
-            #
-            # THE CACHE IS CHECKED FIRST, and that is not just a shortcut:
-            # a cover you supplied yourself lives only there, so hunting for
-            # a file with embedded art before looking would mean an uploaded
-            # cover could never be served. It 404'd exactly that way once.
-            _cache = os.path.join(ROOT, 'data', 'local', 'art')
-            _hit = os.path.join(_cache, re.sub(r'[^A-Za-z0-9]+', '_', key)[:120] + '.jpg')
-            if os.path.exists(_hit):
-                return self._send(200, open(_hit, 'rb').read(), 'image/jpeg')
-            src = None
-            e = _local_maps()['key'].get(key) or {}
-            if e.get('path') and os.path.exists(e['path']) and e.get('has_art'):
-                src = e['path']
-            dev = {}
-            if not src:
-                with LOCK:
-                    dev = ((S.load()['tracks'] or {}).get(key) or {}).get('device') or {}
-                e2 = _original(dev, key)
-                if e2.get('path') and os.path.exists(e2['path']) and e2.get('has_art'):
-                    src = e2['path']
-            if not src and dev.get('location'):
-                from . import itunesdb as I, config as CFG
-                try:
-                    cand = I.ipod_path(dev['location'], CFG.load()['mount'])
-                    if os.path.exists(cand):
-                        src = cand
-                except Exception:
-                    src = None
-            if not src:
-                return self._send(404, b'', 'image/jpeg')
-            cache = os.path.join(ROOT, 'data', 'local', 'art')
-            os.makedirs(cache, exist_ok=True)
-            out = os.path.join(cache, re.sub(r'[^A-Za-z0-9]+', '_', key)[:120] + '.jpg')
-            if not os.path.exists(out):
-                try:
-                    subprocess.run(['ffmpeg', '-v', 'quiet', '-y', '-i', src,
-                                    '-an', '-vframes', '1', '-vf', 'scale=300:-1', out],
-                                   timeout=20, check=False)
-                except Exception:
-                    pass
-            if not os.path.exists(out) or not os.path.getsize(out):
+            # Which file, and in what order it is looked for: art_file().
+            out, hit = art_file(key)
+            if hit:
+                return self._send(200, open(out, 'rb').read(), 'image/jpeg')
+            if not out:
                 return self._send(404, b'', 'image/jpeg')
             body = open(out, 'rb').read()
             self.send_response(200)
@@ -2379,6 +2545,8 @@ def main(argv=None):
 
     srv = ThreadingHTTPServer(('127.0.0.1', a.port), Handler)
     threading.Thread(target=_lookup_worker, daemon=True).start()
+    threading.Thread(target=_ground_worker, daemon=True).start()
+    threading.Thread(target=_mosaic_worker, daemon=True).start()
     watch_page(os.path.join(HERE, 'curate.html'))
     url = 'http://127.0.0.1:%d/' % a.port
     print('saltpod  ->  %s' % url)

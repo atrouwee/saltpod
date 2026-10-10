@@ -125,6 +125,9 @@ ids and restamps records (it did at 12:31).
 | ID3v2.2 | converted to v2.3, every frame or none; 11 of 11 frames and the cover survive |
 | Untagged MP3s | writable — `supported()` had a branch that could never run |
 | `pagetest.py` | inside `selftest.py`; 25 passing |
+| Glass ground (server) | saltglass vendored by `scripts/vendor_glass.py`; every row carries `ground: {y, scrim}` (or null), measured in the background from the cover the row shows and kept in `data/local/ground.json`; `saltpod ground show/scan/check` — see DESIGN-GLASS.md |
+| Glass chrome (page) | Sync is accent-tinted glass (`.gl-action`) and no gradient is left; every other button a clear capsule, every field an icy wash; the footer shows the keys for the current context, `?` lists them all; Review sync and Data rebuilt from the system's parts (plan rows with marks, a gauge, steps, a floating action bar; facts, two columns, the job as a log) — see DESIGN-GLASS.md 3.1 |
+| Playlist mosaics (server) | an imported Apple Music playlist's first four covers tiled 2x2 by ffmpeg, cached in the art cache; `/api/playlists` rows carry `art`; a worker makes missing ones and pushes a `mosaics` data event; `saltpod mosaic show/make/check`. Open: the sync plan does not name a file's source format, so Review sync says "→ ALAC", not "FLAC → ALAC" |
 
 ---
 

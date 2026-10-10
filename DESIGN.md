@@ -44,12 +44,23 @@ the nine lists omitted the menu slot, so counts in the iPod and source panes
 sat on two verticals 28px apart in the same column. Every row in a list
 reserves every slot the list uses.
 
-### 2. Blue is space. Orange is time.
+### 2. Blue is the action. Orange is time. The material says where you are.
 
-`--sel-hi` / `--sel-lo` mark **where you are**: the cursor, the selection, a
-drop target, the pointer. `--orange` marks **what is happening now**: the
-playing track, a track in flight, a count with work waiting, a failure. A
-drop target borrows the blue because a drop is also a "here".
+*Amended 4 October, when the selection became glass.* Where you are is no
+longer a hue: the selected row is the one row of clear selection glass (ink
+over its own blur, a rim, a top highlight), and a marked row is an ink wash.
+Blue now marks **the action**: Sync, the one primary action, whose gradient
+starts at `--sel-top`; the go button of the panel that is open; a drop
+target, because a drop is an action in progress; and the pointer marks that
+are still blue (a menu row under the pointer, a focused or edited field).
+`--orange` marks **what is happening now**: the playing track, a track in
+flight, a count with work waiting, a failure. Orange is allowed on the
+selected row, which it was not when the row was white on blue.
+
+The law used to read "blue is space": `--sel-hi` / `--sel-lo` marked the
+cursor, the selection, a drop target and the pointer, and the selection was
+the blue gradient. The paragraphs below are that law's history and still
+hold for orange.
 
 *This law was restated on 29 September after auditing all 27 uses.* It read
 "orange is what you hear", which was **not what the code does** — orange also
@@ -160,23 +171,43 @@ bug — the census at the bottom of Part 8 is how that stays true.
 | `--faint` | `white .22` | hairlines, borders, disabled |
 | `--panel` | `white .05` | hover, quiet fill |
 | `--raised` | `white .09` | selected fill, gauge track |
-| `--sel-hi` / `--sel-lo` | `#6aa9f4` / `#1450b8` | **where you are** (law 2) |
+| `--sel-hi` / `--sel-lo` | `#6aa9f4` / `#1450b8` | **the action** (law 2): panel go buttons, drop targets, pointer marks |
+| `--sel-top` | `#2f6fd0` | the top stop of Sync's gradient; saltglass's `--gl-accent` |
 | `--orange` | `#f75c03` | **what is happening now** (law 2) |
 
 The blue pair was read off a photograph of the device: bright at the top,
 deeper below. Every gradient runs `hi → lo`, so the light always falls from
 the same direction.
 
-**On the selection.** The blue is the only ground in the product that carries
-its own foreground, and it was written out as a literal 21 times in four
-different alphas (`.7`, `.8`, `.82`, `.85`) all meaning the same thing.
+**On the selection.** The selection carries its own foreground. It was
+written out as a literal 21 times in four different alphas (`.7`, `.8`,
+`.82`, `.85`) all meaning the same thing; then three of the tokens that
+replaced them referenced themselves and never rendered. Repaired on 4
+October, at the values the clear-glass selection needs; the blue buttons
+use the same tokens.
 
 | Token | Value | Job |
 |---|---|---|
-| `--on-sel` | `#fff` | primary text on the selection |
-| `--on-sel-dim` | `white .82` | secondary text on the selection |
-| `--on-sel-line` | `white .55` | a border on the selection |
-| `--on-sel-hi` | `white .16` | the top highlight inside the gradient |
+| `--on-sel` | `var(--ink)` | primary text on the selection |
+| `--on-sel-dim` | `ink .75` | secondary text on the selection |
+| `--on-sel-line` | `ink .45` | a border on the selection |
+| `--on-sel-hi` | `ink .16` | the top highlight inside a blue gradient |
+
+### Glass
+
+Since 4 October the page is the first consumer of **saltglass**, a separate,
+app-agnostic design system vendored into `curate.html` between
+`saltglass:css` and `saltglass:js` markers by `scripts/vendor_glass.py`
+(and into `src/saltpod/glassband.py` for the server). The ground of the
+window is the selected track's cover, blurred, under a scrim the server
+measured for that cover so the ground never rises above one luminance; glass
+goes only where something floats on it: the header and footer bars, the
+menu, the dialog, and the one selected row. Panes stay open, divided by
+etched seams in two weights. The page maps its palette onto the system's
+five identity inputs in one `html:root` rule and writes no glass value of
+its own. What was judged, what was built and what is still open is in
+`DESIGN-GLASS.md`; the language itself is saltglass's own `DESIGN.md`.
+
 
 ### Radius — a ladder, not a value
 
@@ -364,7 +395,7 @@ strikethrough — `text-decoration: none` is set — it is the cheapest possible
 |---|---|
 | `button` | mono 11px/.08em upper, `1px --faint`, `padding 7px 12px` |
 | `button.go` | inverted: `--ink` ground, `--ground` text |
-| `#dosync` | the blue gradient, `radius 10px`, height `--hbtn` — the one primary action on the page |
+| `#dosync` | the blue gradient from `--sel-top`, `--r-pill`, height `--hbtn` — the one primary action on the page |
 | `.pill` | mono 10px/.14em upper, underline-on-active; a tab |
 | `.tag` | mono 9px/.1em upper, `radius 99px`, `1px --faint`; a state on a row |
 | `.act` | the small text affordance in a title strip (`esc`, `+`) |
@@ -404,9 +435,11 @@ the same control again (law 8). The filters name the three pending
 decisions instead, in the menu's own words: *to buy*, *to sync*,
 *to remove*.
 
-`.marked` deliberately uses the same blue as `.sel` at 34% rather than a
-second hue: a different colour would say "a different kind of thing", when it
-is the same thing in quantity. And a cursor row that is *not* in the
+`.marked` deliberately uses the same material as `.sel` in a lighter dose (an
+ink wash at 7%, under the selected row's 14%) rather than a second hue: a
+different colour would say "a different kind of thing", when it is the same
+thing in quantity. (Until 4 October both were blue, the mark at 34%.)
+And a cursor row that is *not* in the
 selection is drawn as an outline, so the one row an action will skip never
 looks like the rows it will act on.
 

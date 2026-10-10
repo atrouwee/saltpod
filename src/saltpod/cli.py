@@ -151,6 +151,165 @@ def _service(a):
     return 0
 
 
+def _mosaic(a):
+    """`saltpod mosaic`: the Apple Music playlists' pictures, as the page's
+    rows carry them -- the same module the server's worker runs (mosaic.py,
+    with curate deciding which picture each track shows)."""
+    import json as _json
+    import time as _time
+    from . import curate as C, mosaic as M, state as S
+
+    art_of = C.track_art_of()
+    local = lambda ident: C.art_file(ident)[0]
+
+    if a.what == "check":
+        n, bad = M.check(art_of, S.key_for)
+        if a.json:
+            print(_json.dumps({"kept": n, "problems": bad}, indent=2))
+        else:
+            receipt("mosaics kept", str(n))
+            receipt("missing, not a JPEG, or out of date", str(len(bad)),
+                    tone="bad" if bad else "good")
+            for b in bad[:20]:
+                print("   " + b)
+        return 1 if bad else 0
+
+    names = [p.get("name") for p in (C.am_index().get("playlists") or [])]
+    slugs = [M.slug(n) for n in names if n]
+    kept = M.cache()
+
+    if a.what == "show":
+        if a.slug:
+            e = kept.get(a.slug)
+            if not e:
+                fail("no mosaic for %s" % a.slug,
+                     "`saltpod mosaic make %s` makes it, if the playlist is imported" % a.slug)
+                return 1
+            print(_json.dumps(dict(e, file=M.url(a.slug)), indent=2))
+            return 0
+        have = [s for s in slugs if M.url(s)]
+        if a.json:
+            print(_json.dumps({"playlists": len(slugs), "with_mosaic": have}, indent=2))
+            return 0
+        receipt("Apple Music playlists", str(len(slugs)))
+        receipt("with a mosaic", str(len(have)))
+        for s in have:
+            print("   %-32s %d covers" % (s, len((kept.get(s) or {}).get("used") or [])))
+        return 0
+
+    # make
+    if a.slug:
+        todo, force = [a.slug], True
+    elif a.all:
+        todo, force = slugs, False
+    else:
+        fail("make what?", "`saltpod mosaic make SLUG`, or `--all` for every playlist")
+        return 2
+    counts = {"made": 0, "current": 0, "none": 0}
+    failed = []
+    for s in todo:
+        try:
+            state, downloaded = M.build(s, art_of, S.key_for, local=local, force=force)
+            counts[state] += 1
+            if downloaded:
+                _time.sleep(0.4 * downloaded)  # one cover per .4 s from Apple's CDN
+        except M.MosaicError as e:
+            failed.append((s, str(e)))
+    receipt("made", str(counts["made"]), tone="good" if counts["made"] else None)
+    receipt("already current", str(counts["current"]))
+    receipt("no member with a cover (or not imported)", str(counts["none"]))
+    if failed:
+        receipt("failed", str(len(failed)), tone="bad")
+        for s, e in failed[:20]:
+            print("   %s: %s" % (s, e))
+    return 1 if failed else 0
+
+
+def _ground(a):
+    """`saltpod ground`: the same measurements the page's rows carry.
+
+    The server measures covers in the background as the page asks for
+    them; this is the terminal's way in to the same code (ground.py, with
+    curate's art_file deciding which picture a row shows).
+    """
+    import json as _json
+    import time as _time
+    from . import curate as C, ground as G, state as S
+
+    if a.what == "check":
+        n, bad = G.check()
+        if a.json:
+            print(_json.dumps({"measured": n, "problems": bad}, indent=2))
+        else:
+            receipt("measurements kept", str(n))
+            receipt("out of range or not reproducible", str(len(bad)),
+                    tone="bad" if bad else "good")
+            for b in bad[:20]:
+                print("   " + b)
+        return 1 if bad else 0
+
+    st = S.load()
+    rows = [(k, C.row_art(k, r)) for k, r in st["tracks"].items()]
+    rows = [(k, art) for k, art in rows if art]
+
+    if a.what == "show":
+        if a.key:
+            e = G.cache().get(a.key)
+            if not e:
+                fail("no measurement for %s" % a.key,
+                     "`saltpod ground scan` measures every cover that has none")
+                return 1
+            print(_json.dumps(e, indent=2))
+            return 0
+        have = sum(1 for k, art in rows if G.lookup(k, art))
+        if a.json:
+            print(_json.dumps({"with_art": len(rows), "measured": have,
+                               "unmeasured": len(rows) - have}))
+            return 0
+        receipt("tracks with a cover", str(len(rows)))
+        receipt("measured", str(have), tone="good" if have == len(rows) else None)
+        receipt("not yet", str(len(rows) - have))
+        return 0
+
+    # scan
+    todo = [(k, art) for k, art in rows if not G.lookup(k, art)]
+    if a.limit:
+        todo = todo[:a.limit]
+    step("measuring %d of %d covers" % (len(todo), len(rows)))
+    done, failed = 0, []
+    for i, (k, art) in enumerate(todo, 1):
+        try:
+            _e, downloaded = G.measure_key(k, art, local=lambda ident: C.art_file(ident)[0])
+            done += 1
+            if downloaded:
+                _time.sleep(0.4)               # one cover per .4 s from Apple's CDN
+        except G.MeasureError as e:
+            failed.append((k, str(e)))
+        if sys.stderr.isatty():
+            sys.stderr.write("\r  %d/%d" % (i, len(todo))); sys.stderr.flush()
+    if todo and sys.stderr.isatty():
+        sys.stderr.write("\n")
+    scrims = [g["scrim"] for g in (G.lookup(k, art) for k, art in rows) if g]
+    hist = G.histogram(scrims)
+    if a.json:
+        print(_json.dumps({"measured_now": done, "failed": failed, "measured": len(scrims),
+                           "with_art": len(rows),
+                           "histogram": [[round(lo, 3), round(hi, 3), n] for lo, hi, n in hist]},
+                          indent=2))
+        return 0
+    receipt("measured now", str(done), tone="good" if done else None)
+    if failed:
+        receipt("no picture to measure", str(len(failed)), tone="bad")
+        for k, why in failed[:10]:
+            print("   %-40s %s" % (k[:40], why[:80]))
+    receipt("measured in all", "%d of %d" % (len(scrims), len(rows)))
+    top = max([n for _lo, _hi, n in hist] + [1])
+    print("   scrim         covers")
+    for lo, hi, n in hist:
+        print("   %.3f-%.3f  %5d  %s" % (lo, hi, n, "#" * round(40 * n / top)))
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -345,6 +504,24 @@ def main(argv=None):
     p.add_argument("--run", help="every event of one run, by its id")
     p.add_argument("--summary", action="store_true",
                    help="counts by operation and level, and the slowest ops")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("ground", help="the page's ground: each cover's luminance and the scrim that keeps it in the band")
+    p.add_argument("what", nargs="?", choices=["show", "scan", "check"], default="show",
+                   help="show: one track's measurement, or the counts; "
+                        "scan: measure every cover not yet measured; "
+                        "check: every kept scrim in range and reproducible")
+    p.add_argument("key", nargs="?", help="show: one track's key (artist|title)")
+    p.add_argument("--limit", type=int, help="scan: measure at most this many")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("mosaic", help="each Apple Music playlist's picture: its first four covers, tiled 2x2")
+    p.add_argument("what", nargs="?", choices=["show", "make", "check"], default="show",
+                   help="show: which playlists have one, from which covers; "
+                        "make: tile one playlist (SLUG) or every stale one (--all); "
+                        "check: every kept mosaic is a JPEG made from today's first four covers")
+    p.add_argument("slug", nargs="?", help="a playlist's slug, e.g. 2025-april")
+    p.add_argument("--all", action="store_true", help="make: every playlist whose mosaic is missing or stale")
     p.add_argument("--json", action="store_true")
 
     sub.add_parser("version", help="print the version and exit")
@@ -1538,6 +1715,10 @@ def main(argv=None):
                                       " · ".join(y for y in (x["label"], x["format"], x["year"]) if y and y != "0")))
         note("%d releases" % len(d[a.what]))
         return 0
+    if a.cmd == "ground":
+        return _ground(a)
+    if a.cmd == "mosaic":
+        return _mosaic(a)
     if a.cmd == "state":
         from . import state
         {"rebuild": state.rebuild, "stats": state.stats, "buylist": state.buylist,

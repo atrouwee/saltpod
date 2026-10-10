@@ -23,8 +23,11 @@
   --faint:  rgba(255,255,252,.22);
   --panel:  rgba(255,255,252,.05);
   --raised: rgba(255,255,252,.09);
-  --mono:   "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --face:   "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* The system face and mono (DESIGN-GLASS.md 3.1 item 1): SF Pro and SF
+     Mono on Apple hardware, the platform's own elsewhere. Plex Mono was
+     named here for years and never loaded, so the mono was already SF Mono. */
+  --mono:   ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --face:   -apple-system, system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
   /* the selection blue, read off a photograph of the device: bright at the top,
      deeper below. It marks where you ARE; the orange marks what you HEAR, and
      the two never mean the same thing. Drop targets borrow the blue, because a
@@ -32,16 +35,39 @@
   --sel-hi: #6aa9f4;
   --sel-lo: #1450b8;
   --hbtn:  32px; /* the header's controls: search's height, Sync's height, the gear's side */
+  --mh-h:  58px; /* the header bar; the 32px controls sit centred with 13px above and below */
+  --strip-h: 46px;   /* a pane's title strip; the list scrolls under it (the menu and the dialog shorten it locally) */
+  --pill-clear: 56px; /* the room a scroller leaves under its floating count pill */
+  --thumb: 24px;      /* an album thumbnail in a dense side-pane row */
+  --mark-w: 18px;     /* the + / - column before a plan row's art in the sync panel */
+  --bar-clear: 90px;  /* the room a panel's scroller leaves under its floating action bar */
+  --log-wash: color-mix(in srgb, var(--seam) 35%, transparent);  /* the dark wash under a mono log */
+  --fpop-w: 220px;   /* the filter popover under the funnel */
+  --ic-bar: 16px;    /* an icon in a bar control: the search field's magnifier */
   --lw: 250px;   /* the two left panes are one width: they do the same job */
   --sw: 250px;   /* the source pane: Apple Music or the drive, one at a time */
   --rw:   320px;
 
   /* ON THE SELECTION. The blue is the only ground in the product that needs
      its own foreground pair, and it was written out 21 times. */
-  --on-sel:     #fff;
-  --on-sel-dim: var(--on-sel-dim);
-  --on-sel-line:var(--on-sel-line);
-  --on-sel-hi:  var(--on-sel-hi);
+  --on-sel:     var(--ink);
+  --on-sel-dim: rgba(255,255,252,.75);
+  --on-sel-line:rgba(255,255,252,.45);
+  --on-sel-hi:  rgba(255,255,252,.16);
+
+  /* SHADOWS, WASHES AND SCRIMS. Written once here, used by name below. */
+  --lift:         rgba(255,255,252,.13);  /* a focused field */
+  --shadow-float: 0 14px 28px rgba(0,0,0,.45);   /* menus */
+  --shadow-panel-l: 14px 0 28px rgba(0,0,0,.35); /* a sheet from the left */
+  --shadow-panel-r: -14px 0 28px rgba(0,0,0,.35);/* a sheet from the right */
+  --shadow-sheet: -18px 0 46px rgba(7,12,19,.5); /* the slide-in panels */
+  --scrim-deep:   rgba(7,12,19,.72);  /* behind a dialog */
+  --scrim:        rgba(7,12,19,.55);  /* behind a panel */
+  --drop-fill:    color-mix(in srgb, var(--sel-hi) 12%, transparent);
+  --drop-wash:    color-mix(in srgb, var(--sel-hi) 7%, transparent);
+  --sel-top:      #2f6fd0;
+  --hover-glass: color-mix(in srgb, var(--ink) 10%, transparent); /* a hovered row on glass: the material, not the retired blue */
+  --ls-tight:     -.005em;  /* a track name */
 
   /* RADIUS LADDER. Not one radius: a small box wants a small corner, and
      the ratio is roughly a sixth of the box. Four steps, each with a size
@@ -74,6 +100,19 @@
   --fs-mark:  18px;   /* the wordmark */
   --fs-glyph: 19px;   /* the gear */
 }
+/* THE GLASS IDENTITY. saltglass (vendored at the end of this sheet) takes
+   five inputs and derives everything else; the page hands it its own
+   palette and writes no rgba to do so. html:root rather than :root, because
+   the vendored tokens.css declares the same five names on :root further
+   down with the system's defaults, and of two :root rules the later wins;
+   the type selector outranks it without moving either block. The values
+   are the system's own today, so nothing changes on screen -- the mapping
+   is what keeps them the page's when --ground does. */
+html:root { --gl-ground: var(--ground); --gl-ink: var(--ink); --gl-shadow: var(--seam);
+            --gl-accent: var(--sel-top); --gl-live: var(--orange); }
+/* Secondary text on glass reads at the system's glass weight: the three
+   hosts re-declare --gl-dim, and the page's own --dim follows it there. */
+.gl-glass, .gl-glass-bar, .gl-sel { --dim: var(--gl-dim); }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; height: 100%; }
@@ -82,24 +121,45 @@ body { margin: 0; background: var(--ground); color: var(--ink); font: 400 var(--
 a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--faint); }
 a:hover { text-decoration-color: var(--ink); }
 button, input, select { font: inherit; color: var(--ink); }
-button { background: transparent; border: 1px solid var(--faint); border-radius: 0; padding: 7px 12px;
+/* CONTROLS ARE CAPSULES, everywhere, and they are the system's three
+   controls (saltglass .gl-action / .gl-btn / .gl-field, vendored at the end
+   of this sheet). A generic button is the SECONDARY capsule: the open row's
+   wash with its hairline rim, --hbtn tall, no stroke and no hover stroke --
+   the declarations are .gl-btn's, written on the element so a button built
+   in a script string without the class still wears them. The ONE action
+   (Sync, Confirm, Save, Delete) carries .gl-action in its markup: the
+   accent at .55 over a light blur, a white label; the blue gradient that
+   was iTunes' button on a flat ground is gone from the page. A field is
+   the icy wash (.gl-field): an ink wash with a top highlight, no stroke,
+   the focus ring the system draws. */
+button { background: var(--gl-btn-fill); border: 0; box-shadow: inset 0 0 0 1px var(--gl-btn-rim);
+         border-radius: var(--r-pill); height: var(--hbtn); padding: 0 14px;
          font-family: var(--mono); font-size: var(--fs-ctrl); letter-spacing: var(--ls-ctrl); text-transform: uppercase; cursor: pointer; }
-button:hover { border-color: var(--ink); }
-button:disabled { opacity: .4; cursor: default; }
-button.go { background: var(--ink); color: var(--ground); border-color: var(--ink); }
-input[type=text], input[type=search], select { background: transparent; border: 1px solid var(--faint);
-         padding: 6px 9px; font-family: var(--mono); font-size: var(--fs-field); }
+button:disabled { background: var(--gl-btn-off); box-shadow: none; color: var(--dim); cursor: default; }
+/* the one action, disabled, is the disabled capsule: the fainter wash, no
+   rim, a dim label -- the accent is for something that can be pressed */
+button.go, #dosync { background: transparent; box-shadow: none; font-weight: 600; }   /* the material is .gl-action's own */
+button.go[disabled] { background: transparent; color: var(--dim); }
+button.go[disabled]::before { background: var(--gl-btn-off); -webkit-backdrop-filter: none; backdrop-filter: none; }
+button.go[disabled]::after { box-shadow: none; }
+input:not([type]), input[type=text], input[type=search], select { background: var(--gl-field-fill); border: 0;
+         box-shadow: inset 0 1px 0 var(--gl-field-spec);
+         border-radius: var(--r-sm); padding: 6px 9px; font-family: var(--mono); font-size: var(--fs-field); }
 input::placeholder { color: var(--dim); }
-input:focus, select:focus { outline: none; border-color: var(--ink); }
+input:focus, select:focus { outline: none; }
 
 /* header: one line. The brand, search in the centre, and on the right the
    counts -- quiet, at lower opacity -- then Sync and the gear. The pane
-   controls live on the panes now, so nothing below this line but the seam. */
-header { background: var(--ground); padding: 12px 24px 0; display: flex; flex-direction: column; gap: 8px; }
-/* the seam is the header's last line, with nothing under it: the pane lines
-   below start exactly where it ends */
-header:after { content: ""; display: block; height: 2px; background: var(--seam); margin: 4px -24px 0; }
-.brandline { display: grid; grid-template-columns: 1fr minmax(180px, 400px) 1fr; align-items: center; gap: 16px; }
+   controls live on the panes now, so nothing below this line but the edge.
+   The bar is glass (.gl-glass-bar .gl-bar-top in the markup): the ground's
+   picture shows through it, and the system draws its open edge -- the rim
+   and the etched line -- where the 2px seam strip used to be. The three
+   content blocks sit above the ground, which is fixed at z-index 0.
+   The bar is --mh-h tall with no vertical padding: the brandline grid is
+   centred in it, so the --hbtn controls sit with equal air above and below
+   (the old 12/4 padding was the seam strip's, and left them riding high). */
+header { height: var(--mh-h); padding: 0 24px; display: grid; align-items: center; position: relative; z-index: 1; }
+.brandline { display: grid; grid-template-columns: 1fr minmax(180px, 400px) 1fr; align-items: center; gap: 16px; min-width: 0; }
 /* A GRID ITEM KEEPS min-width:auto, so its min-content becomes a floor the
    whole grid -- and therefore the document -- cannot go under. The body is a
    grid and the footer is one of its items, so the keyboard hints, which are
@@ -112,7 +172,17 @@ body > * { min-width: 0; }
 .hright { display: flex; align-items: center; justify-content: flex-end; gap: 14px; min-width: 0; }
 .hright button { height: var(--hbtn); }
 h1 { margin: 0; font-size: var(--fs-mark); font-weight: 700; letter-spacing: var(--ls-face); text-transform: uppercase; }
-#q { width: 100%; height: var(--hbtn); padding: 0 12px; box-sizing: border-box; }
+/* THE SEARCH FIELD is the mock's .mq: the panel wash, a 1px rim at the
+   glass rim's high-contrast alpha, the magnifier at the left and the / key
+   cap at the right, mono at the field size. The input stays the capsule
+   itself -- so the focus ring hugs it and pagetest's #q is unchanged -- and
+   the glyph and the cap sit over it, inert to the pointer. */
+.q { position: relative; min-width: 0; }
+.q .qi { position: absolute; left: 12px; top: 50%; width: var(--ic-bar); height: var(--ic-bar);
+         margin-top: calc(var(--ic-bar) / -2); fill: currentColor; color: var(--dim); pointer-events: none; }
+.q kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); margin: 0; color: var(--dim); pointer-events: none; }
+#q { width: 100%; height: var(--hbtn); padding: 0 40px 0 36px; box-sizing: border-box;
+     font-family: var(--mono); font-size: var(--fs-field); letter-spacing: var(--ls-mono); color: var(--ink); }
 /* The counts give way before the buttons do, and clip at their END: the first
    number (tracks) matters most, the last (the total) least. */
 .counts { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: var(--ls-stat); color: var(--dim); opacity: .6;
@@ -123,41 +193,52 @@ h1 { margin: 0; font-size: var(--fs-mark); font-weight: 700; letter-spacing: var
         color: var(--dim); cursor: pointer; user-select: none; padding: 4px 0; border-bottom: 1px solid transparent; }
 .pill:hover { color: var(--ink); }
 .pill.on { color: var(--ink); border-bottom-color: var(--ink); }
+/* the gear is the mock's: a --hbtn circle with a 1px --faint ring, the glyph
+   centred; the busy dot sits inside the ring at its top right */
 #gear { padding: 0; width: var(--hbtn); flex: none; display: inline-flex; align-items: center;
         justify-content: center; font-size: var(--fs-glyph); line-height: 1; position: relative; }
-#gear.busy:after { content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
+#gear.busy:after { content: ""; position: absolute; top: 2px; right: 2px; width: 7px; height: 7px;
                    border-radius: var(--r-pill); background: var(--orange); }
 /* Sync carries a count while state and the device disagree: tracks marked to
    come off, and tracks in a collection with a file waiting to go on. A change
    made in the page is not made on the iPod until this reads plain "Sync". */
-/* The header's three controls take their looks from the list: search is the
-   grey box of a selected collection, Sync is the blue of a selected track, and
-   the gear is bare. Pending shows as the count in the label -- no orange on
-   blue, for the same reason a selected playing row turns its clock white. */
-#q { background: var(--raised); border: 0; border-radius: var(--r-md); }
-#q:focus { background: rgba(255,255,252,.13); outline: none; }
-#dosync { background: linear-gradient(var(--sel-hi), var(--sel-lo)); border: 0; border-radius: var(--r-md); color: var(--on-sel);
-          box-shadow: inset 0 1px 0 var(--on-sel-hi); }
-#dosync:hover { filter: brightness(1.08); }
-#dosync.pending { color: var(--on-sel); }
-#gear { border: 0; background: transparent; border-radius: var(--r-md); }
+/* The header's three controls are capsules in a bar, the way a bar's
+   controls are: search is a rimmed field on the panel wash, Sync is the one
+   blue on the page -- the one primary action, now that the selection no
+   longer wears it -- and the gear is a ringed circle. Pending shows as the
+   count in the label, not in orange: orange means what you hear. */
+/* the search field is the system's field (.gl-field in the markup) at the
+   pill radius: an icy wash with the top highlight, no stroke (the rim at .5
+   read as a thick line); the system draws the focus ring */
+#q { border-radius: var(--r-pill); }
+/* Sync is the one action (.gl-action in the markup): accent-tinted glass.
+   The id rule keeps only the geometry; the material, the rim and the label
+   colour are the system's. No hover filter: a filter on the button would
+   break the backdrop its own glass samples. */
+#dosync { height: var(--hbtn); padding: 0 14px; letter-spacing: var(--ls-ctrl); border-radius: var(--r-pill); font-weight: 600; }
+/* the gear keeps its ring: a --hbtn circle with a 1px --faint stroke, not a wash */
+#gear { border: 1px solid var(--faint); background: transparent; box-shadow: none; border-radius: var(--r-pill); }
 #gear:hover { background: var(--panel); }
 
 /* ---------- the three panes ---------- */
-/* No boxes. The surface fills the space; the only dividers on it are the two
-   hairlines either side of the list. Everything else is separated by air. */
-#work { display: grid; gap: 0; padding: 0; position: relative; overflow: hidden;
+/* No boxes, and no lines. The panes are open to the ground and nothing is
+   drawn between them: a surface ends by its own fill (.gl-ends in the
+   markup). The title strip is tinted glass the list scrolls under; the
+   count at the foot is a pill the list scrolls under; the rows are
+   separated by air. The only edges on the page are the header's and the
+   footer's own, which the bars draw themselves. */
+#work { display: grid; gap: 0; padding: 0; position: relative; z-index: 1; overflow: hidden;
         grid-template-columns: var(--lw) var(--sw) minmax(0, 1fr) var(--rw); min-height: 0; }
 aside, section.mid { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 /* Pinned to their tracks on purpose: when a side pane is display:none the
    middle would otherwise auto-place into the 0px track it left behind. */
-aside.left  { grid-column: 1; border-right: 1px solid var(--faint); }
-aside.srcpane   { grid-column: 2; border-right: 1px solid var(--faint); }
+aside.left  { grid-column: 1; }
+aside.srcpane   { grid-column: 2; }
 section.mid { grid-column: 3; container-type: inline-size; }
 /* a narrow centre drops the source strip before it crushes the title */
 @container (max-width: 420px) { .row .src { display: none; } }
 @container (max-width: 330px) { .row .tags .tag { display: none; } }
-aside.right { grid-column: 4; border-left: 1px solid var(--faint); }
+aside.right { grid-column: 4; }
 body.nl { --lw: 24px; }  body.ns { --sw: 24px; }  body.nr { --rw: 24px; }
 /* A folded pane is a 24px rail carrying its name and nothing else. The
    marks and the plus belong to a pane you can see: left in, they overlapped
@@ -183,13 +264,18 @@ body.nr #rtabs .pill { border-bottom-color: transparent; }
    lighter (pane 46 > dialog 40 > menu 34), and a floating surface has to
    draw the edge its container does not. Two custom properties and one
    modifier, instead of three rules that have to be kept in step by hand. */
+/* No seam under a strip: it ends by its fill (.gl-strip in the markup, the
+   system's tinted glass). Only the menu's and the dialog's strips still
+   draw an edge, because a floating surface has to draw its own. */
 .plabel { display: flex; align-items: center; gap: var(--strip-gap, 12px); flex-wrap: nowrap;
           flex: none; min-height: var(--strip-h, 46px); height: var(--strip-h, 46px);
           padding: 0 var(--strip-x, 14px); overflow: hidden;
           font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-label);
           text-transform: uppercase; color: var(--dim); }
-/* a surface that floats draws its own edge; a pane's container already has one */
-.plabel.seam { border-bottom: 1px solid var(--faint); background: var(--panel); }
+/* a surface that floats (the menu, the dialog) draws its own edge: the
+   system's inner seam (.gl-seam-h-in beside this class in the markup); this
+   rule keeps only that strip's wash. A pane's strip is .gl-strip instead. */
+.plabel.seam { background: var(--panel); }
 .plabel .name { color: var(--ink); flex: 1 1 auto; min-width: 6ch; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; }
 /* In the centre the name does NOT grow: it sits with its count beside it,
@@ -212,12 +298,30 @@ section.mid .plabel .pstat { flex: 0 1 auto; margin-right: auto; min-width: 0;
 .pstat { letter-spacing: var(--ls-stat); }
 .pstat s { text-decoration: none; color: var(--ink); }
 .pbody { overflow: auto; padding: 4px 14px 24px; flex: 1 1 auto; min-height: 0; }
-/* the filters: a section of the list, folded away until wanted. The toggle
-   always names the active filter, so a folded section never hides one. */
-/* the centre lost width to the two left panes, so the pills need the gap
-   back before they wrap an orphan onto a second row */
-.filters { display: none; gap: 9px; flex-wrap: wrap; align-items: center; padding: 2px 14px 10px; }
-section.mid.fx .filters { display: flex; }
+/* THE STRIP SITS OVER THE LIST. In the four open panes the title strip is
+   lifted out of the column and laid over the top of the scroller, which is
+   padded by the strip's height so nothing starts hidden; the rows then pass
+   under the tinted glass as they scroll, which is what the strip is for. A
+   folded pane is a 24px rail with the strip turned on its side and no
+   scroller under it (body.nl / .ns / .nr above), so the rail keeps its flow
+   layout: these rules are scoped to the unfolded state. The panels' strips
+   (#sp, #tp, #rsheet, #lsheet) are the same material in flow, because their
+   bodies already start below them. scroll-padding keeps a row brought into
+   view by the keyboard from landing under the strip. */
+aside.left, aside.srcpane, section.mid, aside.right { position: relative; }
+body:not(.nl) aside.left .plabel, body:not(.ns) aside.srcpane .plabel, section.mid .plabel, body:not(.nr) aside.right .plabel {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2; }
+body:not(.nl) aside.left .pbody, body:not(.ns) aside.srcpane .pbody, section.mid .pbody, body:not(.nr) aside.right .pbody {
+  padding-top: var(--strip-h); scroll-padding-top: var(--strip-h); }
+/* THE FILTER IS A POPOVER, not a row. The funnel at the right end of the
+   centre strip opens the row menu (#menu, kind 'filter' -- the same glass,
+   the same title strip, saying "Show") with one radio row per filter; a row
+   of pills under the strip took a line of the list for a control that is
+   used once in a while. When a filter other than All is on, its name sits
+   beside the funnel in the strip's own label style, so a narrowed list
+   always says so where the list is titled. */
+.modes .fname { width: auto; padding: 0 4px; color: var(--ink); cursor: pointer; }
+.modes span[aria-expanded="true"] { color: var(--ink); background: var(--panel); }
 
 /* The fold is the < or > left of a pane's title: it points the way the pane
    goes. A folded pane is not gone -- it leaves a rail a few pixels wide with
@@ -235,32 +339,52 @@ section.mid.fx .filters { display: flex; }
 /* The right pane's title mirrors the left ones: text, then the chevron at the
    outer edge, everything pushed to the right. The stat takes its own line. */
 aside.right .plabel { justify-content: flex-end; }
-aside.right .substat { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                       padding: 8px 14px 12px; border-top: 1px solid var(--faint); }
+aside.right .substat { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* THE COUNT IS A PILL. The two bottom blocks ("N of M readable right now",
+   "N to buy · € · N ready · N synced") were full-width bars cutting the
+   pane; they float now (.gl-pill in the markup: the strip's material, the
+   capsule, a rim and a top highlight, the pill shadow), inset from the
+   pane's sides and bottom by the system's --gl-pill-inset, the list
+   scrolling under them with --pill-clear of room at its end. Text in ink;
+   the <s> emphasis stays in the markup for the day the pill is dimmer. The
+   source pane's pill is empty when every file can be read, and an empty
+   pill is not drawn. #sp's and #tp's substats carry buttons: they are
+   action bars and stay bars. */
+aside.srcpane .substat, aside.right .substat {
+  position: absolute; left: var(--gl-pill-inset); right: var(--gl-pill-inset); bottom: var(--gl-pill-inset);
+  z-index: 2; padding: 7px 14px; color: var(--ink); }
+aside.srcpane .substat:empty { display: none; }
+body:not(.ns) aside.srcpane .pbody, body:not(.nr) aside.right .pbody {
+  padding-bottom: var(--pill-clear); scroll-padding-bottom: var(--pill-clear); }
 body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-first, like the others */
 
 /* ---------- rows ---------- */
 /* Rows float on the ground -- separated by space, not rules -- and the selected
-   one takes the device's blue. */
+   one is the one row that is glass: clear glass, no blue. mark() gives it
+   .gl-sel beside .sel, and the system's rule paints the material -- an ink
+   wash over a blur, a rim, a top highlight -- on the row's own ::before, so
+   the row's background stays transparent here. Blue no longer says "where
+   you are"; the material does. Blue is the one action (Sync) and the drop
+   targets, and nothing else. */
 .row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
        padding: 9px 10px; cursor: pointer; border-radius: var(--r-md); margin-bottom: 3px;
        user-select: none; -webkit-user-select: none; }
 .row:hover { background: var(--panel); }
-.row.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo));
-       box-shadow: inset 0 1px 0 var(--on-sel-hi); }
-/* A MARKED ROW IS NOT A SELECTED ROW. The cursor is one row and stays the
-   full accent; a marked row is a quieter wash of the same hue, so a range
-   reads as one block with the cursor still findable inside it. Same colour
-   family on purpose -- a second hue would say "a different kind of thing". */
-.row.marked { background: color-mix(in srgb, var(--sel-lo) 34%, transparent); }
-.row.marked:hover { background: color-mix(in srgb, var(--sel-lo) 44%, transparent); }
-.row.marked.sel { background: linear-gradient(var(--sel-hi), var(--sel-lo)); }
+.row.sel, .row.sel:hover { background: transparent; }
+/* A MARKED ROW IS NOT A SELECTED ROW. The cursor is one row and wears the
+   glass; a marked row is a quieter ink wash, so a range reads as one block
+   with the cursor still findable inside it. Same material on purpose -- a
+   second hue would say "a different kind of thing". */
+.row.marked { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.row.marked:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.row.marked.sel { background: transparent; }
 /* With a selection live, a cursor row that is NOT in it must not wear the
-   same full accent as one that is -- otherwise cmd-clicking a row out of a
-   range leaves it looking selected while the action will skip it. Outline
-   instead of fill: still obviously the cursor, obviously not included. */
+   same glass as one that is -- otherwise cmd-clicking a row out of a range
+   leaves it looking selected while the action will skip it. mark() withholds
+   .gl-sel from it, and the rim alone remains: still obviously the cursor,
+   obviously not included. */
 #list.hasmark .row.sel:not(.marked) { background: transparent;
-       box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--sel-lo) 70%, transparent); }
+       box-shadow: inset 0 0 0 1.5px var(--gl-sel-rim); }
 #list.hasmark .row.sel:not(.marked) .s { color: var(--dim); }
 #list.hasmark .row.sel:not(.marked) .ch,
 #list.hasmark .row.sel:not(.marked) .grab,
@@ -279,7 +403,7 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
        object-fit: cover; flex: none; -webkit-user-drag: none; }
 .t { min-width: 0; }
 .t .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;
-        letter-spacing: -.005em; font-size: var(--fs-name); }
+        letter-spacing: var(--ls-tight); font-size: var(--fs-name); }
 .t .s { color: var(--dim); font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: var(--ls-mono);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
 .ch { color: var(--dim); font-size: var(--fs-text); padding-left: 2px; }
@@ -357,6 +481,11 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row.offline .t, .row.offline .art { opacity: .7; }
 .row.skip .t .n { text-decoration: line-through; }
 .col.pend .cnt { color: var(--orange); }
+/* the open collection's pending mark: the count in ink with the orange
+   moved to a dot beside it (orange text on --raised fails contrast) */
+.col.on.pend .cnt { color: var(--ink); }
+.pdot { display: inline-block; width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--orange);
+        vertical-align: middle; margin-right: 6px; }
 .row.dragging { opacity: .35; }
 .row.over { box-shadow: inset 0 2px 0 var(--sel-hi); }
 /* Three dots on every row. Everything a drag can do, a click can do: the menu
@@ -366,9 +495,10 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row:hover .more, .row.sel .more, .col:hover .more, .col.on .more { opacity: 1; }
 .more:hover { color: var(--ink); background: var(--raised); }
 .row.sel .more { color: var(--on-sel); }
+/* The menu floats, so it is glass (.gl-glass in the markup): the system
+   gives it its fill, rim, highlight and shadow; the page gives the radius. */
 #menu { position: fixed; z-index: 40; display: none; min-width: 230px; max-width: 320px;
-        background: var(--ground); border: 1px solid var(--faint); border-radius: var(--r-md); overflow: hidden;
-        box-shadow: 0 14px 28px rgba(0,0,0,.45); }
+        border-radius: var(--gl-r-lg); overflow: hidden; }
 #menu.on { display: block; }
 #menu { --strip-h: 34px; --strip-x: 12px; --strip-gap: 10px; }
 #menu .plabel { white-space: nowrap; text-overflow: ellipsis; }
@@ -379,9 +509,19 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 #menu .drow .dk { margin-left: auto; font: var(--fs-label) var(--mono); color: var(--dim); letter-spacing: var(--ls-ctrl); }
 #menu .drow:hover .dk, #menu .drow:hover .dc { color: var(--on-sel-dim); }
 #menu .sep { height: 1px; background: var(--faint); margin: 6px 4px; }
-#menu input { width: 100%; background: transparent; border: 1px solid var(--faint); border-radius: var(--r-sm);
-              color: var(--ink); padding: 7px 10px; font: var(--fs-field) var(--mono); margin: 2px 0; }
-#menu input:focus { outline: none; border-color: var(--ink); }
+/* the filter popover: --fpop-w wide, anchored under the funnel at the
+   strip's right edge by openMenu's own placement. Each row is a radio: the
+   check sits in a fixed slot so the names align whether or not it shows,
+   and the count the server sent sits at the right in the key cap's slot
+   (nothing where the server sent none). Arrow keys move a focus highlight
+   the way a pointer hover does. */
+#menu.fpop { width: var(--fpop-w); min-width: 0; }
+#menu .frow { cursor: pointer; }
+#menu .frow .fchk { flex: none; width: var(--ic-bar); color: var(--ink); visibility: hidden; }
+#menu .frow[aria-checked="true"] .fchk { visibility: visible; }
+#menu .drow.focus { background: var(--hover-glass); }
+#menu .drow.focus .dk, #menu .drow.focus .dc { color: var(--on-sel-dim); }
+#menu input { width: 100%; color: var(--ink); padding: 7px 10px; font: var(--fs-field) var(--mono); margin: 2px 0; }
 .grab { cursor: grab; color: var(--dim); padding: 0 4px; }
 .month { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); text-transform: uppercase;
          color: var(--dim); margin: 24px 0 6px; padding: 0 10px; }
@@ -419,17 +559,33 @@ code { font-family: var(--mono); font-size: var(--fs-ctrl); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .row.loading .eq:after { animation: none; } }
 .dur { font-variant-numeric: tabular-nums; }
 .row.playing .dur { color: var(--orange); }
-.row.sel .eq i { background: var(--on-sel); }
-.row.sel.playing .dur { color: var(--on-sel); }
+/* Orange stays orange on the selected row. It was white there only because
+   orange on blue said two things at once; on clear glass it says one. */
+.row.sel .eq i { background: var(--orange); }
+.row.sel.playing .dur { color: var(--orange); }
 
 /* ---------- left pane: collections ---------- */
 .col { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-md);
        cursor: pointer; font-size: var(--fs-row); margin-bottom: 2px; }
-.col:hover { background: var(--panel); }
-.col.on { background: var(--raised); font-weight: 700; }
+.col:not(.on):hover { background: var(--panel); }
+/* the open collection is the system's open row (.gl-open beside .on in the
+   markup, from colRow): an ink wash with a hairline rim at the pill radius
+   -- a wash, not glass, so every open group may carry one. This rule keeps
+   only the weight. */
+.col.on { font-weight: 700; }
+/* DENSE ROWS in the two left panes: --gl-row-dense tall, 1px apart, the
+   capsule radius so the open one reads as a pill, the thumbnail at --thumb,
+   the section label closer to its rows, the dots a row-height square. The
+   right pane's cards and the panels' rows keep their height. */
+aside.left .col, aside.srcpane .col { min-height: var(--gl-row-dense); padding: 0 0 0 12px; margin-bottom: 1px;
+                                      border-radius: var(--gl-r-pill); }
+aside.left .month, aside.srcpane .month { margin: 14px 0 4px; }
+aside.left .col .more, aside.srcpane .col .more { width: var(--gl-row-dense); height: var(--gl-row-dense); padding: 0;
+                                                  display: inline-flex; align-items: center; justify-content: center; }
+aside.left .col.drop, aside.srcpane .col.drop { border-radius: var(--gl-r-pill); }
 .col .cnt { margin-left: auto; font-family: var(--mono); font-size: var(--fs-meta); color: var(--dim); white-space: nowrap; flex: none; }
 .col.pending .cnt { font-style: italic; }
-.col.dim > span:first-child { color: var(--dim); }
+.col.dim > span:first-child, .col.dim > .nm { color: var(--dim); }   /* the name dims whether or not a thumbnail precedes it */
 /* the two ways to read a pane, as marks rather than words: a stack of lines
    for lists, a square of four for albums */
 .modes { display: inline-flex; gap: 2px; flex: none; margin-left: auto; }
@@ -441,18 +597,22 @@ code { font-family: var(--mono); font-size: var(--fs-ctrl); color: var(--ink); }
    pressed state */
 .modes .plus { color: var(--dim); margin-right: 6px; width: 20px; }
 .modes .plus:hover { color: var(--ink); background: var(--panel); }
-/* a filter that is ON but folded away still has to declare itself */
-.modes span.act { color: var(--orange); position: relative; }
-.modes span.act:after { content: ""; position: absolute; top: 1px; right: 1px; width: 4px; height: 4px;
-                        border-radius: var(--r-pill); background: var(--orange); }
-.albart { width: 28px; height: 28px; border-radius: var(--r-xs); background: var(--seam); flex: none; object-fit: cover; }
+.albart { width: var(--thumb); height: var(--thumb); border-radius: var(--r-xs); background: var(--seam); flex: none; object-fit: cover; }
+/* AN APPLE MUSIC PLAYLIST LIKE AN ALBUM: a 2x2 mosaic of the first four
+   covers at the thumbnail size, the name, then tracks and the month. The
+   server tiles the mosaic once per playlist and serves it like any cover
+   (the payload's `art`); the page shows the one picture it is handed, and
+   the empty thumbnail (--seam) until the data event brings one. */
+.mosaic { width: var(--thumb); height: var(--thumb); border-radius: var(--r-xs); overflow: hidden; background: var(--seam);
+          flex: none; display: block; }
+.mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .col.alb { align-items: center; }
 .col .cnt .act { cursor: pointer; }
 .col .cnt .act:hover { color: var(--ink); }
 .col.drop, aside.right.drop .pbody { outline: 2px dashed var(--sel-hi); outline-offset: -3px; border-radius: var(--r-md); }
-.col.drop { background: rgba(106,169,244,.12); }
+.col.drop { background: var(--drop-fill); }
 /* the pane itself, lit while a whole playlist or folder is over it */
-aside.left.drop { background: rgba(106,169,244,.07); box-shadow: inset 0 0 0 2px var(--sel-hi); }
+aside.left.drop { background: var(--drop-wash); box-shadow: inset 0 0 0 2px var(--sel-hi); }
 /* Two panes on the left can each remember a pick; only one is what the centre
    shows. One slot, one meaning: `on` is the list on screen (raised, bold);
    `was` is remembered here and not on screen (bold, hairline, no fill). The
@@ -502,19 +662,28 @@ p.note s { text-decoration: none; color: var(--ink); }
    width, sliding over only it. The rest of the page stays lit and usable --
    nothing is centred and nothing is dimmed. New collection comes from the
    left, where collections live; Data comes from the right. */
-.sheet { position: absolute; top: 0; bottom: 0; z-index: 8; background: var(--ground);
+/* THE PANELS ARE HEAVY GLASS (gl-glass gl-heavy in the markup), not opaque
+   ground. A full-height sheet "goes opaque" in Apple's rule, but Apple's
+   opaque is the material thickened; a flat --ground slab over the lit art
+   ground read as dead (MEASURED: the Data sheet flat rgb(20,29,41) beside a
+   page that was not). The system paints the fill, blur, highlight and twins;
+   the page keeps the slide, its own shadow, and puts the rim on the inner
+   edge only -- the edge that faces the page. */
+.sheet { position: absolute; top: 0; bottom: 0; z-index: 8;
          display: flex; flex-direction: column; min-width: 0; overflow: hidden;
          transition: transform .18s ease; will-change: transform; }
 /* Never narrower than a pane's worth: --lw goes to 24px when the pane folds,
    and a 24px sheet parks only 25px off-canvas, so its text spilled out the
    side and read as clutter down the rail. */
-#lsheet { left: 0; width: max(var(--lw), 240px); border-right: 1px solid var(--faint);
-          box-shadow: 14px 0 28px rgba(0,0,0,.35); transform: translateX(-105%); }
+#lsheet { left: 0; width: max(var(--lw), 240px);
+          box-shadow: var(--shadow-panel-l); transform: translateX(-105%); }
+#lsheet::after { box-shadow: inset -1px 0 0 var(--gl-rim); }   /* it comes from the left: the rim on its right */
 /* Data is a fixed sheet, not a pane: it covers the right half of the screen,
    header and footer included, and leaves the left half lit. Never narrower
    than 480px, so a small window gets more than half. */
 #rsheet { position: fixed; top: 0; bottom: 0; right: 0; left: auto; width: max(50%, 480px); z-index: 30;
-          border-left: 1px solid var(--faint); box-shadow: -14px 0 28px rgba(0,0,0,.35); transform: translateX(102%); }
+          box-shadow: var(--shadow-panel-r); transform: translateX(102%); }
+#rsheet::after, #sp::after, #tp::after { box-shadow: inset 1px 0 0 var(--gl-rim); }   /* from the right: the rim on the left edge */
 #rsheet .pbody { max-width: 760px; }
 /* id + class, because the off-canvas transform above is on an id and would
    otherwise outrank a class alone */
@@ -522,20 +691,49 @@ p.note s { text-decoration: none; color: var(--ink); }
 .sheet .pbody { padding: 6px 14px 24px; }
 #rsheet .pbody { padding: 14px 16px 24px; }
 @media (prefers-reduced-motion: reduce) { .sheet { transition: none; } }
-.box { padding: 0; margin: 0 0 24px; }
-.box:last-child { margin-bottom: 0; }
-.brow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
-pre { background: var(--panel); border-radius: var(--r-sm); padding: 12px; font: var(--fs-ctrl)/1.5 var(--mono);
-      overflow: auto; max-height: 280px; margin: 10px 0 0; color: var(--ink); }
+/* DATA IS TWO COLUMNS AT ITS WIDTH (.two), one under 560px of the sheet
+   itself -- a container query, since the sheet's width is not the
+   window's. Its parts are the panel parts (.month, .fact, .acts, .log,
+   declared with the sync panel's), no boxes. */
+#rsheet { container-type: inline-size; }
+#rsheet .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; align-items: start; }
+@container (max-width: 560px) { #rsheet .two { grid-template-columns: 1fr; } }
+/* the long way round: Music.app's playlists as rows, a filter above them */
+#mq { width: 200px; }
+#rsheet .mrows { max-height: 300px; overflow: auto; margin-top: 6px; }
+#rsheet .mrows .col { cursor: default; padding: 4px 10px; }
+#rsheet .mrows .col:hover { background: transparent; }
+#rsheet .mrows .col .tag { margin-left: 10px; }
+#rsheet .mrows .col button { margin-left: 10px; }
 
-/* the status line at the foot, like the room page's */
-footer { position: relative; background: var(--ground);
+/* the status line at the foot, like the room page's -- a glass bar, like
+   the header (.gl-glass-bar .gl-bar-bottom in the markup), with the system's
+   rim on its open edge where the hairline used to be */
+footer { position: relative; z-index: 1;
          padding: 10px 24px calc(10px + env(safe-area-inset-bottom, 0px));
          font-family: var(--mono); font-size: var(--fs-ctrl); letter-spacing: var(--ls-stat); color: var(--dim);
-         display: flex; gap: 16px; align-items: center; }
-/* Essentials only, one line, never wraps: everything else a key does, the
-   menu also does, and the footer is not a manual. */
-#keys { display: flex; gap: 16px; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; align-items: center; flex: 1 1 auto; min-width: 0; }
+         display: flex; gap: 24px; align-items: center; }
+/* THE KEYS THAT MATTER FOR WHAT YOU ARE LOOKING AT come first, in ink; the
+   rest follow, dim; then "?" opens all of them. One line, never wraps, clips
+   at its end: the footer is not a manual, and the context table (KEYS, in
+   the script) is a lookup, never derived. */
+#keys { display: flex; gap: 14px; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; align-items: center; flex: 0 1 auto; min-width: 0; }
+#keys .kk { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
+#keys .kk.p { color: var(--ink); }
+#keys .kk.p kbd { border-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+#keys .kk.s { color: var(--dim); }
+#keys .kk.all { color: var(--dim); margin-left: 6px; cursor: pointer; }
+#keys .kk.all:hover, #keys .kk.all:focus-visible { color: var(--ink); outline: none; }
+/* the health strip gets 28px of air and never wraps or shrinks */
+#hstrip { margin-left: auto; padding-left: 28px; flex: none; }
+/* the "all keys" popover, on the menu material: four groups, a key cap and
+   its verb per row; a listing, so no hover and no pointer */
+#menu.kpop { min-width: 270px; }
+#menu .month { margin: 12px 10px 4px; padding: 0; }
+#menu .month:first-child { margin-top: 6px; }
+#menu .krow { cursor: default; gap: 8px; }
+#menu .krow:hover { background: none; }
+#menu .krow .kc { flex: none; min-width: 64px; display: inline-flex; gap: 4px; }
 /* What the machine can reach: one slot per dependency, always present, always
    in this order, changing state rather than appearing. Lit is reachable,
    hollow is not here, orange is here and misbehaving. "Ejected" is hollow on
@@ -558,25 +756,28 @@ footer { position: relative; background: var(--ground);
 .st i.capn:before { display: none; }
 /* the undo hint sits with the keyboard shortcuts, since that is where its
    own shortcut is printed */
+/* a button in the footer's own voice, not a capsule: bare text at the strip's
+   size, a hand cursor, ink on hover */
 .undoc { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-stat); color: var(--dim);
-         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 28ch; }
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 28ch;
+         height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; text-transform: none; }
+.undoc, .undoc:hover { box-shadow: none; }
+.undoc:hover { color: var(--ink); border: 0; }
 .st .w { color: var(--dim); text-transform: none; letter-spacing: var(--ls-mono); }
 /* the inline new-collection field, in the pane it belongs to */
 .ninl { padding: 4px 8px 8px; }
-#newin { width: 100%; background: transparent; border: 1px solid var(--faint); border-radius: var(--r-sm);
-         color: var(--ink); padding: 8px 12px; font: var(--fs-field) var(--mono); }
-#newin:focus { outline: none; border-color: var(--ink); }
-.col[data-seed]:hover { background: linear-gradient(var(--sel-hi), var(--sel-lo)); }
+#newin { width: 100%; color: var(--ink); padding: 8px 12px; font: var(--fs-field) var(--mono); }
+.col[data-seed]:hover { background: var(--hover-glass); }
 .col[data-seed]:hover > span, .col[data-seed]:hover .cnt { color: var(--on-sel); }
-footer:before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--faint); }
 kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var(--faint); padding: 0 6px; margin-right: 2px; }
-/* Built like a screen on the device rather than a window: a hairline edge, a
-   title strip, and a list underneath whose rows take the same selection blue
-   the library uses. Nothing here is heavier than the panes behind it. */
-#dlg { position: fixed; inset: 0; background: rgba(7,12,19,.72); display: none;
+/* Built like a screen on the device rather than a window: a title strip and
+   a list underneath whose rows take the same selection blue the library
+   used. It floats, so it is glass (.gl-glass in the markup) -- the system
+   draws its edge; nothing here is heavier than the panes behind it. */
+#dlg { position: fixed; inset: 0; background: var(--scrim-deep); display: none;
        align-items: center; justify-content: center; z-index: 30; }
 #dlg.on { display: flex; }
-#dlgbox { background: var(--ground); border: 1px solid var(--faint); border-radius: var(--r-md);
+#dlgbox { border-radius: var(--gl-r-lg);
           width: min(420px, 92vw); max-height: 78vh; display: flex; flex-direction: column;
           overflow: hidden; }
 /* The panel's own header carries its title on the left and the one thing it
@@ -586,16 +787,14 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 #dlgbtn:empty { display: none; }
 #dlgbody { padding: 14px 16px 16px; overflow: auto; }
 #dlgp { margin: 0 0 12px; color: var(--dim); font-size: var(--fs-text); line-height: 1.5; }
-#dlgin { width: 100%; background: transparent; border: 1px solid var(--faint);
-         border-radius: var(--r-sm); color: var(--ink); padding: 9px 12px; font: inherit; }
-#dlgin:focus { outline: none; border-color: var(--ink); }
+#dlgin { width: 100%; color: var(--ink); padding: 9px 12px; font: inherit; }
 
 .dsec { font-family: var(--mono); font-size: var(--fs-tag); letter-spacing: var(--ls-label); text-transform: uppercase;
         color: var(--dim); margin: 16px 0 6px; }
 /* the list, in the device's idiom: a row, a count, and the blue on the one under the cursor */
 .drow { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-sm);
         cursor: pointer; font-size: var(--fs-row); }
-.drow:hover { background: linear-gradient(var(--sel-hi), var(--sel-lo)); }
+.drow:hover { background: var(--hover-glass); }
 .drow:hover .dc { color: var(--on-sel-dim); }
 .drow .dn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drow .dc { margin-left: auto; font-family: var(--mono); font-size: var(--fs-meta); color: var(--dim); }
@@ -623,24 +822,19 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
    Shares #sp's geometry: same width, same slide, same scrim. Two panels
    that behave differently when they open would be two ideas. */
 #tp { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 94vw); z-index: 29;
-      background: var(--ground); border-left: 1px solid var(--faint);
       display: flex; flex-direction: column; min-width: 0;
       transform: translateX(100%); transition: transform .22s cubic-bezier(.32,.72,0,1);
-      box-shadow: -18px 0 46px rgba(7,12,19,.5); }
+      box-shadow: var(--shadow-sheet); }
 #tp.on { transform: none; }
 @media (prefers-reduced-motion: reduce) { #tp { transition: none; } }
-#tp .substat { border-top: 1px solid var(--faint); display: flex; align-items: center;
+#tp .substat { display: flex; align-items: center;
       gap: 12px; padding: 9px 14px; }
 #tp .substat .sp { flex: 1 1 auto; min-width: 0; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; }
-#tp .substat button { flex: none; font: inherit; font-size: var(--fs-ctrl);
-      letter-spacing: var(--ls-ctrl); text-transform: uppercase; height: var(--hbtn);
-      padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--faint);
-      background: transparent; color: var(--ink); cursor: pointer; }
-#tp .substat button.go { background: linear-gradient(var(--sel-hi), var(--sel-lo));
-      border: 0; color: var(--on-sel); box-shadow: inset 0 1px 0 var(--on-sel-hi); }
-#tp .substat button[disabled] { opacity: .4; cursor: default; background: none;
-      border: 1px solid var(--faint); color: var(--dim); box-shadow: none; }
+/* the buttons are the page's capsules (the global rule); only the flex
+   behaviour and the disabled primary are this panel's own */
+#tp .substat button { flex: none; }
+#tp .substat button[disabled] { cursor: default; color: var(--dim); }
 
 /* the identity block: a small cover beside the two lines it belongs to */
 .tpid { display: flex; gap: 12px; align-items: flex-start; margin: 10px 4px 4px; }
@@ -688,50 +882,102 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       text-transform: uppercase; color: var(--dim); display: inline-block; width: 46px; }
 .tpguess .act2 { margin-top: 9px; display: inline-block; font-family: var(--mono);
       font-size: var(--fs-ctrl); letter-spacing: var(--ls-ctrl); text-transform: uppercase;
-      padding: 5px 11px; border-radius: var(--r-sm); cursor: pointer;
-      background: linear-gradient(var(--sel-hi), var(--sel-lo)); color: var(--on-sel); }
+      padding: 5px 11px; border-radius: var(--r-pill); cursor: pointer;
+      background: var(--gl-btn-fill); box-shadow: inset 0 0 0 1px var(--gl-btn-rim); color: var(--ink); }
 
 /* ---------------- the sync panel ----------------
    Built out of the parts the rest of the page is built out of: it IS an
-   aside.right that happens to be fixed. Same 46px .plabel, same .pbody,
-   same .month section labels, same .col rows carrying a .cnt on the right,
-   same .substat line at the foot. The only new things are the slide and the
-   excluded state, because nothing existing does either.
+   aside.right that happens to be fixed. Same .gl-strip title, same .pbody,
+   same .month section labels; its rows are the list's .row with a mark
+   column in front, its infrastructure is a list of steps, and its foot is
+   the strip material floating over the end of the list. The only new things
+   are the slide and the excluded state, because nothing existing does either.
 
    The scrim is not decoration: the plan is a diff against the device taken a
    moment ago, and letting you change a decision behind it would make the
    list on screen a lie. */
-#spscrim { position: fixed; inset: 0; background: rgba(7,12,19,.55); z-index: 28;
+#spscrim { position: fixed; inset: 0; background: var(--scrim); z-index: 28;
        opacity: 0; pointer-events: none; transition: opacity .18s ease; }
 #spscrim.on { opacity: 1; pointer-events: auto; }
 #sp { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 94vw); z-index: 29;
-      background: var(--ground); border-left: 1px solid var(--faint);
       display: flex; flex-direction: column; min-width: 0;
       transform: translateX(100%); transition: transform .22s cubic-bezier(.32,.72,0,1);
-      box-shadow: -18px 0 46px rgba(7,12,19,.5); }
+      box-shadow: var(--shadow-sheet); }
 #sp.on { transform: none; }
+/* A PANEL OFF-SCREEN STILL CAST ITS SHADOW: translated 100% to the right, the 46px sheet
+   shadow reached back into the window as a dark gradient down the right edge -- invisible on
+   the flat navy, plain on the art ground. No panel casts anything until it is open. */
+#sp:not(.on), #tp:not(.on), #rsheet:not(.on), #lsheet:not(.on) { box-shadow: none; }
 @media (prefers-reduced-motion: reduce) { #sp, #spscrim, #toast { transition: none; } }
 
-#sp .substat { border-top: 1px solid var(--faint); display: flex; align-items: center;
-      gap: 12px; padding: 9px 14px; }
+/* THE PANEL'S ACTION BAR FLOATS over the end of its list on the strip's
+   material (.gl-strip in the markup): the stat on the left, the buttons on
+   the right, the one action in the accent glass. The scroller leaves room
+   under it (--bar-clear) so the last row is never under the bar. */
+#sp .substat { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+      display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+#sp .pbody { padding-bottom: var(--bar-clear); }
 #sp .substat .sp { flex: 1 1 auto; min-width: 0; overflow: hidden;
       text-overflow: ellipsis; white-space: nowrap; }
+/* THE PANELS' PARTS, from the system and nothing else: the section label
+   (.month, closer to its rows than in a pane), a plan row with its mark, an
+   "after" gauge with a stat line, a step with a dot, a fact in prose with
+   the numbers in ink, a mono log on a dark wash, and a row of secondary
+   capsules. No boxes, no inline colours, no bare <pre>. */
+#sp .month, #rsheet .month { padding: 0 2px; margin: 18px 0 6px; }
+#sp .month:first-child, #rsheet .month:first-child { margin-top: 6px; }
+/* a plan row: a + or - mark in an --mark-w column before the 44px art, the
+   name, then album · duration · what happens. Ticked off (.out) it stays in
+   place and says it is out; during a run it is inert and the mark carries
+   the state (… doing, ✓ done, ! error, · never reached). */
+#sp .row { grid-template-columns: var(--mark-w) 44px minmax(0, 1fr); gap: 10px; padding: 6px 6px; margin-bottom: 1px; }
+#sp .row .mark { font-family: var(--mono); font-size: var(--fs-row); font-weight: 600; line-height: 1;
+      width: var(--mark-w); text-align: center; color: var(--ink); }
+#sp .row .mark.minus { color: var(--dim); }
+#sp .row.out .mark, #sp .row.out .t .n { color: var(--faint); }
+#sp .row.out .t .n { text-decoration: line-through; }
+#sp .row.out .art { opacity: .45; }
+#sp .row.inert { cursor: default; }
+#sp .row.inert:hover { background: transparent; }
+#sp .row.doing .mark { color: var(--orange); }
+#sp .row.error .mark, #sp .row.error .t .s { color: var(--orange); }
+#sp .row.todo .mark { color: var(--faint); }
+/* the gauge: free space as a thin bar, the stat line under it */
+.gauge { height: 6px; border-radius: var(--r-pill); background: var(--gl-btn-fill); overflow: hidden; margin: 8px 2px 4px; }
+.gauge i { display: block; height: 100%; background: var(--ink); border-radius: var(--r-pill); }
+.gauge i.over { background: var(--orange); }
+.gstat { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: var(--ls-stat); text-transform: uppercase;
+      color: var(--dim); margin: 0 2px 12px; line-height: 1.4; }
+.gstat b { color: var(--ink); font-weight: 500; }
+/* a step: a dot, hollow until it is done */
+.step { display: flex; align-items: center; gap: 10px; min-height: var(--gl-row-dense); padding: 0 6px;
+      color: var(--dim); font-size: var(--fs-row); }
+.step .dot { width: 6px; height: 6px; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--dim); flex: none; }
+.step.done { color: var(--ink); } .step.done .dot { background: var(--ink); box-shadow: none; }
+.step.doing { color: var(--ink); } .step.doing .dot { background: var(--orange); box-shadow: none; }
+.step.error { color: var(--orange); } .step.error .dot { background: var(--orange); box-shadow: none; }
+.step.todo { color: var(--faint); } .step.todo .dot { box-shadow: inset 0 0 0 1px var(--faint); }
+/* a fact: prose, the numbers in ink, a path in the mono */
+.fact { font-family: var(--face); font-size: var(--fs-text); line-height: 1.5; color: var(--dim); margin: 4px 2px 10px; }
+.fact b { color: var(--ink); font-weight: 600; }
+.fact code { font-family: var(--mono); font-size: var(--fs-meta); color: var(--ink); }
+/* the log: mono on a dark wash, the panel's radius */
+.log { font-family: var(--mono); font-size: var(--fs-meta); line-height: 1.6; color: var(--dim); background: var(--log-wash);
+      border-radius: var(--r-md); padding: 10px 12px; margin: 6px 0 12px; white-space: pre-wrap; word-break: break-word;
+      overflow: auto; max-height: 280px; }
+.log b { color: var(--ink); font-weight: 500; }
+/* a row of actions: the secondary capsules, wrapping */
+#sp .acts, #rsheet .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 6px; }
 /* two buttons sit side by side and the note yields, rather than the
    buttons stacking -- which is what a bare span did once there were two */
 #sp .substat > span:last-child { flex: none; display: flex; align-items: center; gap: 8px; }
-#sp .substat button { flex: none; font: inherit; font-size: var(--fs-ctrl); letter-spacing: var(--ls-ctrl);
-      text-transform: uppercase; height: var(--hbtn); padding: 0 14px; border-radius: var(--r-md);
-      border: 1px solid var(--faint); background: transparent; color: var(--ink);
-      cursor: pointer; }
-/* the confirm is the header's Sync button, which is what it is */
+#sp .substat button { flex: none; }
+/* the confirm is the header's Sync button, which is what it is: the global
+   button.go capsule, so no rule of its own here */
 /* Cancel is not the primary action and does not pretend to be. Its weight
    comes from the prompt it raises, not from colour -- orange means "what is
    happening now" and a button that has not been pressed is not happening. */
-
-#sp .substat button.go { background: linear-gradient(var(--sel-hi), var(--sel-lo));
-      border: 0; color: var(--on-sel); box-shadow: inset 0 1px 0 var(--on-sel-hi); }
-#sp .substat button[disabled] { opacity: .4; cursor: default; background: none;
-      border: 1px solid var(--faint); color: var(--dim); box-shadow: none; }
+#sp .substat button[disabled] { cursor: default; color: var(--dim); }
 /* the all/none control sits where a count sits, because it replaces one */
 .month .all { float: right; cursor: pointer; letter-spacing: var(--ls-stat); }
 .month .all:hover { color: var(--ink); }
@@ -773,14 +1019,8 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 .col.doing .cnt { color: var(--orange); }
 .col.done .nm { color: var(--dim); }
 .col.err .nm, .col.err .cnt { color: var(--orange); }
-/* the capacity gauge, the same object the footer carries, at panel width */
-.spgauge { height: 5px; border-radius: var(--r-pill); background: var(--raised); overflow: hidden;
-      margin: 6px 8px 0; }
-.spgauge i { display: block; height: 100%; background: var(--dim); }
-.spgauge i.over { background: var(--orange); }
-#splog { margin: 14px 8px 0; padding: 8px 10px; background: var(--seam); border-radius: var(--r-sm);
-      font: var(--fs-meta)/1.5 var(--mono); color: var(--dim); max-height: 110px; overflow: auto;
-      white-space: pre-wrap; word-break: break-word; }
+/* the sync log is the .log pattern, short: the last eight lines */
+#splog { margin: 14px 0 0; max-height: 110px; }
 
 @media (max-width: 1000px) { :root { --lw: 200px; --rw: 260px; } }
 
@@ -814,23 +1054,730 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
    on the row whose state is otherwise carried by colour alone (law 2). */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
       overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-</style></head><body>
 
-<header>
+/* THE VENDORED GROUND'S REDUCE TWIN, acknowledged. saltglass keeps the
+   crossfade under Reduce Motion and drops only the drift: its own reduce
+   block below covers `.gl-ground img`, and ground.js sets
+   data-gl-drift="off" on the element for the same preference, whose rule
+   carries the same opacity-only fade. Listed here so the motion census
+   reads that transition as the reduced form, which it is. */
+@media (prefers-reduced-motion: reduce) { .gl-ground[data-gl-drift="off"] img { transition: opacity var(--gl-fade) linear; } }
+
+/* THE VENDORED SYSTEM FOLLOWS, and this comment is left open on purpose.
+   The marker on the next line is an HTML comment inside a stylesheet. CSS
+   ignores the `<!--` and `-->` tokens, but not the words between them: they
+   become the prelude of a rule that swallows the first block it meets --
+   tokens.css's :root, and every --gl-* name with it (checked in Chrome:
+   --gl-ground read empty). Opened here, this comment runs on into the first
+   line of tokens.css, which is a comment of its own, and closes there; the
+   marker is then text. The closing marker is harmless only because nothing
+   follows it before the end of the sheet. So: no rule after that marker,
+   and no closing of this comment. scripts/vendor_glass.py replaces what is
+   between the markers and leaves this line alone.
+<!-- saltglass:css @cc154d31ce49da64e6729d4601b8c99bde5d7249 -->
+/* saltglass — tokens.css
+   :root only. Nothing here paints; glass.css paints with these.
+
+   A host overrides the five identity inputs and nothing else. Everything
+   below the inputs is derived with color-mix(), so a host never writes an
+   rgba literal to adopt the system. Numbers that are not colours (blur,
+   saturation, durations, radii) are listed once so a host can tune them in
+   one place and so glass.css can contain no literal at all (check_tokens.py
+   enforces that). */
+:root {
+  /* identity: the five inputs a host maps to its own palette */
+  --gl-ground: #141d29;   /* the flat ground; also the glass fill's hue and the scrim's */
+  --gl-ink: #fffffc;      /* text; also every rim, highlight and seam catch */
+  --gl-shadow: #070c13;   /* the dark of the etched seams and the floating shadow */
+  --gl-accent: #2f6fd0;   /* the one primary action and drop targets; never "where you are" */
+  --gl-live: #f75c03;     /* "what you hear": the playing row's time, the live dot */
+
+  /* derived colours */
+  --gl-glass-fill: color-mix(in srgb, var(--gl-ground) 60%, transparent);   /* the material's fill */
+  --gl-glass-fill-heavy: color-mix(in srgb, var(--gl-ground) 88%, transparent); /* the thickened fill: a full-height panel or sheet (.gl-heavy) */
+  --gl-rim: color-mix(in srgb, var(--gl-ink) 40%, transparent);             /* the 1px edge of a floating surface */
+  --gl-rim-hc: color-mix(in srgb, var(--gl-ink) 50%, transparent);          /* the rim under Increase Contrast */
+  --gl-spec: color-mix(in srgb, var(--gl-ink) 14%, transparent);            /* the 1px top highlight */
+  --gl-sel: color-mix(in srgb, var(--gl-ink) 14%, transparent);             /* the selected row's fill */
+  --gl-sel-rim: color-mix(in srgb, var(--gl-ink) 40%, transparent);         /* the selected row's rim */
+  --gl-sel-solid: color-mix(in srgb, var(--gl-ink) 14%, var(--gl-ground));  /* the same row when nothing is behind it */
+  --gl-dim: color-mix(in srgb, var(--gl-ink) 55%, transparent);             /* secondary text on the ground */
+  --gl-dim-glass: color-mix(in srgb, var(--gl-ink) 75%, transparent);       /* secondary text on glass (glass hosts re-declare --gl-dim to this) */
+  --gl-seam-dark: color-mix(in srgb, var(--gl-shadow) 55%, transparent);    /* structure seam: the dark line */
+  --gl-seam-light: color-mix(in srgb, var(--gl-ink) 13%, transparent);      /* structure seam: the light catch */
+  --gl-seam-dark-in: color-mix(in srgb, var(--gl-shadow) 35%, transparent); /* inner seam: the dark line */
+  --gl-seam-light-in: color-mix(in srgb, var(--gl-ink) 9%, transparent);    /* inner seam: the light catch */
+
+  /* endings: a surface that ends by its fill, not by a line */
+  --gl-strip-a: .35;      /* the tint of a strip or a pill: the ground's alpha over the blur */
+  --gl-strip-fill: color-mix(in srgb, var(--gl-ground) calc(var(--gl-strip-a) * 100%), transparent);      /* the strip and the pill: tinted glass, a step darker */
+  --gl-strip-fill-light: color-mix(in srgb, var(--gl-ink) calc(var(--gl-strip-a) * 30%), transparent);    /* the same, a step lighter (.gl-light) */
+  --gl-pill-rim: color-mix(in srgb, var(--gl-ink) 18%, transparent);        /* the pill's 1px rim */
+  --gl-pill-spec: color-mix(in srgb, var(--gl-ink) 10%, transparent);       /* the pill's 1px top highlight */
+  --gl-open-fill: color-mix(in srgb, var(--gl-ink) 10%, transparent);       /* the open row in a list of names: a wash, not glass */
+  --gl-open-rim: color-mix(in srgb, var(--gl-ink) 18%, transparent);        /* the open row's 1px rim */
+
+  /* controls: the three the system owns -- the one action, the secondary button, the field */
+  --gl-action-a: .55;     /* the accent's alpha over the blur: the one primary action as tinted glass */
+  --gl-action-fill: color-mix(in srgb, var(--gl-accent) calc(var(--gl-action-a) * 100%), transparent);  /* .gl-action's fill */
+  --gl-action-rim: color-mix(in srgb, var(--gl-ink) 22%, transparent);      /* .gl-action's 1px rim */
+  --gl-action-spec: color-mix(in srgb, var(--gl-ink) 18%, transparent);     /* .gl-action's 1px top highlight */
+  --gl-on-accent: #fff;   /* the label on the accent: the one literal below the inputs, because no derivation of the ink is guaranteed to read on every accent. A host overrides it with its accent. */
+  --gl-btn-fill: var(--gl-open-fill);   /* .gl-btn, a secondary action: the open row's wash, as a button */
+  --gl-btn-rim: var(--gl-open-rim);     /* .gl-btn's 1px rim */
+  --gl-btn-off: color-mix(in srgb, var(--gl-ink) 5%, transparent);          /* .gl-btn disabled: a fainter wash, no rim */
+  --gl-field-fill: color-mix(in srgb, var(--gl-ink) 10.5%, transparent);    /* .gl-field, the icy input: an ink wash, no stroke */
+  --gl-field-spec: color-mix(in srgb, var(--gl-ink) 14%, transparent);      /* .gl-field's 1px top highlight */
+
+  /* the material */
+  --gl-blur: 16px;        /* backdrop blur of a floating surface */
+  --gl-sat: 180%;         /* backdrop saturation of a floating surface */
+  --gl-sel-blur: 12px;    /* the selected row's backdrop blur: lighter, it is inside a list */
+  --gl-sel-sat: 160%;
+  --gl-action-blur: 12px; /* the one action's backdrop blur: lighter, like the row's, it sits inside a bar */
+  --gl-action-sat: 160%;
+  --gl-art-blur: 64px;    /* the ground picture's blur: a wash of colour, never a picture */
+  --gl-art-sat: 1.2;
+
+  /* motion */
+  --gl-fade: 700ms;       /* the crossfade between two ground layers */
+  --gl-settle: 250ms;     /* the rest before the ground follows a new selection */
+  --gl-drift: 1.05;       /* the zoom-through scale of an incoming layer; 1 turns it off */
+  --gl-ease: cubic-bezier(.32,.72,0,1);
+
+  /* shape and depth */
+  --gl-shadow-float: 0 14px 28px color-mix(in srgb, var(--gl-shadow) 45%, transparent);
+  --gl-shadow-pill: 0 10px 24px color-mix(in srgb, var(--gl-shadow) 35%, transparent);  /* a floating pill: lower and softer than a menu */
+  --gl-r-lg: 14px;        /* menus, dialogs */
+  --gl-r-pill: 99px;      /* fields and buttons in a bar; pills; the open row */
+  --gl-pill-inset: 10px;  /* a pill's distance from the sides and the bottom of its pane */
+  --gl-row-dense: 28px;   /* the min-height of a dense row in a list of names */
+  --gl-hit: 32px;         /* the height of a control (.gl-action, .gl-btn): the Mac's; a touch host raises it to 44px */
+
+  /* the band */
+  --gl-scrim-unknown: .60; /* the scrim before the host has measured a cover */
+  --gl-ymax: .05;          /* documentation only: the ground's luminance ceiling. The server owns this number. */
+}
+
+/* saltglass — glass.css
+   The materials. Each class is one material, and its comment says WHERE it may
+   be used. There is no literal colour, radius or duration in this file: every
+   value is a token from tokens.css, and check_tokens.py fails the tests if one
+   creeps in. Load tokens.css first.
+
+   The one rule that decides whether a thing may be glass: glass goes only where
+   something floats or sits on the picture. A pane is not glass. A card inside a
+   pane is not glass. A row is not glass, except the one selected row. */
+
+
+/* .gl-ground — the ground: the content's own picture, blurred, under everything.
+   WHERE: exactly once per page, as the first child of <body>, aria-hidden. The
+   page's content sits above it (position: relative; z-index: 1 on the content
+   containers). Two <img> layers crossfade; ground.js owns them and sets
+   --gl-scrim-a on the element from the host's measurement. The images are inset
+   -10% so the drift never shows an edge. */
+.gl-ground {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background: var(--gl-ground);
+  --gl-scrim-a: var(--gl-scrim-unknown);
+}
+.gl-ground img {
+  position: absolute; inset: -10%; width: 120%; height: 120%; object-fit: cover;
+  filter: blur(var(--gl-art-blur)) saturate(var(--gl-art-sat));
+  opacity: 0; transform: scale(var(--gl-drift));
+  transition: opacity var(--gl-fade) var(--gl-ease), transform var(--gl-fade) var(--gl-ease);
+}
+.gl-ground img.on { opacity: 1; transform: scale(1); }
+.gl-ground[data-gl-drift="off"] img { transform: none; transition: opacity var(--gl-fade) linear; }
+.gl-ground .scrim {
+  position: absolute; inset: 0;
+  background: color-mix(in srgb, var(--gl-ground) calc(var(--gl-scrim-a) * 100%), transparent);
+  transition: background-color var(--gl-fade) var(--gl-ease);
+}
+
+
+/* .gl-glass — a floating surface: a menu, a dialog, a popover, a floating shelf.
+   WHERE: something that floats over the content with the ground visible around
+   it. Never a pane, never a row, never a card set into a pane. The host element
+   stays transparent; the material lives on ::before (z-index -1, so Safari
+   composites the backdrop filter under the content) and the rim and the top
+   highlight on ::after. The host gives the radius; the pseudo-elements inherit
+   it. Position is set with :where() so a host's own position (absolute, fixed)
+   wins regardless of order. */
+.gl-glass {
+  isolation: isolate; background: transparent;
+  box-shadow: var(--gl-shadow-float);
+  --gl-dim: var(--gl-dim-glass);
+}
+:where(.gl-glass) { position: relative; z-index: 2; }
+.gl-glass::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: var(--gl-glass-fill);
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+}
+.gl-glass::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--gl-rim), inset 0 1px 0 var(--gl-spec);
+}
+
+/* .gl-heavy — the same glass, thickened: a modifier on .gl-glass.
+   WHERE: a full-height panel or sheet that slides over the page -- a review
+   panel, a detail panel, a settings sheet. Apple's rule is that a sheet of that
+   size goes opaque, and Apple's opaque is the material thickened, not a flat
+   colour: an opaque slab over a lit room reads as dead. So the fill goes to
+   --gl-glass-fill-heavy (ground at 88%); the blur, the rim, the highlight and
+   the shadow are .gl-glass's own, and under every twin it becomes the ground
+   exactly as .gl-glass does. The host keeps its own slide (transform only) and
+   may limit the rim to the panel's inner edge on ::after. */
+.gl-glass.gl-heavy::before { background: var(--gl-glass-fill-heavy); }
+
+
+/* .gl-glass-bar — edge-to-edge chrome: the header bar and the footer bar.
+   WHERE: a bar that spans the window and floats over scrolling content. Same
+   material as .gl-glass, no radius, the same floating shadow, and a rim only on the
+   open edge — the edge the content scrolls under — with the etched dark line
+   just outside it. Add one modifier: .gl-bar-top for a header (open edge at the
+   bottom), .gl-bar-bottom for a footer (open edge at the top). --gl-bar-edge
+   names the open edge for anything that wants to read it. */
+.gl-glass-bar {
+  isolation: isolate; background: transparent; box-shadow: var(--gl-shadow-float);
+  --gl-dim: var(--gl-dim-glass);
+}
+:where(.gl-glass-bar) { position: relative; z-index: 2; }
+.gl-glass-bar::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: var(--gl-glass-fill);
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+}
+.gl-glass-bar::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.gl-bar-top { --gl-bar-edge: bottom; }
+.gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim), 0 1px 0 var(--gl-seam-dark); }
+.gl-bar-bottom { --gl-bar-edge: top; }
+.gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim), 0 -1px 0 var(--gl-seam-dark); }
+
+
+/* .gl-sel — selection glass: the one selected row.
+   WHERE: exactly one row per list, the selected one, alongside the host's own
+   selected class. Never on every row: one backdrop filter per list is the law,
+   because a list of hundreds of rows cannot each carry one. Clear glass, no
+   accent colour: an ink wash over a lighter blur, the rim and the top highlight
+   on its own ::before. The row's radius is inherited. The live colour is
+   allowed on this row (the playing time, the equaliser). */
+.gl-sel {
+  isolation: isolate; background: transparent;
+  --gl-dim: var(--gl-dim-glass);
+}
+:where(.gl-sel) { position: relative; }
+.gl-sel::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: var(--gl-sel);
+  -webkit-backdrop-filter: blur(var(--gl-sel-blur)) saturate(var(--gl-sel-sat));
+  backdrop-filter: blur(var(--gl-sel-blur)) saturate(var(--gl-sel-sat));
+  box-shadow: inset 0 0 0 1px var(--gl-sel-rim), inset 0 1px 0 var(--gl-spec);
+}
+
+
+/* .gl-seam-v, .gl-seam-h — structure seams: a dark line with the light catch
+   beside it, the crease of a pressed edge. A single light line vanishes on a
+   bright sleeve and a single dark one on a dark sleeve; the pair holds on both.
+   WHERE: the edges of panes (vertical, on the pane's right edge) and the edges
+   of the architecture (horizontal, on an element's bottom edge). Add
+   .gl-seam-top to a horizontal seam that belongs on the top edge instead (a
+   status strip at the foot of a pane). */
+.gl-seam-v { border-right: 1px solid var(--gl-seam-dark); box-shadow: 1px 0 0 var(--gl-seam-light); }
+.gl-seam-h { border-bottom: 1px solid var(--gl-seam-dark); box-shadow: 0 1px 0 var(--gl-seam-light); }
+.gl-seam-h.gl-seam-top { border-bottom: 0; border-top: 1px solid var(--gl-seam-dark); box-shadow: inset 0 1px 0 var(--gl-seam-light); }
+
+/* .gl-seam-v-in, .gl-seam-h-in — inner seams: the same pair, lighter.
+   WHERE: lines inside a pane that carry no fill of their own — a filter row, a
+   banner, a substat drawn as a bar — so the architecture reads before the
+   content does. A strip or a pill (below) ends by its fill and takes no seam. */
+.gl-seam-v-in { border-right: 1px solid var(--gl-seam-dark-in); box-shadow: 1px 0 0 var(--gl-seam-light-in); }
+.gl-seam-h-in { border-bottom: 1px solid var(--gl-seam-dark-in); box-shadow: 0 1px 0 var(--gl-seam-light-in); }
+.gl-seam-h-in.gl-seam-top { border-bottom: 0; border-top: 1px solid var(--gl-seam-dark-in); box-shadow: inset 0 1px 0 var(--gl-seam-light-in); }
+
+
+/* ---- endings ------------------------------------------------------------
+   A surface does not need a line to end. A strip just stops and the list
+   disappears under it; a pill floats over the list's end. Lines (the seams
+   above) are for edges that have no fill of their own. */
+
+/* .gl-ends — the idiom, as a class a host may put on a pane to say so. No rules:
+   a pane that carries .gl-strip and .gl-pill does not also draw .gl-seam-* on
+   the same edge, and nothing under a strip or a pill carries an inner seam. */
+
+/* .gl-strip — a title strip the content scrolls under: tinted glass that carries
+   the picture's colour, the ground at --gl-strip-a over the blur, no border, no
+   shadow. Reads as a step darker than the pane; .gl-light makes it a step lighter.
+   WHERE: the title strip of a pane or a panel whose list scrolls under it, and
+   the title strip of a popover or a menu. Never without a scroller under it: a
+   strip over a static block is a bar that forgot its rim. The host positions it
+   (absolute or sticky over the scroller, the scroller padded by the strip's
+   height); the system does not own layout. Carries one backdrop filter, like a
+   bar, and counts with the bars, not the rows. */
+.gl-strip {
+  background: var(--gl-strip-fill);
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  border: 0; box-shadow: none;
+  --gl-dim: var(--gl-dim-glass);
+}
+.gl-strip.gl-light { background: var(--gl-strip-fill-light); }
+
+/* .gl-pill — a floating capsule for a count or a status: the strip's material,
+   the pill radius, a 1px rim and a 1px top highlight on ::after, the pill shadow,
+   ink text.
+   WHERE: over the end of a list, inset by --gl-pill-inset from the pane's sides
+   and bottom, the list scrolling under it (the scroller padded by the pill's
+   clearance). Never over a bar, never in a bar: a bar has its own edge. The host
+   positions it (absolute; the :where() default yields). */
+.gl-pill {
+  background: var(--gl-strip-fill);
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  border: 0; border-radius: var(--gl-r-pill);
+  box-shadow: var(--gl-shadow-pill);
+  color: var(--gl-ink);
+  --gl-dim: var(--gl-dim-glass);
+}
+:where(.gl-pill) { position: relative; z-index: 2; }
+.gl-pill::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--gl-pill-rim), inset 0 1px 0 var(--gl-pill-spec);
+}
+
+/* .gl-open — the open item in a list of names: a collection, a folder, a tab.
+   An ink wash at 10% with a 1px rim at 18%, the pill radius. It is a wash, not
+   glass: no backdrop filter, so a list may hold one on every open group where
+   .gl-sel may hold only one. Never on the same element as .gl-sel: one says
+   "open", the other "here".
+   WHERE: the open row of a side list, alongside the host's own open class. */
+.gl-open {
+  background: var(--gl-open-fill);
+  box-shadow: inset 0 0 0 1px var(--gl-open-rim);
+  border-radius: var(--gl-r-pill);
+}
+
+
+/* ---- controls -----------------------------------------------------------
+   The three controls the system owns: the one action, the secondary button and
+   the field. Each is a material and a height; the host gives the type, the
+   padding and, for the field, the radius. Nothing else here is a control: no
+   toggle, no slider, no picker, no segmented control (GAPS.md gap 3). */
+
+/* .gl-action — the one primary action: accent-tinted glass. The accent at
+   --gl-action-a over a lighter blur, a 1px rim and a 1px top highlight, a capsule
+   --gl-hit tall, the label in --gl-on-accent. This is the only glass that carries
+   a hue, because it is the only thing on the screen that asks to be pressed.
+   WHERE: one per screen -- the header's Sync and nothing else while the page is
+   the screen; a panel's own Sync while the panel is. Never two on one screen,
+   never on a row, never for "where you are". The material lives on ::before and
+   the rim on ::after like .gl-glass; the host positions it. Counts with the bars
+   under law 1 (it is one filter, inside one bar). */
+.gl-action {
+  isolation: isolate; background: transparent; border: 0;
+  height: var(--gl-hit); border-radius: var(--gl-r-pill);
+  color: var(--gl-on-accent);
+}
+:where(.gl-action) { position: relative; }
+.gl-action::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: var(--gl-action-fill);
+  -webkit-backdrop-filter: blur(var(--gl-action-blur)) saturate(var(--gl-action-sat));
+  backdrop-filter: blur(var(--gl-action-blur)) saturate(var(--gl-action-sat));
+}
+.gl-action::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--gl-action-rim), inset 0 1px 0 var(--gl-action-spec);
+}
+
+/* .gl-btn — a secondary action: Cancel, Index the drive, Read Apple Music. The
+   open row's wash as a button: ink at 10% with a 1px rim at 18%, a capsule
+   --gl-hit tall, ink label. A wash, not glass: no backdrop filter, so a panel may
+   hold a row of them. Disabled ([disabled] or .gl-off) it is the fainter wash
+   with no rim and a dim label.
+   WHERE: every action that is not the one action: beside .gl-action in a bar,
+   in a panel's action row, in a dialog. */
+.gl-btn {
+  height: var(--gl-hit); border: 0; border-radius: var(--gl-r-pill);
+  background: var(--gl-btn-fill);
+  box-shadow: inset 0 0 0 1px var(--gl-btn-rim);
+  color: var(--gl-ink);
+}
+.gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-btn-off); box-shadow: none; color: var(--gl-dim); }
+
+/* .gl-field — the icy input: a search field, a select, a text input. An ink wash
+   at 10.5%, no stroke, a 1px top highlight; ink text, dim placeholder. The host
+   gives the radius (the pill for a search field in a bar, a small radius for an
+   input in a form) and the height. Focus adds a 1px ring at --gl-rim inside the
+   wash and takes the outline, so the ring is the focus indicator.
+   WHERE: every field. A field is never glass: a form of fields cannot carry a
+   filter each, and a field reads by what is typed in it, not by what is behind. */
+.gl-field {
+  background: var(--gl-field-fill); border: 0;
+  box-shadow: inset 0 1px 0 var(--gl-field-spec);
+  color: var(--gl-ink);
+}
+.gl-field::placeholder { color: var(--gl-dim); }
+.gl-field:focus-visible { outline: 0; box-shadow: inset 0 1px 0 var(--gl-field-spec), inset 0 0 0 1px var(--gl-rim); }
+
+
+/* ---- the twins ----------------------------------------------------------
+   Every motion and every transparency above has a twin here. The order is
+   the order a browser resolves them in, and all four are always present. */
+
+/* Reduce Motion: the crossfade stays (a cut would be worse), the drift goes. */
+@media (prefers-reduced-motion: reduce) {
+  .gl-ground img { transform: none; transition: opacity var(--gl-fade) linear; }
+  .gl-ground img.on { transform: none; }
+  .gl-ground .scrim { transition: background-color var(--gl-fade) linear; }
+}
+
+/* Reduce Transparency: no picture, an opaque scrim, the glass fill becomes the
+   ground, no backdrop filter. The selected row becomes its composite colour. */
+@media (prefers-reduced-transparency: reduce) {
+  .gl-ground img { display: none; }
+  .gl-ground .scrim { background: var(--gl-ground); }
+  .gl-glass::before, .gl-glass-bar::before, .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .gl-glass::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-glass::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
+  .gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim-hc); }
+  .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-strip, .gl-pill { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); }
+  .gl-pill::after { box-shadow: none; }
+  .gl-action::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-accent); }
+  .gl-action { border: 1px solid var(--gl-rim-hc); }
+  .gl-action::after { box-shadow: none; }
+  .gl-btn, .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
+  .gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-ground); }
+  .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+}
+
+/* Increase Contrast: the Reduce Transparency twin, and the rim becomes a real
+   border at the high-contrast alpha. */
+@media (prefers-contrast: more) {
+  .gl-ground img { display: none; }
+  .gl-ground .scrim { background: var(--gl-ground); }
+  .gl-glass::before, .gl-glass-bar::before, .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .gl-glass::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-glass { border: 1px solid var(--gl-rim-hc); }
+  .gl-glass::after { box-shadow: none; }
+  .gl-bar-top { border-bottom: 1px solid var(--gl-rim-hc); }
+  .gl-bar-bottom { border-top: 1px solid var(--gl-rim-hc); }
+  .gl-bar-top::after, .gl-bar-bottom::after { box-shadow: none; }
+  .gl-seam-v, .gl-seam-v-in { border-right-color: var(--gl-rim-hc); }
+  .gl-seam-h, .gl-seam-h-in { border-bottom-color: var(--gl-rim-hc); }
+  .gl-seam-h.gl-seam-top, .gl-seam-h-in.gl-seam-top { border-top-color: var(--gl-rim-hc); }
+  .gl-strip, .gl-pill { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); }
+  .gl-pill::after { box-shadow: none; }
+  .gl-action::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-accent); }
+  .gl-action { border: 1px solid var(--gl-rim-hc); }
+  .gl-action::after { box-shadow: none; }
+  .gl-btn, .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
+  .gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-ground); }
+  .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+}
+
+/* No backdrop-filter at all: the fill becomes the ground, so the material is
+   solid chrome and the text on it keeps its contrast. */
+@supports not (backdrop-filter: blur(1px)) {
+  .gl-ground img { display: none; }
+  .gl-ground .scrim { background: var(--gl-ground); }
+  .gl-glass::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-glass::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
+  .gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim-hc); }
+  .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-strip, .gl-pill { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); }
+  .gl-pill::after { box-shadow: none; }
+  .gl-action::before { background: var(--gl-accent); }
+  .gl-action { border: 1px solid var(--gl-rim-hc); }
+  .gl-action::after { box-shadow: none; }
+  .gl-btn, .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
+  .gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-ground); }
+  .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+}
+
+/* The opt-in solid twin: data-gl="solid" on the root equals Reduce Transparency.
+   A host's own setting, or a test, can ask for it without a media query. */
+:root[data-gl="solid"] .gl-ground img { display: none; }
+:root[data-gl="solid"] .gl-ground .scrim { background: var(--gl-ground); }
+:root[data-gl="solid"] .gl-glass::before, :root[data-gl="solid"] .gl-glass-bar::before, :root[data-gl="solid"] .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root[data-gl="solid"] .gl-glass::before, :root[data-gl="solid"] .gl-glass.gl-heavy::before, :root[data-gl="solid"] .gl-glass-bar::before { background: var(--gl-ground); }
+:root[data-gl="solid"] .gl-glass::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-strip, :root[data-gl="solid"] .gl-pill { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-pill::after { box-shadow: none; }
+:root[data-gl="solid"] .gl-action::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-accent); }
+:root[data-gl="solid"] .gl-action { border: 1px solid var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-action::after { box-shadow: none; }
+:root[data-gl="solid"] .gl-btn, :root[data-gl="solid"] .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
+:root[data-gl="solid"] .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+<!-- /saltglass:css -->
+</style>
+<!-- saltglass:js @cc154d31ce49da64e6729d4601b8c99bde5d7249 -->
+<script data-saltglass>
+/* saltglass — ground.js
+   The art ground: two decoded image layers under the page, a settle before the
+   ground follows a new selection, a crossfade between the layers, a drift.
+
+   Exposes window.Saltglass.Ground, and module.exports when a module system
+   exists. ES5 only, no dependencies. Every DOM, timer and media access is
+   guarded, so the file loads in a minimal DOM — or in no DOM at all — and
+   simply does nothing.
+
+   The page never measures colour. The host's server measures each picture and
+   hands show() the scrim alpha that keeps the ground under its luminance
+   ceiling; show() only writes that number onto the element.
+
+     var g = Saltglass.Ground.mount(el, {settle: 250, fade: 700, drift: true});
+     g.show({src: url, scrim: 0.45});   // debounced by settle; scrim null = unknown
+     g.clear();                         // both layers fade out: the flat ground
+     g.destroy();
+*/
+(function (root) {
+  'use strict';
+
+  var DEFAULTS = { settle: 250, fade: 700, drift: true };
+  var hasDocument = typeof document !== 'undefined' && !!document && typeof document.createElement === 'function';
+  var hasTimers = typeof setTimeout === 'function' && typeof clearTimeout === 'function';
+
+  // ---- small guarded helpers: a minimal DOM may lack any of these -----------
+  function media(query) {
+    try {
+      if (root && typeof root.matchMedia === 'function') {
+        var m = root.matchMedia(query);
+        return !!(m && m.matches);
+      }
+    } catch (e) {}
+    return false;
+  }
+  function millis(text, fallback) {
+    // "700ms" -> 700, ".7s" -> 700, "" -> fallback
+    if (text === null || text === undefined) return fallback;
+    var s = String(text).replace(/^\s+|\s+$/g, '');
+    if (!s) return fallback;
+    var n = parseFloat(s);
+    if (isNaN(n)) return fallback;
+    if (/ms\s*$/.test(s)) return n;
+    if (/s\s*$/.test(s)) return n * 1000;
+    return n;
+  }
+  function tokens(el) {
+    var out = { settle: DEFAULTS.settle, fade: DEFAULTS.fade, drift: DEFAULTS.drift };
+    try {
+      if (root && typeof root.getComputedStyle === 'function') {
+        var cs = root.getComputedStyle(el);
+        if (cs && typeof cs.getPropertyValue === 'function') {
+          out.settle = millis(cs.getPropertyValue('--gl-settle'), out.settle);
+          out.fade = millis(cs.getPropertyValue('--gl-fade'), out.fade);
+          var d = parseFloat(cs.getPropertyValue('--gl-drift'));
+          if (!isNaN(d)) out.drift = d !== 1;
+        }
+      }
+    } catch (e) {}
+    return out;
+  }
+  function attr(el, name) { try { return el && typeof el.getAttribute === 'function' ? el.getAttribute(name) : null; } catch (e) { return null; } }
+  function setAttr(el, name, value) { try { if (el && typeof el.setAttribute === 'function') el.setAttribute(name, value); } catch (e) {} }
+  function setVar(el, name, value) {
+    try { if (el && el.style && typeof el.style.setProperty === 'function') el.style.setProperty(name, value); } catch (e) {}
+  }
+  function hasClass(el, c) {
+    try {
+      if (el.classList && typeof el.classList.contains === 'function') return el.classList.contains(c);
+      return (' ' + (el.className || '') + ' ').indexOf(' ' + c + ' ') >= 0;
+    } catch (e) { return false; }
+  }
+  function addClass(el, c) {
+    try {
+      if (el.classList && typeof el.classList.add === 'function') { el.classList.add(c); return; }
+      if (!hasClass(el, c)) el.className = ((el.className || '') + ' ' + c).replace(/^\s+/, '');
+    } catch (e) {}
+  }
+  function removeClass(el, c) {
+    try {
+      if (el.classList && typeof el.classList.remove === 'function') { el.classList.remove(c); return; }
+      el.className = (' ' + (el.className || '') + ' ').replace(' ' + c + ' ', ' ').replace(/^\s+|\s+$/g, '');
+    } catch (e) {}
+  }
+  function children(el, tag) {
+    var out = [];
+    try {
+      var list = typeof el.getElementsByTagName === 'function' ? el.getElementsByTagName(tag) : (el.childNodes || []);
+      for (var i = 0; i < list.length; i++) {
+        var n = list[i];
+        if (n && String(n.tagName || n.nodeName || '').toLowerCase() === tag) out.push(n);
+      }
+    } catch (e) {}
+    return out;
+  }
+  function scrimOf(el) {
+    try { if (typeof el.querySelector === 'function') return el.querySelector('.scrim'); } catch (e) {}
+    var divs = children(el, 'div');
+    for (var i = 0; i < divs.length; i++) if (hasClass(divs[i], 'scrim')) return divs[i];
+    return null;
+  }
+  function make(tag) { try { return hasDocument ? document.createElement(tag) : null; } catch (e) { return null; } }
+  function append(el, child) { try { if (child && typeof el.appendChild === 'function') el.appendChild(child); } catch (e) {} }
+  function solidRoot() {
+    try { return hasDocument && document.documentElement && attr(document.documentElement, 'data-gl') === 'solid'; } catch (e) { return false; }
+  }
+
+  // ---- the ground -----------------------------------------------------------
+  function Ground(el, opts) {
+    opts = opts || {};
+    var t = tokens(el);
+    this.el = el;
+    this.settle = typeof opts.settle === 'number' ? opts.settle : t.settle;
+    this.fade = typeof opts.fade === 'number' ? opts.fade : t.fade;
+    this.drift = typeof opts.drift === 'boolean' ? opts.drift : t.drift;
+    this.reducedMotion = media('(prefers-reduced-motion: reduce)');
+    this.reducedTransparency = media('(prefers-reduced-transparency: reduce)') || solidRoot();
+    if (this.reducedMotion) this.drift = false;
+
+    // two img layers and a scrim: use the ones in the markup, make the rest
+    var imgs = children(el, 'img');
+    while (imgs.length < 2) {
+      var im = make('img');
+      if (!im) break;
+      setAttr(im, 'alt', '');
+      setAttr(im, 'aria-hidden', 'true');
+      append(el, im);
+      imgs.push(im);
+    }
+    this.layers = imgs.slice(0, 2);
+    var scrim = scrimOf(el);
+    if (!scrim) {
+      scrim = make('div');
+      if (scrim) { addClass(scrim, 'scrim'); append(el, scrim); }
+    }
+    this.scrim = scrim;
+
+    this.live = 0;        // index of the layer that is .on (or was last)
+    this.timer = null;
+    this.seq = 0;         // every show() bumps it; a stale decode never paints
+    this.pending = null;
+    this.dead = false;
+
+    if (!this.drift) setAttr(el, 'data-gl-drift', 'off');
+  }
+
+  Ground.prototype.setScrim = function (scrim) {
+    var a = (scrim === null || scrim === undefined || isNaN(parseFloat(scrim))) ? 'var(--gl-scrim-unknown)' : String(scrim);
+    setVar(this.el, '--gl-scrim-a', a);
+    return this;
+  };
+
+  // show({src, scrim}): debounced by settle. Ignored (the layers do not move)
+  // when src is already the live layer's; the scrim is still written, because
+  // a host that measures in the background re-shows the same picture with a
+  // real number once it has one.
+  Ground.prototype.show = function (what) {
+    if (this.dead) return this;
+    what = what || {};
+    if (this.reducedTransparency) return this;   // the twin: no picture; the scrim is opaque in CSS
+    if (!this.layers.length) return this;
+    this.pending = { src: what.src, scrim: what.scrim };
+    if (!hasTimers) return this;                  // no timers, no motion: the module does nothing
+    var self = this;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = setTimeout(function () { self.timer = null; self.swap(self.pending); }, this.settle);
+    return this;
+  };
+
+  Ground.prototype.swap = function (what) {
+    if (this.dead || !what) return;
+    if (!what.src) { this.clear(); return; }
+    var liveEl = this.layers[this.live], next = this.layers[1 - this.live] || liveEl;
+    if (attr(liveEl, 'src') === what.src && hasClass(liveEl, 'on')) { this.setScrim(what.scrim); return; }
+    if (attr(next, 'src') !== what.src) setAttr(next, 'src', what.src);
+    var self = this, token = ++this.seq;
+    var go = function () {
+      if (self.dead || token !== self.seq) return;
+      self.setScrim(what.scrim);
+      addClass(next, 'on');
+      if (next !== liveEl) removeClass(liveEl, 'on');
+      self.live = 1 - self.live;
+    };
+    var fail = function () {
+      if (self.dead || token !== self.seq) return;   // a picture that will not decode: the flat ground
+      removeClass(next, 'on');
+      removeClass(liveEl, 'on');
+    };
+    var p = null;
+    try { if (typeof next.decode === 'function') p = next.decode(); } catch (e) { p = null; }
+    if (p && typeof p.then === 'function') p.then(go, fail); else go();
+  };
+
+  // clear(): both layers fade out and the flat ground shows.
+  Ground.prototype.clear = function () {
+    if (this.dead) return this;
+    if (hasTimers && this.timer !== null) { clearTimeout(this.timer); this.timer = null; }
+    this.seq++;
+    this.pending = null;
+    for (var i = 0; i < this.layers.length; i++) removeClass(this.layers[i], 'on');
+    return this;
+  };
+
+  Ground.prototype.destroy = function () {
+    if (hasTimers && this.timer !== null) { clearTimeout(this.timer); this.timer = null; }
+    this.seq++;
+    this.dead = true;
+    return this;
+  };
+
+  // mount(el, opts): el is a .gl-ground element. Returns an inert instance when
+  // there is nothing to mount on, so a host never has to guard its calls.
+  Ground.mount = function (el, opts) {
+    if (!el) {
+      var inert = { el: null, layers: [], scrim: null, live: 0, dead: true };
+      inert.show = inert.clear = inert.destroy = inert.setScrim = function () { return inert; };
+      return inert;
+    }
+    return new Ground(el, opts);
+  };
+
+  Ground.DEFAULTS = DEFAULTS;
+
+  var api = { Ground: Ground };
+  if (typeof module !== 'undefined' && module && module.exports) module.exports = api;
+  if (root) {
+    root.Saltglass = root.Saltglass || {};
+    root.Saltglass.Ground = Ground;
+  }
+})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : null)));
+</script>
+<!-- /saltglass:js -->
+</head><body>
+
+<!-- THE GROUND. The selected track's cover, blurred, under everything:
+     two image layers that crossfade and a scrim whose alpha the server
+     measured for that cover (t.ground.scrim). ground.js owns the layers;
+     the page only tells it which picture and which number. -->
+<div id="ground" class="gl-ground" aria-hidden="true"><img alt="" aria-hidden="true"><img alt="" aria-hidden="true"><div class="scrim"></div></div>
+
+<header class="gl-glass-bar gl-bar-top">
   <div class="brandline">
     <h1>saltpod</h1>
-    <input type="search" id="q" placeholder="search everything   /">
+    <div class="q" role="search"><svg class="qi" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><path d="M232.49,215.51,185,168a92.12,92.12,0,1,0-17,17l47.53,47.54a12,12,0,0,0,17-17ZM44,112a68,68,0,1,1,68,68A68.07,68.07,0,0,1,44,112Z"/></svg><input type="search" id="q" class="gl-field" placeholder="search everything"><kbd>/</kbd></div>
     <div class="hright">
       <div class="counts" id="counts"></div>
-      <button id="dosync" title="write the collections to the iPod">Sync</button>
+      <button id="dosync" class="gl-action" title="write the collections to the iPod">Sync</button>
       <button id="gear" title="settings and data jobs">&#9881;</button>
     </div>
   </div>
 </header>
 
 <div id="work">
-  <aside class="left" id="left" aria-label="iPod">
-    <div class="plabel"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span></div>
+  <aside class="left gl-ends" id="left" aria-label="iPod">
+    <div class="plabel gl-strip"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span></div>
     <div class="pbody" id="colbody" role="listbox" aria-label="iPod collections"></div>
   </aside>
   <!-- The library to take from, always beside the iPod. Nothing here is edited:
@@ -841,45 +1788,47 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
        what you have listened to; the drive is what you already own, grouped
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
-  <aside class="srcpane" id="src" aria-label="Source">
-    <div class="plabel"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Library</span></span><span class="modes" id="smodes"></span></div>
+  <aside class="srcpane gl-ends" id="src" aria-label="Source">
+    <div class="plabel gl-strip"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Drive</span></span><span class="modes" id="smodes"></span></div>
     <div class="pbody" id="srcbody" role="listbox" aria-label="Apple Music and library"></div>
+    <!-- how much of the drive can be read right now, as a pill the list
+         scrolls under; empty (and so not drawn) when all of it can -->
+    <div class="substat pstat gl-pill" id="sstat"></div>
   </aside>
 
-  <section class="mid" id="mid" aria-label="Track list">
-    <div class="plabel"><span class="name" id="midh">Library</span>
+  <section class="mid gl-ends" id="mid" aria-label="Track list">
+    <div class="plabel gl-strip"><span class="name" id="midh">Library</span>
       <span id="midacts" style="display:flex;gap:12px"></span>
       <span class="pstat" id="midstat"></span>
       <span class="modes" id="flmodes"></span></div>
-    <div class="filters" id="ctl"></div>
     <div class="pbody" id="list" role="listbox" aria-multiselectable="true" tabindex="0"></div>
   </section>
 
-  <aside class="right" id="right" aria-label="Buy and vinyl">
-    <div class="plabel"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span></div>
+  <aside class="right gl-ends" id="right" aria-label="Buy and vinyl">
+    <div class="plabel gl-strip"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span></div>
     <!-- role="list", not listbox: these cards are things with a menu, not
          options you choose one of. A listbox holding zero role=option
          descendants reads as EMPTY to a screen reader however many cards
          are visibly in it, which is what bin/pagetest.py caught. -->
-    <div class="pbody" id="rbody" role="list" aria-label="Buy and vinyl tracks"></div>
-    <div class="substat pstat" id="rstat"></div>
+    <div class="pbody" id="rbody" role="list" aria-label="Buy and vinyl tracks" tabindex="0"></div>
+    <div class="substat pstat gl-pill" id="rstat"></div>
   </aside>
 
-  <div class="sheet" id="lsheet">
-    <div class="plabel"><span class="name">New collection</span><span class="sp"></span><span class="act" id="lsheetesc">esc</span></div>
+  <div class="sheet gl-glass gl-heavy" id="lsheet">
+    <div class="plabel gl-strip"><span class="name">New collection</span><span class="sp"></span><span class="act" id="lsheetesc">esc</span></div>
     <div class="pbody">
-      <div class="ninl"><input type="text" id="newin" placeholder="name it, or pick below"></div>
+      <div class="ninl"><input type="text" id="newin" class="gl-field" placeholder="name it, or pick below"></div>
       <div class="month">from Apple Music</div>
       <div id="seedrows" role="listbox" aria-label="Apple Music playlists to seed from"></div>
     </div>
   </div>
-  <div class="sheet" id="rsheet">
-    <div class="plabel"><span class="name">Data</span><span class="sp"></span><span class="act" id="rsheetesc">esc</span></div>
+  <div class="sheet gl-glass gl-heavy" id="rsheet">
+    <div class="plabel gl-strip"><span class="name">Data</span><span class="sp"></span><span class="act" id="rsheetesc">esc</span></div>
     <div class="pbody" id="rsheetbody"></div>
   </div>
 </div>
 
-<footer id="foot"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
+<footer id="foot" class="gl-glass-bar gl-bar-bottom"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
 <!-- A decision landing has no visual home of its own -- it is a toast that
      is easy to miss and a redraw that moved on. aria-live is polite so it
@@ -887,36 +1836,39 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
      is already reading, and sr-only keeps it off screen without pulling it
      out of the accessibility tree the way display:none would. -->
 <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-<div id="menu"><div class="plabel seam" id="menuh"></div><div class="mb" id="menub"></div></div>
+<div id="menu" class="gl-glass"><div class="plabel seam gl-seam-h-in" id="menuh"></div><div class="mb" id="menub"></div></div>
 
 <!-- THE SYNC PANEL. One list, twice: the changes you are approving, and then
-     the same rows reporting themselves as they happen. Built from the same
-     parts as every other pane -- a .plabel, a .pbody, .month labels, .col
-     rows, a .substat foot -- because it is another pane, not another idea. -->
+     the same rows reporting themselves as they happen. Built from the
+     system's parts and nothing else -- a .gl-strip title, .month labels,
+     plan rows with a mark, an "after" gauge, steps with a dot, a .log, and
+     a .gl-strip action bar floating over the end -- because it is another
+     pane, not another idea. -->
 <div id="spscrim"></div>
-<aside id="sp">
-  <div class="plabel seam"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
+<aside id="sp" class="gl-glass gl-heavy">
+  <div class="plabel gl-strip"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
   <!-- A GROUP, not a listbox: its rows are checkboxes you tick off, not
        options you choose one of. -->
   <div class="pbody" id="spbody" role="group" aria-label="Planned changes"></div>
-  <div class="substat pstat"><span class="sp" id="spnote"></span><span id="spbtn"></span></div>
+  <!-- the action bar floats over the end of the list on the strip's material -->
+  <div class="substat pstat gl-strip"><span class="sp" id="spnote"></span><span id="spbtn"></span></div>
 </aside>
 
 <!-- THE TRACK PANEL. The same pane as the sync panel -- .plabel seam,
      .pbody, .substat -- because it is another pane, not another idea. The
      cover is small and sits with the identity it belongs to; the fields
      below it are the form. -->
-<aside id="tp">
-  <div class="plabel seam"><span class="name" id="tpt">Track</span><span class="act" id="tpx">esc</span></div>
+<aside id="tp" class="gl-glass gl-heavy">
+  <div class="plabel gl-strip"><span class="name" id="tpt">Track</span><span class="act" id="tpx">esc</span></div>
   <div class="pbody" id="tpbody"></div>
   <div class="substat pstat"><span class="sp" id="tpnote"></span><span id="tpbtn"></span></div>
 </aside>
 
-<div id="dlg"><div id="dlgbox">
-  <div class="plabel seam"><span class="name" id="dlgt">Collection</span><span id="dlgbtn"></span></div>
+<div id="dlg"><div id="dlgbox" class="gl-glass">
+  <div class="plabel seam gl-seam-h-in"><span class="name" id="dlgt">Collection</span><span id="dlgbtn"></span></div>
   <div id="dlgbody">
     <p id="dlgp"></p>
-    <input id="dlgin" placeholder="Late Night">
+    <input id="dlgin" class="gl-field" placeholder="Late Night">
     <div id="dlgex"></div>
     <div id="dlgsec" class="dsec" hidden>or from an Apple Music playlist</div>
     <div id="dlglist" role="listbox" aria-label="Playlists"></div>
@@ -934,7 +1886,26 @@ const mmss = s => { if(!s) return ''; const n=Math.round(s);
 const $=s=>document.querySelector(s), au=$('#au');
 
 let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', job=null;
+let FSHOWN=[], MIDROWS=0;   // the filters the list offers, and its unfiltered row count (drawMid); the popover reads both
 let TOTALS={};              // answered by the server, never recomputed here
+
+/* THE GROUND follows the selection. saltglass's Ground (vendored above in
+   its own script tag) owns the two picture layers under the page: it waits
+   for the selection to rest, then crossfades to the new cover. The page
+   tells it two things and works out neither: which picture (the row's own
+   art) and the scrim alpha the SERVER measured for it (t.ground.scrim,
+   null until it has) -- the page never reads a pixel. If the system is
+   missing the ground is simply flat and nothing else changes. */
+const GROUND = (window.Saltglass && window.Saltglass.Ground)
+  ? window.Saltglass.Ground.mount($('#ground'))
+  : { show(){}, clear(){} };
+function followGround(){
+  const t=view[sel];
+  // A row with no art goes through show() too: Ground debounces it like any
+  // other move and only clears once the selection has rested. Calling clear()
+  // here dropped the ground at once, a dip on every art-less row under j/k.
+  GROUND.show((t&&t.art) ? {src:t.art, scrim:(t.ground||{}).scrim} : {src:null});
+}
 
 /* MULTI-SELECT. `sel` stays what it was -- the cursor, an index into `view`,
    which everything from scroll memory to nudge to play depends on. The
@@ -1040,11 +2011,15 @@ async function refreshUndo(){
   try{ UNDOC=await fetch('/api/undo').then(r=>r.json()); }catch(e){}
   paintUndo();
 }
+// The hint is a real button (law 7: what the key does, a click does), wired
+// to the same undo the key reaches; drawFoot re-creates it, so it is wired
+// here, where it is painted.
 function paintUndo(){
   const el=$('#undoc'); if(!el)return;
   el.textContent = UNDOC.can_undo ? `\u21A9 ${UNDOC.next}` : '';
   el.title = UNDOC.can_undo ? `\u2318Z to undo: ${UNDOC.next}` : '';
   el.style.visibility = UNDOC.can_undo ? 'visible' : 'hidden';
+  el.onclick = () => doUndo(false);
 }
 async function doUndo(redo){
   const r=await post('/api/undo',{redo:!!redo}).catch(()=>null);
@@ -1158,28 +2133,47 @@ function fold(which){ setFold(which,!document.body.classList.contains(FOLD[which
   $(id).querySelector('.plabel').onclick=()=>{ if(document.body.classList.contains(FOLD[w][0]))fold(w); };
 });
 
-/* the filter section: open or shut, remembered; its toggle names the active filter */
-const MID=$('#mid');
-try{ if(localStorage['saltpod.filters']==='1')MID.classList.add('fx'); }catch(e){}
-// The filters fold away behind a mark, like the two views do. A mark cannot
-// say WHICH filter is on, so the funnel carries a dot when one is -- a
-// hidden filter that silently narrows the list would be the worst of both.
+/* the filter: the funnel in the centre strip opens a popover; the strip names the active filter beside it */
+// The funnel opens the row menu's material with one radio row per filter
+// (paintMenu, kind 'filter'). A filter that is on is never hidden: its name
+// sits beside the funnel, in the strip, where the list is titled. The
+// toggle is a button by role, focusable, with the state in its name and the
+// popup it owns declared.
 function paintFilterToggle(){
-  const open=MID.classList.contains('fx'), on=filter!=='all';
-  const el=$('#flmodes'); if(!el)return;
-  // A span with a click handler had no role and could not be reached from
-  // the keyboard, and its "a filter is on" dot was colour alone. It is now a
-  // button by role, focusable, with the state in its name and aria-pressed.
+  const on=filter!=='all', el=$('#flmodes'); if(!el)return;
+  const open=!!(MENU&&MENU.kind==='filter');
   const flabel=on?'filter: showing '+filter:'filter: showing everything';
-  el.innerHTML=`<span class="${open||on?'on':''}${on?' act':''}" id="fltoggle"
-     role="button" tabindex="0" aria-pressed="${open?'true':'false'}"
-     aria-label="${esc(flabel)}" title="${on?'filtered: '+filter:'filter'}">${ICON_FILTER}</span>`;
-  $('#fltoggle').onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#fltoggle').click(); } };
-  $('#fltoggle').onclick=()=>{
-    MID.classList.toggle('fx');
-    try{ localStorage['saltpod.filters']=MID.classList.contains('fx')?'1':'0'; }catch(e){}
-    paintFilterToggle();
-  };
+  el.innerHTML=(on?`<span class="fname" title="filtered: ${esc(filter)}">${esc(filter)}</span>`:'')
+    +`<span class="${on?'on':''}" id="fltoggle" role="button" tabindex="0" aria-haspopup="menu"
+     aria-expanded="${open?'true':'false'}" aria-label="${esc(flabel)}" title="${on?'filtered: '+filter:'filter'}">${ICON_FILTER}</span>`;
+  const t=$('#fltoggle');
+  // stopPropagation: the same keystroke must not reach the document handler,
+  // which would see the popover it just opened and choose a row with it
+  t.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); e.stopPropagation(); toggleFilterMenu(); } };
+  t.onclick=toggleFilterMenu;
+  const n=el.querySelector('.fname'); if(n)n.onclick=toggleFilterMenu;
+}
+function toggleFilterMenu(){
+  if(MENU&&MENU.kind==='filter')closeMenu(); else openMenu($('#fltoggle'),'filter',null);
+}
+// The popover's keys, while it is open: arrows move a focus highlight (and
+// focus) through the radio rows, Home/End jump, Enter or Space chooses,
+// Escape closes and hands focus back to the funnel. `f` is not here: it
+// keeps cycling the filter as it always has, and draw() closes the menu.
+function menuKeys(e){
+  // the keys popover is a listing: Escape closes it and nothing else is its own
+  if(MENU&&MENU.kind==='keys'){ if(e.key==='Escape'){e.preventDefault();closeMenu();return true;} return false; }
+  const rows=[...menu.querySelectorAll('[role="menuitemradio"]')]; if(!rows.length)return false;
+  let i=rows.findIndex(r=>r.classList.contains('focus'));
+  if(i<0)i=rows.findIndex(r=>r.getAttribute('aria-checked')==='true');
+  const go=j=>{ rows.forEach((r,x)=>r.classList.toggle('focus',x===j)); rows[j].focus(); };
+  if(e.key==='ArrowDown'){e.preventDefault();go((i+1)%rows.length);return true;}
+  if(e.key==='ArrowUp'){e.preventDefault();go((i-1+rows.length)%rows.length);return true;}
+  if(e.key==='Home'){e.preventDefault();go(0);return true;}
+  if(e.key==='End'){e.preventDefault();go(rows.length-1);return true;}
+  if(e.key==='Enter'||e.key===' '){e.preventDefault(); if(i>=0)rows[i].onclick(); return true;}
+  if(e.key==='Escape'){e.preventDefault();closeMenu();const t=$('#fltoggle');if(t)t.focus();return true;}
+  return false;
 }
 
 /* ---------------- loading, counting, filtering ---------------- */
@@ -1326,25 +2320,71 @@ function draw(){
   setTimeout(()=>{ restoreScroll(); noteKeys(); },0);
 }
 
+/* THE FOOTER'S KEYS: a lookup table, never derived. One row per context --
+   what you are looking at -- and each entry is [key cap, verb, primary]. The
+   primaries come first in ink, the rest dim. Every cap names a key the
+   keydown handler at the end of this script actually handles, under the
+   verb it performs there: `b` is the sync tier, which for a track you do
+   not own is the buy list; `x` inside a collection takes the track out of
+   it; the reorder keys are shift-J / shift-K (nudge), not a modifier
+   chord, and the buy list has no drop key because the handler has none. An
+   iPod view that is not a collection (All on iPod, a smart list, the
+   device's lists) is the collection row without take-out and move. */
+const KEYS={
+  col:   [['space','play',1],['s','sync',1],['x','take out',1],['⇧J ⇧K','move',1],['c','collection',0],['i','info',0],['.','menu',0],['/','search',0]],
+  ipod:  [['space','play',1],['s','sync',1],['c','collection',0],['i','info',0],['.','menu',0],['/','search',0]],
+  am:    [['c','add to collection',1],['b','buy',1],['v','vinyl',1],['space','preview',1],['i','info',0],['.','menu',0],['/','search',0]],
+  drive: [['c','add to collection',1],['space','play',1],['i','info',1],['v','vinyl',0],['.','menu',0],['/','search',0]],
+  buy:   [['b','buy',1],['v','vinyl',1],['space','preview',0],['i','info',0],['/','search',0]]};
+const KEY_GROUPS=[['col','an iPod collection'],['am','an Apple Music playlist'],['drive','an album on the drive'],['buy','the buy list']];
+// The context is read off the page's own state: the right pane's focus,
+// then which source is active, then whether a collection is open.
+let rightFocus=false;
+function footCtx(){
+  if(rightFocus) return 'buy';
+  if(active==='am') return 'am';
+  if(active==='t7') return 'drive';
+  return colPick ? 'col' : 'ipod';
+}
+const kbdHTML=cap=>cap.split(' ').map(c=>`<kbd>${c}</kbd>`).join('');
+const keyHTML=x=>`<span class="kk ${x[2]?'p':'s'}">${kbdHTML(x[0])}${x[1]}</span>`;
+const ALLKEYS_HTML='<span class="kk all" id="allkeys" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" title="every key, by context"><kbd>?</kbd>all keys</span>';
+function wireAllKeys(){
+  const a=$('#allkeys'); if(!a)return;
+  a.onclick=e=>{ if(e&&e.stopPropagation)e.stopPropagation(); toggleKeysMenu(a); };
+  a.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();toggleKeysMenu(a);} };
+}
+function toggleKeysMenu(anchor){
+  if(MENU&&MENU.kind==='keys'){closeMenu();return;}
+  openMenu(anchor||$('#allkeys'),'keys');
+}
 function drawFoot(){
-  const inCol=active==='ipod'&&!!colPick, canSeq=inCol&&!filtered();
+  const inCol=active==='ipod'&&!!colPick;
   // With a selection live, the strip stops advertising single-track keys and
   // says what the selection is and how to drop it -- the one thing you need
   // to know while a bulk action is one keystroke away.
   if(MARK.size){
     $('#keys').innerHTML=`<span class="selcount"><b>${MARK.size}</b> selected</span>
-      <span><kbd>s</kbd> sync all</span><span><kbd>x</kbd> ${inCol?'take all out':'remove all'}</span>
-      <span><kbd>c</kbd> add all to playlist</span><span><kbd>esc</kbd> clear</span>
-      <span id="undoc" class="undoc"></span><span id="saved" style="margin-left:auto"></span>`;
+      <span class="kk p"><kbd>s</kbd>sync all</span><span class="kk p"><kbd>x</kbd>${inCol?'take all out':'remove all'}</span>
+      <span class="kk p"><kbd>c</kbd>add all to playlist</span><span class="kk s"><kbd>esc</kbd>clear</span>${ALLKEYS_HTML}
+      <button id="undoc" class="undoc" type="button"></button><span id="saved" style="margin-left:auto"></span>`;
+    wireAllKeys(); paintUndo();
     return;
   }
-  $('#keys').innerHTML=`<span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>space</kbd> play</span>
-    <span><kbd>s</kbd> sync</span><span><kbd>v</kbd> vinyl</span>
-    <span><kbd>x</kbd> ${inCol?'take out':'remove'}</span>
-    <span><kbd>c</kbd> collection</span><span><kbd>i</kbd> info</span>
-    <span><kbd>.</kbd> menu</span><span><kbd>/</kbd> search</span>
-    <span id="undoc" class="undoc"></span><span id="saved" style="margin-left:auto"></span>`;
+  $('#keys').innerHTML=(KEYS[footCtx()]||KEYS.ipod).map(keyHTML).join('')+ALLKEYS_HTML
+    +`<button id="undoc" class="undoc" type="button"></button><span id="saved" style="margin-left:auto"></span>`;
+  wireAllKeys(); paintUndo();
 }
+// The right pane's focus is a context of its own (the buy list's keys).
+// #rbody is focusable so a click in the pane lands there; focus leaving
+// the pane hands the footer back to the list behind it.
+(function(){
+  const r=$('#right'); if(!r)return;
+  const set=on=>{ if(on!==rightFocus){rightFocus=on; drawFoot();} };
+  r.addEventListener('focusin',()=>set(true));
+  r.addEventListener('focusout',e=>{ if(!e.relatedTarget||!r.contains(e.relatedTarget))set(false); });
+  const l=$('#list'); if(l)l.addEventListener('focusin',()=>set(false));
+})();
 
 /* ONE LIST VIEW, whatever is feeding it.
    The centre used to be three renderers -- iPod, Apple Music, drive -- and
@@ -1410,16 +2450,15 @@ function drawMid(){
   // true of anything on the device. Offering a filter that can only ever
   // return everything or nothing is a dead control.
   const inPod = active==='ipod';
-  const fs = FILTERS.filter(f=>!(inPod&&(f==='on iPod'||f==='rented only')));
-  if(!fs.includes(filter))filter='all';
-  $('#ctl').innerHTML=fs.map(f=>`<span class="pill ${f===filter?'on':''}" data-f="${f}">${f}</span>`).join('');
-  $('#ctl').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{captureScroll();clearMark();filter=p.dataset.f;sel=recallSel();draw();});
+  FSHOWN = FILTERS.filter(f=>!(inPod&&(f==='on iPod'||f==='rented only')));
+  if(!FSHOWN.includes(filter))filter='all';
   const sc=$('#selclr'); if(sc)sc.onclick=()=>{clearMark();draw();};
   paintFilterToggle();
 
   const L=currentList();
   const all=L.rows, shown=all.filter(pass);
   view=shown.slice(0,CAP);
+  MIDROWS=all.length;   // what All would show: the list's own rows, before this page's filter and cap
 
   $('#midh').innerHTML=esc(L.title)+(L.lib?` <span style="color:var(--dim)">· ${L.lib}</span>`:'');
   // the listbox's own name follows what it is showing -- the same title
@@ -1554,7 +2593,7 @@ function mark(){
   // that onto every row -- and the single cursor row otherwise. Touching it
   // here only in the no-mark case is what keeps the two from fighting.
   document.querySelectorAll('#list .row').forEach(r=>{
-    r.classList.remove('sel');
+    r.classList.remove('sel','gl-sel');
     if(!MARK.size)r.setAttribute('aria-selected','false');
   });
   const r=document.querySelector(`#list .row[data-i="${sel}"]`);
@@ -1563,12 +2602,16 @@ function mark(){
   // wins, dragging you back to the selected row instead of where you were.
   if(r){
     r.classList.add('sel');
+    // The glass is the system's: .gl-sel paints it. A cursor row outside a
+    // live selection keeps only its rim (see #list.hasmark in the sheet).
+    if(!MARK.size||r.classList.contains('marked'))r.classList.add('gl-sel');
     if(!MARK.size)r.setAttribute('aria-selected','true');
     $('#list').setAttribute('aria-activedescendant',r.id);
     if(!redrawing())r.scrollIntoView({block:'nearest'});
   } else {
     $('#list').removeAttribute('aria-activedescendant');
   }
+  followGround();
 }
 async function saveOrder(col,keys,to){
   ORDER[col]=keys; sel=to;
@@ -1577,12 +2620,16 @@ async function saveOrder(col,keys,to){
   draw();
 }
 // J / K move the selected row one place in the FULL order, so they are only
-// offered when the full order is what is on screen.
+// offered when the full order is what is on screen. The row menu offers the
+// same four moves (law 7: nothing is keyboard-only either), and 'top' /
+// 'bottom' are the two ends the keys never reached.
+function canNudge(){ return active==='ipod' && !!colPick && !filtered(); }
 function nudge(dir){
-  if(!colPick||filtered())return;
+  if(!canNudge())return;
   const keys=(ORDER[colPick]||[]).slice(), t=view[sel]; if(!t)return;
-  const from=keys.indexOf(t.key), to=from+dir;
-  if(from<0||to<0||to>=keys.length)return;
+  const from=keys.indexOf(t.key);
+  const to = dir==='top' ? 0 : dir==='bottom' ? keys.length-1 : from+dir;
+  if(from<0||to<0||to>=keys.length||to===from)return;
   keys.splice(from,1); keys.splice(to,0,t.key);
   saveOrder(colPick,keys,to);
 }
@@ -1612,8 +2659,12 @@ function drawCols(){
       const ready=off.filter(k=>(BYKEY.get(k)||{}).local).length, waiting=off.length-ready;
       const never=!SYNCED.includes(c)&&!PENDING.has(c);
       const mark=PENDING.has(c)?'new':(off.length?`+${off.length}`:(never?'unsynced':(n[c]||0)));
-      return colRow({name:esc(c), cnt:mark, menu:true, attrs:` data-c="${esc(c)}"`,
-        cls:`${c===colPick?(active==='ipod'?'on':'was'):''} ${(off.length||never||PENDING.has(c))?'pend':''}`,
+      const pend=!!(off.length||never||PENDING.has(c)), on=c===colPick&&active==='ipod';
+      // On the open row the pending mark is a dot beside an ink count, not
+      // orange text: orange on the raised fill is 4.06:1 and fails (law 2's
+      // own colour kept, moved from the word to a mark that needs no ratio).
+      return colRow({name:esc(c), cnt:(on&&pend?'<span class="pdot"></span>':'')+mark, menu:true, attrs:` data-c="${esc(c)}"`,
+        cls:`${c===colPick?(active==='ipod'?'on':'was'):''} ${pend?'pend':''}`,
         title:`${esc(c)} — ${n[c]||0} tracks${off.length?`, ${ready} ready to sync, ${waiting} not owned yet`:', all on the iPod'}`});
     }).join('');
   if(!names.length)h+=`<p class="note">None yet. Press <b style="color:var(--ink)">+ new</b>, then drag tracks onto it.</p>`;
@@ -1727,6 +2778,7 @@ function paintSeeds(){
 function drawSrc(){
   const pane=$('#src');
   pane.querySelector('.plabel').classList.toggle('off',active==='ipod');
+  $('#sstat').innerHTML='';           // only the drive has a reach to report; drawT7 fills it
   document.querySelectorAll('#stabs .pill').forEach(p=>p.classList.toggle('on',p.dataset.s===stab));
   paintModes('src',$('#smodes'));
   if(MODE.src==='album'){
@@ -1748,7 +2800,11 @@ function drawAM(){
   const st=p=>p.slug===amPick?(active==='am'?'on':'was'):'';
   let h=colRow({name:'All in Apple Music', cnt:AMLIB||'',
     cls:amPick==='__all__'?(active==='am'?'on':'was'):'', attrs:' data-am="__all__"'});
-  h+= AMP.length ? AMP.map(p=>colRow({name:esc(p.name), cnt:(p.created||'').slice(0,7)||p.tracks,
+  // each playlist like an album: the server's mosaic (or the empty thumbnail
+  // until it exists), the name over "N tracks · YYYY-MM" -- both from the
+  // payload's own fields (`tracks`, `created`) -- and the count at the right
+  const sub=p=>[p.tracks!=null?`${p.tracks} track${p.tracks===1?'':'s'}`:'', (p.created||'').slice(0,7)].filter(Boolean).join(' · ');
+  h+= AMP.length ? AMP.map(p=>colRow({name:esc(p.name), sub:esc(sub(p)), mosaic:p.art||null, cnt:p.tracks,
         menu:true, cls:`${st(p)} ${p.imported?'':'dim'}`,
         attrs:` data-am="${esc(p.slug)}" draggable="true"`,
         title:`${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''} — drag onto a collection, or onto + new`
@@ -1866,7 +2922,12 @@ function albumRows(list,pane){
 
    Variants are class and content, never a different shape.               */
 function colRow(o){
-  const art = o.art === undefined ? ''
+  // `mosaic` is a playlist's tiled cover from the server (one picture, or
+  // null until it is made): the .mosaic slot is always drawn so the row
+  // keeps its shape, empty until the data event brings the file
+  const art = o.mosaic !== undefined
+    ? `<span class="mosaic">${o.mosaic ? `<img src="${o.mosaic}" alt="" loading="lazy" draggable="false">` : ''}</span>`
+    : o.art === undefined ? ''
     : (o.art ? `<img class="albart" src="${o.art}" loading="lazy" draggable="false">`
              : '<span class="albart"></span>');
   const name = o.sub
@@ -1901,7 +2962,9 @@ function colRow(o){
   const moreAttrs = o.menu
     ? ' role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions"'
     : ' aria-hidden="true"';   // the reserved, empty slot -- nothing to announce
-  return `<div class="col ${o.cls||''}"${role}${o.attrs||''}${o.title?` title="${o.title}"`:''}>`
+  // the open row carries the system's .gl-open beside the page's .on: one
+  // fact, read from the one class string, said in the system's vocabulary
+  return `<div class="col ${o.cls||''}${picked?' gl-open':''}"${role}${o.attrs||''}${o.title?` title="${o.title}"`:''}>`
     + art + name
     + `<span class="cnt">${o.cnt==null?'':o.cnt}</span>`
     + `<span class="more${o.menu?'':' hold'}"${moreAttrs} title="more">&#8943;</span></div>`;
@@ -1922,10 +2985,12 @@ function drawT7(){
   // HOW MUCH OF THE LIBRARY CAN BE READ belongs here, with the library's
   // own count -- not in the health strip beside the iPod and Music.app.
   // The strip is for things outside the application that can go away; the
-  // library is the application.
+  // library is the application. It is the pane's bottom pill (#sstat), not
+  // a banner in the list: the count lives here once, and the cause (which
+  // drive is away) lives in the footer's health strip.
   const R=T7.reach;
-  if(R&&R.tracks&&R.reachable<R.tracks)
-    h += `<p class="note">${R.reachable.toLocaleString()} of ${R.tracks.toLocaleString()} readable right now — the rest are on a volume that is not mounted.</p>`;
+  $('#sstat').innerHTML = R&&R.tracks&&R.reachable<R.tracks
+    ? `<s>${R.reachable.toLocaleString()}</s> of ${R.tracks.toLocaleString()} readable right now` : '';
   $('#srcbody').innerHTML=h;
   $('#srcbody').querySelectorAll('[data-t7]').forEach(el=>{
     const name=el.dataset.t7;
@@ -2208,49 +3273,53 @@ let MUSIC=null;
 function openSettings(){
   if(document.body.classList.contains('nr'))setFold('R',false);
   $('#rsheet').classList.add('on');
+  // THE DATA PANEL FROM THE SYSTEM'S PARTS: a .fact of prose with the numbers
+  // in ink, section labels, actions as the secondary capsules, two columns
+  // at the sheet's width, and the last job as a labelled .log. Every id the
+  // handlers below use is kept; nothing here decides anything.
   $('#rsheetbody').innerHTML=`
-    <div>
-      <p class="note" style="margin:0 0 4px">Everything that used to be a command. Long jobs run in
-        the background and keep running if you close this.</p>
-      <div class="box" id="jobbox" style="display:none">
-        <div class="dsec" id="jobname"></div>
-        <span id="jobstate" style="color:var(--dim);font:var(--fs-ctrl) var(--mono)"></span><pre id="joblog"></pre></div>
-      <div class="box"><div class="dsec">playlists already imported &middot; ${SLUGS.length}</div>
-        <div style="color:var(--dim);font-size:12px">${SLUGS.join(' · ')}</div>
-        <div class="brow">
-          <select id="slug">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select>
-          <button id="doMatch">Match against iTunes</button>
-          <button id="doVerify">Verify Bandcamp durations</button>
-          <button id="doRebuild">Rebuild state</button></div></div>
-      <div class="box"><div class="dsec">the music drive</div>
-        <div style="color:var(--dim);font-size:12px">
-          ${HEALTH&&HEALTH.index?`<b style="color:var(--ink)">${HEALTH.index.tracks}</b> files indexed, ${HEALTH.index.built}`:'<span class="warn">never indexed</span>'} ·
-          ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' · ')||'no source configured'}<br>
-          Walks the folders in <code>library_roots</code> and remembers every audio file. Run it after you buy something.</div>
-        <div class="brow"><button id="doIndex">Index the drive</button></div></div>
-      <div class="box"><div class="dsec">the iPod</div>
-        <div style="color:var(--dim);font-size:12px">
-          ${ALL.filter(t=>t.device).length} tracks on the device &middot;
-          ${ALL.filter(t=>t.device&&t.tier==='remove').length} marked to remove &middot;
-          ${ALL.filter(t=>t.lossless).length} have a lossless original</div>
-        <div class="brow"><button id="doDevice">Re-read the device</button></div></div>
-      <div class="box"><div class="dsec">Apple Music</div>
-        <div style="color:var(--dim);font-size:12px;line-height:1.6">
-          ${AMREAD?`<b style="color:var(--ink)">${AMP.length}</b> playlists and <b style="color:var(--ink)">${AMLIB}</b> library tracks, read ${esc(AMREAD)}`:'<span class="warn">not read yet</span>'}<br>
+    <div class="fact">Everything that used to be a command. Long jobs run in
+      the background and keep running if you close this.</div>
+    <div class="two">
+      <div>
+        <div class="month">Apple Music</div>
+        <div class="fact">${AMREAD?`<b>${AMP.length}</b> playlists and <b>${AMLIB}</b> library tracks, read ${esc(AMREAD)}.`:'<span class="warn">Not read yet.</span>'}
           Music.app has no creation date for a playlist, so the dates are derived: the earliest and
           latest a track in it was added. The list is ordered by the latest, which is when you last
           worked on it.</div>
-        <div class="brow"><button id="doAM">Read Apple Music</button></div></div>
-      <div class="box"><div class="dsec">Discogs</div>
-        <div style="color:var(--dim);font-size:12px;line-height:1.6">
-          ${['wantlist','collection'].map(k=>{const f=(DISCOGS.files||{})[k]||{};
-            return `${k}: ${f.modified?`<b style="color:var(--ink)">${f.rows}</b> releases, exported ${f.modified}`:'<span class="warn">not found</span>'}`;}).join('<br>')}<br>
+        <div class="acts"><button id="doAM">Read Apple Music</button></div>
+        <div class="month">the drive</div>
+        <div class="fact">${HEALTH&&HEALTH.index?`<b>${HEALTH.index.tracks}</b> files indexed, ${HEALTH.index.built}`:'<span class="warn">never indexed</span>'} &middot;
+          ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' &middot; ')||'no source configured'}.
+          Walks the folders in <code>library_roots</code> and remembers every audio file. Run it after you buy something.</div>
+        <div class="acts"><button id="doIndex">Index the drive</button></div>
+        <div class="month">the iPod</div>
+        <div class="fact"><b>${ALL.filter(t=>t.device).length}</b> tracks on the device &middot;
+          ${ALL.filter(t=>t.device&&t.tier==='remove').length} marked to remove &middot;
+          ${ALL.filter(t=>t.lossless).length} with a lossless original</div>
+        <div class="acts"><button id="doDevice">Re-read the device</button></div>
+      </div>
+      <div>
+        <div class="month">playlists already imported &middot; ${SLUGS.length}</div>
+        <div class="fact">${SLUGS.join(' &middot; ')}</div>
+        <div class="acts"><select id="slug" class="gl-field">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        <div class="acts">
+          <button id="doMatch">Match against iTunes</button>
+          <button id="doVerify">Verify Bandcamp durations</button>
+          <button id="doRebuild">Rebuild state</button></div>
+        <div class="month">Discogs</div>
+        <div class="fact">${['wantlist','collection'].map(k=>{const f=(DISCOGS.files||{})[k]||{};
+            return `${k}: ${f.modified?`<b>${f.rows}</b> releases, exported ${f.modified}`:'<span class="warn">not found</span>'}`;}).join(' &middot; ')}.
           Export both from Discogs and drop them at <code>${esc(DISCOGS.dir||'data/discogs')}/wantlist.csv</code> and
-          <code>${esc(DISCOGS.dir||'data/discogs')}/collection.csv</code>. They are read on every load; nothing is fetched.</div></div>
-      <div class="box"><div class="dsec">import a playlist by name</div>
-        <div style="color:var(--dim);font-size:12px">The left pane lists them all; this is the long way round.</div>
-        <div class="brow"><button id="loadMusic">List my playlists</button></div>
-        <div id="musiclist" style="margin-top:10px"></div></div>
+          <code>${esc(DISCOGS.dir||'data/discogs')}/collection.csv</code>; they are read on every load, nothing is fetched.</div>
+        <div class="month">import a playlist by name</div>
+        <div class="fact">The left pane lists them all; this is the long way round.</div>
+        <div class="acts"><button id="loadMusic">List my playlists</button></div>
+        <div id="musiclist"></div>
+        <div id="jobbox" style="display:none">
+          <div class="month">job &middot; <span id="jobname"></span><span id="jobstate"></span></div>
+          <div class="log" id="joblog"></div></div>
+      </div>
     </div>`;
   $('#doDevice').onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
   $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
@@ -2259,19 +3328,18 @@ function openSettings(){
   $('#doMatch').onclick=()=>startJob({action:'match',slugs:[$('#slug').value]});
   $('#doVerify').onclick=()=>startJob({action:'verify',slugs:[$('#slug').value]});
   $('#loadMusic').onclick=async()=>{
-    $('#musiclist').innerHTML='<span style="color:var(--dim)">reading Music.app…</span>';
+    $('#musiclist').innerHTML='<div class="fact">reading Music.app…</div>';
     const r=await fetch('/api/music').then(r=>r.json());
     MUSIC=r.playlists||[]; const have=new Set(r.have||[]);
     const rows=MUSIC.filter(p=>p.tracks>0).sort((a,b)=>a.name.localeCompare(b.name));
-    $('#musiclist').innerHTML=`<input type="search" id="mq" placeholder="filter" style="margin-bottom:8px;width:200px">
-      <div id="mrows" style="max-height:300px;overflow:auto">`+rows.map(p=>{
+    $('#musiclist').innerHTML=`<div class="acts"><input type="search" id="mq" class="gl-field" placeholder="filter"></div>
+      <div id="mrows" class="mrows">`+rows.map(p=>{
         const slug=p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-        return `<div class="row" draggable="false" style="grid-template-columns:minmax(0,1fr) auto auto;gap:10px" data-name="${esc(p.name)}">
-          <div class="t"><div class="n">${esc(p.name)}</div></div>
-          <span class="tag">${p.tracks}</span>
+        return `<div class="col" data-name="${esc(p.name)}"><span class="nm">${esc(p.name)}</span>
+          <span class="cnt">${p.tracks}</span>
           ${have.has(slug)?'<span class="tag ok">imported</span>':`<button data-imp="${esc(p.name)}">import</button>`}</div>`;}).join('')+'</div>';
     $('#mq').oninput=e=>{const v=e.target.value.toLowerCase();
-      $('#mrows').querySelectorAll('.row').forEach(r=>r.style.display=r.dataset.name.toLowerCase().includes(v)?'':'none');};
+      $('#mrows').querySelectorAll('.col').forEach(r=>r.style.display=r.dataset.name.toLowerCase().includes(v)?'':'none');};
     $('#mrows').querySelectorAll('[data-imp]').forEach(b=>b.onclick=()=>startJob({action:'export',names:[b.dataset.imp]}));
   };
   paintJob(lastJob);
@@ -2390,7 +3458,7 @@ function askDropEdits(){
     + ' been changed and not written to the file yet.';
   dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
   $('#dlglist').innerHTML='';
-  $('#dlgbtn').innerHTML='<button class="go" id="dlgok">Discard</button>';
+  $('#dlgbtn').innerHTML='<button class="go gl-action" id="dlgok">Discard</button>';
   $('#dlgok').onclick=()=>{ closeDlg(); closeTrack(true); };
   dlg.classList.add('on');
 }
@@ -2488,7 +3556,7 @@ function tpFoot(){
   // SAVE APPEARS WHEN THERE IS SOMETHING TO SAVE. Finder commits on blur;
   // that is wrong here, because the commit writes a file on your drive.
   $('#tpbtn').innerHTML = n && !ro
-    ? '<button class="go" id="tpsave"'+(TP.busy?' disabled':'')+'>Save</button>'
+    ? '<button class="go gl-action" id="tpsave"'+(TP.busy?' disabled':'')+'>Save</button>'
     : '<button id="tpclose">Close</button>';
   const sv = $('#tpsave'); if(sv) sv.onclick = saveTrack;
   const cl = $('#tpclose'); if(cl) cl.onclick = closeTrack;
@@ -2605,30 +3673,40 @@ function buildSyncRows(){
   const p=SP.plan, R=[];
   R.push({sec:'first', n:0, ids:[]});
   R.push({id:'backup', infra:true, name:'back up the database'});
+  // A ROW'S SECOND LINE is album · duration · what happens. The plan carries
+  // the key and what happens; the album, the duration and the cover are
+  // looked up on the track the page already holds (BYKEY), never worked out.
+  // The plan says only whether a file is converted (`convert`), not from
+  // what, so the line reads "→ ALAC" or "as is" rather than "FLAC → ALAC".
+  const known=k=>BYKEY.get(k)||{};
+  const line=(k,what)=>{ const t=known(k);
+    return [t.album, t.seconds?mmss(t.seconds):'', what].filter(Boolean).join(' \u00b7 '); };
   if(p.adds.length){
     R.push({sec:'copy across', n:p.adds.length, ids:p.adds.map(a=>'a:'+a.key)});
-    p.adds.forEach(a=>R.push({id:'a:'+a.key, name:a.artist+' — '+a.title,
-      meta:(a.convert?'→ ALAC · ':'')+gb(a.bytes), bytes:a.bytes||0}));
+    p.adds.forEach(a=>R.push({id:'a:'+a.key, key:a.key, name:a.artist+' \u2014 '+a.title,
+      art:known(a.key).art||null,
+      meta:line(a.key,(a.convert?'\u2192 ALAC':'as is')+' \u00b7 '+gb(a.bytes)), bytes:a.bytes||0}));
   }
   if(p.removes.length){
     R.push({sec:'take off the iPod', n:p.removes.length, ids:p.removes.map(r=>'r:'+r.key)});
-    p.removes.forEach(r=>R.push({id:'r:'+r.key, name:r.artist+' — '+r.title}));
+    p.removes.forEach(r=>R.push({id:'r:'+r.key, key:r.key, name:r.artist+' \u2014 '+r.title,
+      art:known(r.key).art||null, minus:true, meta:line(r.key,'marked to remove')}));
   }
   if((p.retags||[]).length){
     R.push({sec:'bring the metadata into line', n:p.retags.length,
             ids:p.retags.map(x=>'m:'+x.key)});
-    p.retags.forEach(x=>R.push({id:'m:'+x.key,
-      name:(x.artist?x.artist+' \u2014 ':'')+x.title,
-      meta:(x.winner==='device' ? 'file \u2190 iPod' : 'iPod \u2190 file')
-           + ' \u00b7 ' + Object.keys(x.fields).join(', ')}));
+    p.retags.forEach(x=>R.push({id:'m:'+x.key, key:x.key,
+      name:(x.artist?x.artist+' \u2014 ':'')+x.title, art:known(x.key).art||null, tilde:true,
+      meta:line(x.key,(x.winner==='device' ? 'file \u2190 iPod' : 'iPod \u2190 file')
+           + ' \u00b7 ' + Object.keys(x.fields).join(', '))}));
   }
   const pls=[...p.delete.map(c=>({c:c,what:'delete'})), ...p.new.map(c=>({c:c,what:'create'})),
              ...p.update.map(c=>({c:c,what:'update'}))];
   if(pls.length){
     R.push({sec:'playlists', n:pls.length, ids:pls.map(x=>'p:'+x.c)});
     pls.forEach(x=>{
-      R.push({id:'p:'+x.c, name:x.c,
-        meta:x.what==='delete'?'delete':x.what+' · '+(((p.sizes||{})[x.c])||0)});
+      R.push({id:'p:'+x.c, name:x.c, art:null, minus:x.what==='delete', tilde:x.what==='update',
+        meta:x.what==='delete'?'delete':x.what+' \u00b7 '+(((p.sizes||{})[x.c])||0)});
       // WHAT WILL BE IN IT. A count says a playlist is being written; it
       // does not say what it will contain, which is the thing you are
       // approving. These are children of the row above and are ticked with
@@ -2666,10 +3744,10 @@ function paintSync(){
   // THE SUMMARY LEADS WITH WHAT IS IRREVERSIBLE. Removals delete files from
   // the device; additions are undone by removing them again.
   const bits=[];
-  if(c.rems) bits.push('<s>'+c.rems+'</s> off the iPod');
-  if(c.adds) bits.push('<s>'+c.adds+'</s> copied across');
-  if(c.pls)  bits.push('<s>'+c.pls+'</s> playlist'+(c.pls>1?'s':''));
-  if(c.tags) bits.push('<s>'+c.tags+'</s> retagged');
+  if(c.rems) bits.push('<b>'+c.rems+'</b> off the iPod');
+  if(c.adds) bits.push('<b>'+c.adds+'</b> copied across');
+  if(c.pls)  bits.push('<b>'+c.pls+'</b> playlist'+(c.pls>1?'s':''));
+  if(c.tags) bits.push('<b>'+c.tags+'</b> retagged');
   const same=(p.unchanged||[]).length;
   let sum = bits.length ? bits.join(' \u00b7 ') : 'Nothing selected';
   if(!run){
@@ -2679,18 +3757,23 @@ function paintSync(){
       +(same>1?'':'es')+' the device.';
     if(SP.off.size) sum += ' '+SP.off.size+' unticked.';
   }
-  let h='<p class="note">'+sum+'</p>';
+  let h='<div class="fact">'+sum+'</div>';
+  // THE "AFTER" GAUGE sits where it belongs in the order: after the changes,
+  // before the commit boundary. Free space as a thin bar, the numbers from
+  // /api/plan (free_bytes) and the ticked rows' sizes, as before.
+  let gauge='';
   if(c.adds&&free!=null){
     const pct=Math.max(0,Math.min(100, 100*Math.min(c.bytes,free)/free));
-    h+='<div class="month" style="margin-top:0">'+gb(c.bytes)+' of '+gb(free)+' free'
-      +(fits?'':' \u2014 will not fit')+'</div>'
-      +'<div class="spgauge"><i class="'+(fits?'':'over')+'" style="width:'+(fits?pct:100)+'%"></i></div>';
+    gauge='<div class="month">after</div>'
+      +'<div class="gauge"><i class="'+(fits?'':'over')+'" style="width:'+(fits?pct:100)+'%"></i></div>'
+      +'<div class="gstat"><b>'+gb(c.bytes)+'</b> of <b>'+gb(free)+'</b> free'
+      +(fits?'':' \u2014 will not fit')+'</div>';
   }
 
   // The section toggle carries its ROW INDEX, not its ids: a key may hold any
   // character, so no separator is safe to pack a list into an attribute with.
   h += SP.rows.map((r,ri)=>{
-    if(r.edge) return '<div class="month edge">'+esc(r.edge)+'</div>';
+    if(r.edge) return gauge+'<div class="month edge">'+esc(r.edge)+'</div>';
     if(r.sec){
       // The count follows the ticks. A header still reading 7 over five
       // ticked rows is the sort of small lie that makes you re-count.
@@ -2710,20 +3793,34 @@ function paintSync(){
         + '<span class="cnt">'+esc(r.meta||'')+'</span>'
         + '<span class="more hold"></span></div>';
     }
-    const st = r.infra ? (r.state||'fixed') : (r.state || (SP.off.has(r.id)?'out':''));
-    const mk = {doing:'\u2026', done:'\u2713', err:'!'}[r.state] || '';
-    const right = r.err ? esc(r.err) : (mk || (run?'':esc(r.meta||'')));
-    // Only the rows you can actually click are checkboxes: infrastructure
-    // rows and every row during a run are inert, so they claim no role
-    // rather than claiming one that lies about what they do.
-    return colRow({name:esc(r.name), cnt:right, cls:st, role:(r.infra||run)?null:'checkbox',
-                   attrs:' data-id="'+esc(r.id)+'"'});
+    // THE INFRASTRUCTURE ROWS ARE STEPS: a dot per step, hollow until it is
+    // done, and the step's state (doing, done, error, never reached) is the
+    // same `state` the log parser writes on the row.
+    if(r.infra) return '<div class="step'+(r.state?' '+r.state:'')+'" data-id="'+esc(r.id)+'">'
+      + '<span class="dot"></span>'+esc(r.name)+'</div>';
+    // A PLAN ROW: the mark, the art, the name over album \u00b7 duration \u00b7 what
+    // happens. The mark is + or - (or ~ for a retag or an update) and, during
+    // a run, the state in the same slot: \u2026 doing, \u2713 done, ! error, \u00b7 never
+    // reached -- nothing moves at the moment your attention is on what is
+    // moving. Only the rows you can actually click are checkboxes: every row
+    // during a run is inert, so it claims no role rather than one that lies.
+    const out=SP.off.has(r.id);
+    const mark={doing:'\u2026', done:'\u2713', error:'!', todo:'\u00b7'}[r.state]
+      || (r.minus ? '\u2013' : r.tilde ? '~' : '+');
+    const label=String(r.name||'').replace(/<[^>]*>/g,'').trim();
+    const role=run ? '' : ' role="checkbox" aria-checked="'+(!out)+'"'+(label?' aria-label="'+esc(label)+'"':'');
+    const art=r.art ? '<img class="art" src="'+r.art+'" alt="" loading="lazy" draggable="false">' : '<span class="art"></span>';
+    return '<div class="row'+(out?' out':'')+(run?' inert':'')+(r.state?' '+r.state:'')+'"'+role
+      + ' data-id="'+esc(r.id)+'">'
+      + '<span class="mark'+(r.minus?' minus':'')+'" aria-hidden="true">'+mark+'</span>'+art
+      + '<span class="t"><span class="n">'+esc(r.name)+'</span>'
+      + '<span class="s">'+(r.err?esc(r.err):esc(r.meta||''))+'</span></span></div>';
   }).join('');
-  if(SP.log.length) h+='<div id="splog">'+esc(SP.log.slice(-8).join('\n'))+'</div>';
+  if(SP.log.length) h+='<div id="splog" class="log">'+esc(SP.log.slice(-8).join('\n'))+'</div>';
   $('#spbody').innerHTML=h;
 
   if(!run){
-    $('#spbody').querySelectorAll('.col:not(.fixed)').forEach(el=>el.onclick=()=>{
+    $('#spbody').querySelectorAll('.row[data-id]').forEach(el=>el.onclick=()=>{
       const id=el.dataset.id; SP.off.has(id)?SP.off.delete(id):SP.off.add(id); paintSync();});
     $('#spbody').querySelectorAll('[data-sec]').forEach(el=>el.onclick=e=>{
       e.stopPropagation();
@@ -2751,7 +3848,7 @@ function paintSyncFoot(fits){
     // changes away, so it is a named button that asks first -- and it sits
     // apart from Confirm rather than beside it.
     btn.innerHTML=(n?'<button id="spdrop">Cancel</button>':'')
-      + '<button class="go" id="spgo"'+((!n||!fits)?' disabled':'')+'>'
+      + '<button class="go gl-action" id="spgo"'+((!n||!fits)?' disabled':'')+'>'
       + (n ? 'Confirm' : 'Nothing to do') + '</button>';
     note.textContent = !fits ? 'not enough room'
       : n ? 'nothing has changed on the device yet' : '';
@@ -2781,7 +3878,7 @@ function askDiscard(){
     + '<br><br><b style="color:var(--ink)">\u2318Z brings it back</b> as one step.';
   dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
   $('#dlglist').innerHTML='';
-  $('#dlgbtn').innerHTML='<button class="go" id="dlgok">Discard</button>';
+  $('#dlgbtn').innerHTML='<button class="go gl-action" id="dlgok">Discard</button>';
   $('#dlgok').onclick=doDiscard;
   dlg.classList.add('on');
 }
@@ -2853,6 +3950,12 @@ function menuRow(label,key,tick,cls){
 function openMenu(anchor,kind,payload){
   MENU={kind,payload,anchor};
   anchor.setAttribute('aria-expanded','true');
+  // the filter popover is the one kind whose rows are radios, so it alone is
+  // a menu by role; the track and collection menus' rows carry no role
+  menu.classList.toggle('fpop',kind==='filter');
+  menu.classList.toggle('kpop',kind==='keys');
+  if(kind==='filter'){menu.setAttribute('role','menu');menu.setAttribute('aria-label','Show');}
+  else{menu.removeAttribute('role');menu.removeAttribute('aria-label');}
   paintMenu();
   menu.classList.add('on');
   const a=anchor.getBoundingClientRect(), m=menu.getBoundingClientRect();
@@ -2872,6 +3975,28 @@ function closeMenu(){
 function paintMenu(){
   if(!MENU)return;
   const h=$('#menuh'), b=$('#menub');
+  // THE FILTER POPOVER. One radio row per filter the list offers (FSHOWN,
+  // decided in drawMid), the check in a fixed slot, and at the right the
+  // count the SERVER sent: TOTALS for the lists it counts, the list's own
+  // row count for All, nothing for the rest. No count is computed here --
+  // the layer rule -- and no count is computed anywhere in the page.
+  if(MENU.kind==='filter'){
+    const cap=f=>f.charAt(0).toUpperCase()+f.slice(1);
+    const count=f=>{ const v=f==='all'?MIDROWS:TOTALS[FILTER_TOTAL[f]]; return v==null?'':`<span class="dk">${v}</span>`; };
+    h.innerHTML='Show';
+    b.innerHTML=FSHOWN.map(f=>`<div class="drow frow" role="menuitemradio" tabindex="-1" aria-checked="${f===filter?'true':'false'}" data-f="${esc(f)}"><span class="fchk" aria-hidden="true">&#10003;</span><span class="dn">${esc(cap(f))}</span>${count(f)}</div>`).join('');
+    b.querySelectorAll('[data-f]').forEach(r=>r.onclick=()=>{ const f=r.dataset.f; closeMenu(); captureScroll(); clearMark(); filter=f; sel=recallSel(); draw(); });
+    return;
+  }
+  // EVERY KEY, by context: the footer's own table (KEYS) read out in full,
+  // a section label per context and a cap-and-verb row per key. Nothing
+  // here is clickable; Escape, or the footer's "?", closes it.
+  if(MENU.kind==='keys'){
+    h.innerHTML='Keys';
+    b.innerHTML=KEY_GROUPS.map(([k,label])=>`<div class="month">${esc(label)}</div>`
+      +KEYS[k].map(x=>`<div class="drow krow"><span class="kc">${kbdHTML(x[0])}</span><span class="dn">${esc(x[1])}</span></div>`).join('')).join('');
+    return;
+  }
   if(MENU.kind==='col'){
     const c=MENU.payload;
     const nShort=ALL.filter(t=>t.tier==='sync'&&!t.collections.includes(c)).length;
@@ -2977,7 +4102,7 @@ function paintMenu(){
     h.querySelector('.back').onclick=()=>{MENU.kind='track';paintMenu();};
     const cols=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
     b.innerHTML=(cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}"><span class="dn">${esc(c)}</span>${t.collections.includes(c)?'<span class="dc">&#10003;</span>':''}</div>`).join(''):'')
-      +'<div class="sep"></div>'+`<input id="menunew" placeholder="new playlist…">`;
+      +'<div class="sep"></div>'+`<input id="menunew" class="gl-field" placeholder="new playlist…">`;
     b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=async()=>{
       const c=x.dataset.pc, sel2=(MARK.size>1&&MARK.has(t.key))?markedKeys():[t.key];
       if(sel2.length>1){ const fresh=sel2.filter(k=>!((BYKEY.get(k)||{}).collections||[]).includes(c));
@@ -3073,6 +4198,11 @@ function paintMenu(){
     +'<div class="sep"></div>'
     +menuRow(many?'Add all to playlist &rsaquo;':'Add to playlist &rsaquo;','c',false,'m-add')
     +(inCol?menuRow((many?`Take all ${N} out of `:'Take out of ')+esc(colPick),'',false,'m-out'):'')
+    // the four moves, only where the full order is on screen and for the
+    // one row under the cursor: what J and K do, plus the two ends
+    +(!many&&canNudge()?'<div class="sep"></div>'
+        +menuRow('Move up','K',false,'m-up')+menuRow('Move down','J',false,'m-down')
+        +menuRow('Move to top','',false,'m-top')+menuRow('Move to bottom','',false,'m-bottom'):'')
     +'<div class="sep"></div>'
     +(lpOwned ? menuRow('Owned on vinyl','',false,'inert')
               : menuRow(vinylOn?'Unwant vinyl':'Want vinyl','v',false,'m-vinyl'))
@@ -3087,6 +4217,9 @@ function paintMenu(){
   // A mixed selection turns vinyl ON -- the majority intent when you picked
   // a set and reached for a flag. Everything already flagged stays flagged.
   on('m-vinyl',()=>{closeMenu();decide({vinyl:!vinylOn},KS);});
+  // the moves act on the cursor row, which is the row the menu was opened on
+  const moveTo=dir=>()=>{closeMenu(); const i=view.findIndex(x=>x.key===t.key); if(i>=0){sel=i;nudge(dir);}};
+  on('m-up',moveTo(-1)); on('m-down',moveTo(+1)); on('m-top',moveTo('top')); on('m-bottom',moveTo('bottom'));
   on('m-play',()=>{closeMenu();play();});
   on('m-info',()=>{closeMenu();openTrack(t);});
 }
@@ -3116,7 +4249,7 @@ async function deleteFromIpod(t,keys){
   toast('off the iPod on the next sync'
         + (inCols?` \u00b7 still in ${inCols} playlist${inCols>1?'s':''}`:''));
 }
-document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more'))closeMenu(); });
+document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more')&&!(e.target.closest&&e.target.closest('#flmodes')))closeMenu(); });
 // a scroll of the page closes the menu; a scroll inside the menu is the menu working
 document.addEventListener('scroll',e=>{ if(MENU&&!(e.target instanceof Node&&menu.contains(e.target)))closeMenu(); },true);
 
@@ -3152,7 +4285,7 @@ function openDlg(mode,why,plan){
         <span class="dn">${esc(p.name)}</span><span class="dc">${p.tracks}</span></div>`).join('')
     : `<p id="dlgp">Nothing read yet — the gear has <b style="color:var(--ink)">Read Apple Music</b>.</p>`);
   $('#dlglist').querySelectorAll('[data-seed]').forEach(el=>el.onclick=()=>seedFrom(el.dataset.seed));
-  $('#dlgbtn').innerHTML = mode==='__delete__' ? '<button class="go" id="dlgok">Delete</button>' : '';
+  $('#dlgbtn').innerHTML = mode==='__delete__' ? '<button class="go gl-action" id="dlgok">Delete</button>' : '';
   const ok=$('#dlgok'); if(ok)ok.onclick=submitDlg;
   dlg.classList.add('on'); if(cfg.input)dlgin.focus();
 }
@@ -3262,6 +4395,9 @@ dlg.onclick=e=>{if(e.target===dlg)closeDlg();};
 
 /* ---------------- keys ---------------- */
 const FILTERS=['all','to buy','to sync','needs a drive','to remove','rented only','on T7','on vinyl','on iPod'];
+// the popover's counts: which of the server's totals each filter reads. A
+// filter not named here shows no count, rather than one worked out here.
+const FILTER_TOTAL={'to buy':'to_buy','to sync':'to_sync','needs a drive':'needs_drive','to remove':'to_remove','on iPod':'on_ipod'};
 const qi=$('#q');
 qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawMid();drawFoot();paintPlaying();};
 qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.blur();draw();} if(e.key==='Enter')qi.blur();};
@@ -3295,7 +4431,9 @@ document.addEventListener('keydown',e=>{
   }
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+  if(MENU&&(MENU.kind==='filter'||MENU.kind==='keys')&&menuKeys(e))return;
   const k=e.key;
+  if(k==='?'){e.preventDefault();toggleKeysMenu();return;}
   if(k==='/'){e.preventDefault();qi.focus();return;}
   if(k==='['){e.preventDefault();fold('L');return;}
   if(k===']'){e.preventDefault();fold('R');return;}

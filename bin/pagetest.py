@@ -139,7 +139,16 @@ const vm = require('vm');
 const CURATE = process.argv[2];
 const TESTS_PATH = process.argv[3];
 const RAW = fs.readFileSync(CURATE, 'utf8');
-const BODY_HTML = RAW.split('<body>')[1].split('<script>')[0];
+// The page carries two scripts since saltglass was vendored: the system's
+// ground.js in a <script data-saltglass> tag, then the page's own bare
+// <script>. The markup ends where the first of them starts; the vendored
+// one runs first in the same context, exactly as the browser orders them,
+// so the page's script finds window.Saltglass the way it does for real.
+// The stylesheet is skipped before looking for <body>: the vendored CSS
+// says "<body>" in a comment, and the first match used to be the tag.
+const BODY_HTML = RAW.slice(RAW.indexOf('</style>')).split('<body>')[1].split('<script')[0];
+const GLASS_M = RAW.match(/<script data-saltglass>([\s\S]*?)<\/script>/);
+const GLASS_JS = GLASS_M ? GLASS_M[1] : '';
 const SCRIPT = RAW.split('<script>')[1].split('</script>')[0];
 
 // ---------------------------------------------------------- a minimal DOM
@@ -190,6 +199,15 @@ function classList(el){
     get length(){ return read().length; },
   };
 }
+// style: plain property writes (el.style.display = 'none') keep working as
+// before; setProperty/getPropertyValue exist so a custom property written
+// by script (ground.js sets --gl-scrim-a on #ground) can be read back.
+class StyleDecl {
+  constructor(){ this._props = new Map(); }
+  setProperty(n, v){ this._props.set(n, String(v)); }
+  getPropertyValue(n){ return this._props.has(n) ? this._props.get(n) : ''; }
+  removeProperty(n){ this._props.delete(n); }
+}
 class Element extends NodeBase {
   constructor(tag){
     super(1);
@@ -197,7 +215,7 @@ class Element extends NodeBase {
     this.tagName = tag.toUpperCase();
     this.attrs = new Map();
     this._listeners = {};
-    this.style = {};
+    this.style = new StyleDecl();
   }
   get id(){ return this.getAttribute('id') || ''; }
   set id(v){ this.setAttribute('id', v); }
@@ -358,15 +376,20 @@ const document_ = {
 // playlists (one imported, one not); two T7 folders; a sync plan with one
 // add/remove/retag/new-playlist so every row SHAPE in the sync panel
 // renders at least once.
+// `art` and `ground` are the ground's inputs: t1 is measured (the server
+// handed it a scrim), t2 has art the server has not measured yet (null),
+// t4 has no art at all. The ground test walks the cursor through them.
 const TRACKS = [
   { key:'t1', artist:'Aphex Twin', title:'Flim', album:'Come to Daddy',
     device:true, held:true, tier:'sync', vinyl:false, bought:true, t7:false, am:true, local:false,
     collections:['DayClub'], playlists:['DayClub'], on_ipod:true, lists:['on iPod'],
-    seconds:220, vinyl_owned:false, vinyl_wanted:false },
+    seconds:220, vinyl_owned:false, vinyl_wanted:false,
+    art:'/api/art/aphex-twin-come-to-daddy.jpg', ground:{ y:0.05, scrim:0.45 } },
   { key:'t2', artist:'Burial', title:'Archangel', album:'Untrue',
     device:false, held:true, tier:'undecided', vinyl:true, bought:true, t7:true, am:false, local:true,
     collections:[], playlists:[], on_ipod:false, lists:['on T7','owned digitally'],
-    seconds:245, vinyl_owned:false, vinyl_wanted:false },
+    seconds:245, vinyl_owned:false, vinyl_wanted:false,
+    art:'/api/art/burial-untrue.jpg', ground:null },
   { key:'t3', artist:'SAULT', title:'Wildfires', album:'Untitled',
     device:false, held:false, tier:'sync', vinyl:false, bought:false, t7:false, am:true, local:false,
     collections:['WARA - Listening'], playlists:['WARA - Listening'], on_ipod:false, lists:['to buy','rented only'],
@@ -380,7 +403,9 @@ const ORDER = { 'DayClub': ['t1'], 'WARA - Listening': ['t3'] };
 const TOTALS = { to_buy: 1, to_buy_eur: 1.29, to_sync: 0, to_remove: 0, on_ipod: 1 };
 const SYNCED = ['DayClub'];
 const AMP = [
-  { name:'DayClub', slug:'dayclub', tracks:12, created:'2025-06-01', last:'2025-06-10', imported:true },
+  // `art` is the server's tiled mosaic for the playlist (one picture); the
+  // other two have none yet, so their rows show the empty thumbnail
+  { name:'DayClub', slug:'dayclub', tracks:12, created:'2025-06-01', last:'2025-06-10', imported:true, art:'/api/art?playlist=dayclub' },
   { name:'WARA - Listening', slug:'wara-listening', tracks:40, created:'2025-01-01', last:'2025-02-01', imported:true },
   { name:'Vinyl Wishlist', slug:'vinyl-wishlist', tracks:5, created:'2024-01-01', last:'2024-02-01', imported:false },
 ];
@@ -403,7 +428,7 @@ const HEALTH = { ipod:'absent', music:'ok', sources:[], tools:{ffmpeg:true, ffpr
 function fetchStub(url){
   const p = String(url).split('?')[0];
   const body = ({
-    '/api/tracks': { tracks: TRACKS, collections: COLLECTIONS, order: ORDER, totals: TOTALS, synced: SYNCED, slugs: {}, updated: null },
+    '/api/tracks': { tracks: TRACKS, collections: COLLECTIONS, order: ORDER, totals: TOTALS, synced: SYNCED, slugs: ['dayclub', 'wara-listening'], updated: null },
     '/api/discogs': { wantlist: [], collection: [], files: {}, dir: 'data/discogs' },
     '/api/playlists': { playlists: AMP, read_at: '2026-01-01', library: 500 },
     '/api/device': DEV,
@@ -443,6 +468,10 @@ try {
   // is what run #2 below depends on, and it was verified empirically
   // (a minimal let/function pair across two separate runInContext calls)
   // before this harness was built on top of it.
+  // Run #0: the vendored saltglass ground.js, when the page carries it. It
+  // registers Saltglass.Ground on `window` (the sandbox's) and touches no
+  // page state; the page's own script then mounts the ground from it.
+  if (GLASS_JS) vm.runInContext(GLASS_JS, sandbox, { filename: 'saltglass-ground.js' });
   vm.runInContext(SCRIPT, sandbox, { filename: 'curate-inline.js' });
   // Run #2: the assertions, written to their own file so they read as
   // ordinary, un-escaped JavaScript rather than a string embedded in a
@@ -657,18 +686,126 @@ _TESTS_JS = r'''
     return 'Apple Music playlists, T7 folders and albums: every drag has a working ⋯ menu';
   });
 
+  // ------------------------------- law 7: nothing is keyboard-only either
+  // Two holes the first glass pass left (DESIGN-GLASS.md 3.1): reordering a
+  // collection was J/K only, and the footer's undo hint was a span with no
+  // handler under a key cap that said ⌘Z. The menu's four Move rows call the
+  // same nudge() the keys do, and #undoc is a button that calls the same
+  // undo. post() is replaced for the duration so the server call each one
+  // makes is observed rather than sent.
+  await recordAsync('law 7: the row menu moves a row, the footer undoes', async () => {
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    const row = c => document.querySelector('#menub .' + c);
+    const anchor = document.createElement('span');
+    ORDER['DayClub'] = ['t1', 't2', 't3'];
+    colPick = 'DayClub'; active = 'ipod'; filter = 'all'; clearMark(); draw();
+    assert(view.length === 3, `expected 3 rows in the collection view, got ${view.length}`);
+    const t2 = view.find(x => x.key === 't2'); assert(t2, 't2 not in view');
+    openMenu(anchor, 'track', t2);
+    ['m-up', 'm-down', 'm-top', 'm-bottom'].forEach(c => assert(row(c), `no ${c} row in the track menu inside a collection`));
+    assert(row('m-up').querySelector('.dk').textContent === 'K' && row('m-down').querySelector('.dk').textContent === 'J',
+      'Move up / Move down do not carry their key caps (K / J)');
+    const realPost = post; const posted = [];
+    post = (url, body) => { posted.push({ url, body }); return Promise.resolve({ ok: true }); };
+    try {
+      const reorder = () => { const p = posted[posted.length - 1]; assert(p && p.url === '/api/decide' && p.body.reorder, 'no reorder was posted'); return p.body.reorder; };
+      row('m-bottom').onclick(); await tick();
+      assert(reorder().collection === 'DayClub' && reorder().keys.join() === 't1,t3,t2', `Move to bottom gave ${reorder().keys.join()}`);
+      openMenu(anchor, 'track', view.find(x => x.key === 't2'));
+      row('m-top').onclick(); await tick();
+      assert(reorder().keys.join() === 't2,t1,t3', `Move to top gave ${reorder().keys.join()}`);
+      openMenu(anchor, 'track', view.find(x => x.key === 't2'));
+      row('m-down').onclick(); await tick();
+      assert(reorder().keys.join() === 't1,t2,t3', `Move down gave ${reorder().keys.join()}`);
+      openMenu(anchor, 'track', view.find(x => x.key === 't2'));
+      row('m-up').onclick(); await tick();
+      assert(reorder().keys.join() === 't2,t1,t3', `Move up gave ${reorder().keys.join()}`);
+      const n = posted.length;
+      // outside a collection there is no order to move in, so no rows
+      clearMark(); colPick = null; draw();
+      openMenu(anchor, 'track', ALL[0]);
+      assert(!row('m-up') && !row('m-bottom'), 'Move rows offered where there is no order to move in');
+      closeMenu();
+      // (d) the undo hint is a button that undoes
+      drawFoot();
+      const u = document.getElementById('undoc');
+      assert(u && u.tagName === 'BUTTON', `#undoc is ${u ? 'a ' + u.tagName : 'missing'}, not a button`);
+      assert(typeof u.onclick === 'function', '#undoc has no click handler');
+      await u.onclick();
+      const last = posted[posted.length - 1];
+      assert(posted.length === n + 1 && last.url === '/api/undo' && last.body.redo === false,
+        `clicking #undoc should post /api/undo {redo:false}, saw ${JSON.stringify(last)}`);
+    } finally { post = realPost; }
+    return 'four Move rows (K/J caps) each post the reordered keys; none outside a collection; #undoc is a button that posts /api/undo';
+  });
+
   // ---------------------------------------------------------------- pass()
-  record('pass() honors a real filter-pill click', () => {
+  record('pass() honors a real filter-popover choice', () => {
     colPick = 'DayClub'; active = 'ipod'; draw();
-    const pill = document.querySelector('#ctl [data-f="to buy"]');
-    assert(pill, 'no "to buy" filter pill was rendered');
-    pill.onclick();
-    assert(filter === 'to buy', `clicking the pill left filter=${filter}`);
+    document.getElementById('fltoggle').onclick();
+    const row = document.querySelector('#menub [data-f="to buy"]');
+    assert(row, 'no "to buy" row in the filter popover');
+    row.onclick();
+    assert(filter === 'to buy', `choosing the row left filter=${filter}`);
     assert(pass({ lists: ['to buy'], artist: 'a', title: 'b', album: 'c' }) === true, 'pass() rejected a to-buy track while filter=to buy');
     assert(pass({ lists: ['on T7'], artist: 'a', title: 'b', album: 'c' }) === false, 'pass() accepted a non-matching track while filter=to buy');
-    document.querySelector('#ctl [data-f="all"]').onclick();
-    assert(filter === 'all', 'resetting the filter pill did not reset filter');
-    return 'a real pill click changes filter, and pass() obeys it';
+    document.getElementById('fltoggle').onclick();
+    document.querySelector('#menub [data-f="all"]').onclick();
+    assert(filter === 'all', 'choosing All did not reset filter');
+    return 'a real popover choice changes filter, and pass() obeys it';
+  });
+
+  // ------------------------------------------------- the filter popover
+  // The filter row is gone; the funnel in the centre strip opens the row
+  // menu with one radio row per filter. The counts at the right are the
+  // server's totals, read from the payload, or nothing: the page computes
+  // none (the layer rule). The harness's document.addEventListener is a
+  // no-op, so the keyboard is exercised through menuKeys() directly, which
+  // is the function the document handler delegates to.
+  record('the funnel opens a filter popover of radio rows', () => {
+    colPick = null; active = 'am'; filter = 'all'; clearMark(); draw();
+    const t = document.getElementById('fltoggle');
+    assert(t && t.getAttribute('aria-haspopup') === 'menu', '#fltoggle does not declare the popup it owns');
+    assert(t.getAttribute('aria-expanded') === 'false', 'a closed toggle says it is expanded');
+    assert(!document.querySelector('#flmodes .fname'), 'the strip names a filter while All is on');
+    t.onclick();
+    assert(MENU && MENU.kind === 'filter', 'clicking the funnel did not open the filter menu');
+    assert(menu.classList.contains('on') && menu.classList.contains('fpop'), 'the menu is not shown as the filter popover');
+    assert(menu.getAttribute('role') === 'menu', 'the popover is not a menu by role');
+    assert(document.getElementById('fltoggle').getAttribute('aria-expanded') === 'true', 'the open toggle does not say so');
+    assert(document.getElementById('menuh').textContent.trim() === 'Show', 'the strip does not say Show');
+    const rows = document.querySelectorAll('#menub [role="menuitemradio"]');
+    assert(rows.length === FILTERS.length, `expected a row per filter (${FILTERS.length}), got ${rows.length}`);
+    const checked = rows.filter(r => r.getAttribute('aria-checked') === 'true');
+    assert(checked.length === 1 && checked[0].dataset.f === filter,
+      `expected exactly one checked row, for ${filter}; got ${checked.map(r => r.dataset.f).join() || 'none'}`);
+    const buy = rows.find(r => r.dataset.f === 'to buy');
+    assert(buy && buy.querySelector('.dk') && buy.querySelector('.dk').textContent === String(TOTALS.to_buy),
+      'the to-buy count is not the server\'s total');
+    assert(buy.querySelector('.dn').textContent === 'To buy', 'the label is not the filter name capitalised');
+    const rented = rows.find(r => r.dataset.f === 'rented only');
+    assert(rented && !rented.querySelector('.dk'), 'a count the server did not send was shown (computed in the page?)');
+    // choosing sets the filter, closes, and the strip names it
+    buy.onclick();
+    assert(filter === 'to buy', `choosing left filter=${filter}`);
+    assert(!MENU && !menu.classList.contains('on'), 'choosing did not close the popover');
+    const nm = document.querySelector('#flmodes .fname');
+    assert(nm && nm.textContent === 'to buy', 'the strip does not name the active filter beside the funnel');
+    assert(document.getElementById('fltoggle').getAttribute('aria-expanded') === 'false', 'the toggle still says expanded');
+    // the keyboard: arrows move, Escape closes and the funnel is told
+    document.getElementById('fltoggle').onclick();
+    assert(MENU && MENU.kind === 'filter', 'reopening the popover failed');
+    const ev = k => ({ key: k, preventDefault(){} });
+    assert(menuKeys(ev('ArrowDown')) === true, 'ArrowDown was not handled');
+    const foc = document.querySelector('#menub .drow.focus');
+    assert(foc && foc.dataset.f === FILTERS[FILTERS.indexOf('to buy') + 1], 'ArrowDown did not move from the checked row to the next');
+    assert(menuKeys(ev('Escape')) === true && !MENU, 'Escape did not close the popover');
+    assert(menuKeys(ev('x')) === false, 'an unrelated key was swallowed while the popover was closed');
+    // and back to All
+    document.getElementById('fltoggle').onclick();
+    document.querySelector('#menub [data-f="all"]').onclick();
+    assert(filter === 'all' && !document.querySelector('#flmodes .fname'), 'choosing All did not clear the name');
+    return `${rows.length} radio rows, one checked, server counts only, choose/Escape/arrows`;
   });
   record('pass() honors a real search input', () => {
     const qi = document.getElementById('q');
@@ -697,7 +834,13 @@ _TESTS_JS = r'''
     assert(t && t.getAttribute('role') === 'button', 'the filter toggle has no button role');
     assert(t.getAttribute('tabindex') === '0', 'the filter toggle cannot be reached from the keyboard');
     assert(/filter: showing/.test(t.getAttribute('aria-label') || ''), 'the filter state is not in its name');
-    return 'aria-busy, labels, role and tabindex';
+    // a filter that is on is named in the strip, in text, not marked by a colour
+    const was = filter; filter = 'to buy'; paintFilterToggle();
+    const nm = document.querySelector('#flmodes .fname');
+    assert(nm && nm.textContent === 'to buy', 'an active filter is not named beside the funnel');
+    assert(/showing to buy/.test(document.getElementById('fltoggle').getAttribute('aria-label') || ''), 'the toggle does not say which filter is on');
+    filter = was; paintFilterToggle();
+    return 'aria-busy, labels, role, tabindex, the filter named in text';
   });
 
   record('owned-but-offline is its own state, not unowned', () => {
@@ -800,6 +943,158 @@ _TESTS_JS = r'''
     assert(cursorRow.classList.contains('sel'), 'the cursor row lost .sel while a selection was live');
     clearMark(); colPick = null; draw();
     return '4-row collection: cursor tracked, marked rows left alone by mark()';
+  });
+
+  // ------------------------------------ the ground follows the selection
+  // The layer rule, exercised: the page hands the ground the row's own art
+  // and the scrim the SERVER measured for it, and works out neither. The
+  // sandbox has no getComputedStyle, so Saltglass.Ground falls back to its
+  // 250 ms settle; the timers are real, so the test rests a little longer
+  // than that between moves. A row the server has not measured yet must
+  // leave the ground at the system's unknown default; a row with no art
+  // must leave the ground flat.
+  await recordAsync('the ground follows the selection, from the payload only', async () => {
+    const rest = ms => new Promise(r => setTimeout(r, ms));
+    const g = document.getElementById('ground');
+    assert(g, 'no #ground element in the page');
+    const live = () => g.querySelectorAll('img').find(i => i.classList.contains('on')) || null;
+    const scrim = () => g.style.getPropertyValue('--gl-scrim-a');
+    ORDER['DayClub'] = ['t1', 't2', 't3', 't4'];
+    colPick = 'DayClub'; active = 'ipod'; clearMark(); draw();
+    assert(view.length === 4, `expected 4 rows in the collection view, got ${view.length}`);
+    const at = key => { const i = view.findIndex(t => t.key === key); assert(i >= 0, `${key} not in view`); return i; };
+    const t1 = view[at('t1')], t2 = view[at('t2')], t4 = view[at('t4')];
+    assert(t1.art && t1.ground && t2.art && t2.ground === null && !t4.art, 'the fixture lost the shapes this test needs');
+    sel = at('t1'); mark();
+    assert(!(live() && live().getAttribute('src') === t1.art), 'the ground moved before the selection had settled');
+    await rest(320);
+    assert(live() && live().getAttribute('src') === t1.art,
+      `after the settle the live layer should show ${t1.art}, got ${live() && live().getAttribute('src')}`);
+    assert(scrim() === String(t1.ground.scrim),
+      `--gl-scrim-a on #ground should be the server's ${t1.ground.scrim}, got ${JSON.stringify(scrim())}`);
+    sel = at('t2'); mark(); await rest(320);
+    assert(live() && live().getAttribute('src') === t2.art, `the ground did not follow to ${t2.art}`);
+    assert(scrim() === 'var(--gl-scrim-unknown)',
+      `an unmeasured row must leave the scrim at the unknown default, got ${JSON.stringify(scrim())}`);
+    sel = at('t4'); mark(); await rest(320);
+    assert(!live(), 'a row without art left a picture under the page');
+    clearMark(); colPick = null; draw();
+    return 'measured -> its scrim; unmeasured -> --gl-scrim-unknown; no art -> flat; all after the settle';
+  });
+
+  // ------------------------------------------------ the chrome: the footer
+  // The keys change with what you are looking at, and they come from the
+  // page's own table (KEYS), not from anything worked out. "?" opens every
+  // key by context on the menu material; Escape closes it.
+  record('the footer names the keys for the context; ? lists them all', () => {
+    const keys = () => document.getElementById('keys');
+    const caps = () => keys().querySelectorAll('.kk').filter(k => !k.classList.contains('all')).map(k => k.textContent);
+    rightFocus = false; clearMark();
+    active = 'ipod'; colPick = 'DayClub'; drawFoot();
+    const col = caps();
+    assert(col.some(c => /take out/.test(c)) && col.some(c => /move/.test(c)), `a collection should offer take out and move, got ${col.join(' | ')}`);
+    assert(keys().querySelectorAll('.kk.p').length > 0 && keys().querySelectorAll('.kk.s').length > 0, 'the keys are not split into primaries (ink) and the rest (dim)');
+    assert(col.indexOf(col.find(c => /play/.test(c))) < col.indexOf(col.find(c => /search/.test(c))), 'the primaries do not come first');
+    active = 'ipod'; colPick = null; drawFoot();
+    const all = caps();
+    assert(!all.some(c => /take out|move/.test(c)) && all.some(c => /sync/.test(c)), `All on iPod should be the collection row without take out and move, got ${all.join(' | ')}`);
+    active = 'am'; drawFoot();
+    const am = caps();
+    assert(am.some(c => /add to collection/.test(c)) && am.some(c => /buy/.test(c)) && am.some(c => /preview/.test(c)) && !am.some(c => /take out/.test(c)),
+      `an Apple Music playlist should offer add to collection, buy, preview, got ${am.join(' | ')}`);
+    assert(JSON.stringify(am) !== JSON.stringify(col), 'the keys did not change between an iPod collection and an Apple Music playlist');
+    active = 't7'; drawFoot();
+    assert(caps().some(c => /add to collection/.test(c)) && !caps().some(c => /buy/.test(c)), `the drive's keys are wrong: ${caps().join(' | ')}`);
+    rightFocus = true; drawFoot();
+    assert(caps()[0] && /buy/.test(caps()[0]), `with the right pane focused the buy list's keys should lead, got ${caps().join(' | ')}`);
+    rightFocus = false; active = 'ipod'; drawFoot();
+    // every cap in the table is a key the keydown handler handles, by name
+    const table = Object.values(KEYS).flat().map(x => x[0]);
+    const known = new Set(['space', 's', 'x', 'c', 'i', '.', '/', 'b', 'v', '⇧J', '⇧K']);
+    const unknown = table.flatMap(c => c.split(' ')).filter(c => !known.has(c));
+    assert(!unknown.length, `caps the handler does not know: ${unknown.join(', ')}`);
+    // "?" opens the listing on the menu material: every key, by context
+    const a = document.getElementById('allkeys');
+    assert(a && a.getAttribute('aria-haspopup') === 'menu', 'the footer has no "?" control owning a popup');
+    a.onclick({ stopPropagation(){} });
+    assert(MENU && MENU.kind === 'keys' && menu.classList.contains('on'), '"?" did not open the keys popover');
+    assert(a.getAttribute('aria-expanded') === 'true', 'the open "?" does not say so');
+    const rows = document.querySelectorAll('#menub .krow');
+    const want = KEY_GROUPS.reduce((n, [k]) => n + KEYS[k].length, 0);
+    assert(rows.length === want, `the popover lists ${rows.length} keys, the four contexts hold ${want}`);
+    assert(document.querySelectorAll('#menub .month').length === KEY_GROUPS.length, 'the popover is not grouped by the four contexts');
+    assert(rows.every(r => r.querySelector('kbd') && r.querySelector('.dn').textContent), 'a row lacks its cap or its verb');
+    assert(menuKeys({ key: 'Escape', preventDefault(){} }) === true && !MENU && !menu.classList.contains('on'), 'Escape did not close the popover');
+    toggleKeysMenu(); assert(MENU && MENU.kind === 'keys', 'the ? key\'s toggle did not open it');
+    toggleKeysMenu(); assert(!MENU, 'the ? key\'s toggle did not close it again');
+    return `${want} keys in ${KEY_GROUPS.length} groups; contexts: collection, All on iPod, Apple Music, drive, buy list`;
+  });
+
+  // ------------------------------------------ the chrome: playlist mosaics
+  record('Music rows carry a mosaic from the payload, or the empty thumbnail', () => {
+    stab = 'am'; drawSrc();
+    const rows = document.querySelectorAll('#srcbody .col[data-am]').filter(r => r.dataset.am !== '__all__');
+    assert(rows.length === AMP.length, `expected ${AMP.length} playlist rows, got ${rows.length}`);
+    for (const r of rows) {
+      const p = AMP.find(x => x.slug === r.dataset.am);
+      const m = r.querySelector('.mosaic');
+      assert(m, `${p.name} has no .mosaic slot`);
+      const img = m.querySelectorAll('img');
+      if (p.art) {
+        assert(img.length === 1 && img[0].getAttribute('src') === p.art, `${p.name}: the mosaic should be the payload's one tiled picture ${p.art}, got ${img.map(i => i.getAttribute('src')).join()}`);
+      } else {
+        assert(img.length === 0, `${p.name} has no art yet but shows ${img.length} img -- the page is not allowed to build one`);
+      }
+      const sub = r.querySelector('.nm.two .sub');
+      assert(sub && sub.textContent === `${p.tracks} tracks · ${p.created.slice(0, 7)}`, `${p.name}'s second line is ${sub && sub.textContent}`);
+      assert(r.querySelector('.cnt').textContent === String(p.tracks), `${p.name}'s count is not the payload's ${p.tracks}`);
+    }
+    assert(!document.querySelector('#srcbody canvas'), 'a canvas in the source pane: the mosaic is the server\'s to make');
+    return `${rows.length} rows: 1 with the server's mosaic, ${rows.length - 1} with the empty thumbnail; count and month from the payload`;
+  });
+
+  // ---------------------------------------------- the chrome: the panels
+  await recordAsync('the panels are patterned from the system\'s parts', async () => {
+    const colourStyle = html => (html.match(/style="[^"]*"/g) || []).filter(s => /color|background|border|fill|rgb|#[0-9a-f]{3}/i.test(s));
+    await openSync();
+    const sp = document.getElementById('sp');
+    assert(sp.classList.contains('on') && SP.state === 'review', 'the sync panel did not open on the fixture plan');
+    assert(!sp.querySelector('.box') && !sp.querySelector('pre'), 'Review sync still holds a .box or a bare <pre>');
+    const spBad = colourStyle(sp.innerHTML);
+    assert(!spBad.length, `Review sync carries a colour in an inline style: ${spBad[0]}`);
+    assert(sp.querySelector('.plabel').classList.contains('gl-strip'), 'Review sync\'s title strip is not .gl-strip');
+    const bar = sp.querySelector('.substat');
+    assert(bar && bar.classList.contains('gl-strip'), 'Review sync\'s action bar is not .gl-strip');
+    const go = document.getElementById('spgo');
+    assert(go && go.classList.contains('gl-action'), 'Confirm is not the one action (.gl-action)');
+    assert(document.getElementById('spdrop') && !document.getElementById('spdrop').classList.contains('gl-action'), 'Cancel should be a secondary capsule');
+    const rows = sp.querySelectorAll('#spbody .row');
+    assert(rows.length === 4 && rows.every(r => r.querySelector('.mark') && r.querySelector('.art') && r.querySelector('.t .n') && r.querySelector('.t .s')),
+      `every plan row needs a mark, art, a name and a second line; got ${rows.length} rows`);
+    assert(rows.map(r => r.querySelector('.mark').textContent).join('') === '+–~+', `the marks read ${rows.map(r => r.querySelector('.mark').textContent).join(' ')}`);
+    assert(sp.querySelectorAll('#spbody .step').length === 4, 'the four infrastructure steps are not steps');
+    assert(sp.querySelector('#spbody .gauge i') && sp.querySelector('#spbody .gstat b'), 'no "after" gauge with a stat line');
+    assert(sp.querySelector('#spbody .fact b'), 'the summary is not a .fact with the numbers in ink');
+    assert(sp.querySelectorAll('#spbody [role="checkbox"]').length === 4, 'the plan rows stopped being checkboxes');
+    // the row's second line is album · duration · what happens, looked up, not computed
+    const add = rows.find(r => r.dataset.id === 'a:t3');
+    assert(add && add.querySelector('.s').textContent === 'Untitled · 3:20 · as is · 5 MB', `the add row's line reads ${add && add.querySelector('.s').textContent}`);
+    closeSync();
+    SLUGS = ['dayclub', 'wara-listening']; openSettings();
+    const rs = document.getElementById('rsheet');
+    assert(!rs.querySelector('.box') && !rs.querySelector('pre') && !rs.querySelector('.brow'), 'Data still holds a .box, .brow or a bare <pre>');
+    const rsBad = colourStyle(rs.innerHTML);
+    assert(!rsBad.length, `Data carries a colour in an inline style: ${rsBad[0]}`);
+    assert(rs.querySelector('.plabel').classList.contains('gl-strip'), 'Data\'s title strip is not .gl-strip');
+    assert(rs.querySelector('.two') && rs.querySelector('.two').children.length === 2, 'Data is not two columns (.two)');
+    assert(rs.querySelectorAll('.fact').length >= 6 && rs.querySelectorAll('.month').length >= 6, 'Data\'s sections are not facts under labels');
+    for (const id of ['doAM', 'doIndex', 'doDevice', 'doMatch', 'doVerify', 'doRebuild', 'loadMusic', 'slug', 'jobbox', 'jobname', 'jobstate', 'joblog'])
+      assert(document.getElementById(id), `Data lost #${id}, which a handler uses`);
+    assert(rs.querySelectorAll('button').every(b => !b.classList.contains('gl-action')), 'Data has no one action; every button is secondary');
+    assert(document.getElementById('joblog').classList.contains('log'), 'the job log is not the .log pattern');
+    assert(document.getElementById('slug').classList.contains('gl-field'), 'the select is not a field');
+    closeSettings();
+    return 'Review sync: strip, 4 marked rows, gauge, 4 steps, floating bar with the one action; Data: strip, two columns, facts, capsules, the job as a log';
   });
 
   console.log(JSON.stringify(RESULTS));
@@ -916,19 +1211,33 @@ def t_reduced_motion_coverage():
     import re
     _html, css = _html_and_style()
     css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)   # comments can contain stray braces
-    rm_re = re.compile(
-        r'@media\s*\([^)]*prefers-reduced-motion:\s*reduce[^)]*\)\s*\{\s*([^{}]+?)\s*\{\s*([^{}]*?)\s*\}\s*\}')
-    covered = set()
-    for sel, _body in rm_re.findall(css):
-        for s in sel.split(','):
-            covered.add(s.strip())
-    assert covered, 'no @media (prefers-reduced-motion: reduce) rule found at all'
     rule_re = re.compile(r'([^{}@]+)\{([^{}]*)\}')
+    # Every reduce block, with however many rules it holds: the page's own
+    # are one rule each, the vendored saltglass one carries three. Walk to
+    # the brace that closes the block rather than assuming its shape.
+    rm_open = re.compile(r'@media\s*\([^)]*prefers-reduced-motion:\s*reduce[^)]*\)\s*\{')
+    covered = set()
+    for m in rm_open.finditer(css):
+        depth, i = 1, m.end()
+        while i < len(css) and depth:
+            depth += {'{': 1, '}': -1}.get(css[i], 0)
+            i += 1
+        for sel, _body in rule_re.findall(css[m.end():i - 1]):
+            for s in sel.split(','):
+                covered.add(s.strip())
+    assert covered, 'no @media (prefers-reduced-motion: reduce) rule found at all'
     bad = []
     for sel, body in rule_re.findall(css):
         if 'transition:' not in body and 'animation:' not in body:
             continue
         if re.search(r'(transition|animation)\s*:\s*none\b', body):
+            continue
+        # A FADE IS NOT MOTION. A transition of opacity alone is what Reduce
+        # Motion asks for in place of movement (the saltglass ground keeps
+        # its crossfade and drops its drift), so it needs no twin.
+        if 'animation:' not in body and all(
+                t.strip().split()[0] == 'opacity'
+                for t in re.search(r'transition\s*:\s*([^;]*)', body).group(1).split(',')):
             continue
         for s in sel.split(','):
             s = s.strip()
@@ -936,6 +1245,150 @@ def t_reduced_motion_coverage():
                 bad.append('%s { %s }' % (s, body.strip()[:70]))
     assert not bad, 'motion not covered by any prefers-reduced-motion rule: %s' % '; '.join(bad[:5])
     return '%d selector(s) turn real motion off under prefers-reduced-motion' % len(covered)
+
+
+def t_no_filter_row():
+    """The filter row is gone: no .filters element, no rule for it, no #ctl.
+    The funnel's popover (menuitemradio rows) is what replaced it."""
+    import re
+    raw = open(CURATE).read()
+    css = raw.split('<style>')[1].split('</style>')[0]
+    body = raw.split('</style>')[1].split('<body>')[1].split('<script')[0]
+    assert 'class="filters' not in body and 'id="ctl"' not in body, 'the .filters row is still in the markup'
+    assert not re.search(r'\.filters\b', css), 'a .filters rule survives in the stylesheet'
+    assert 'menuitemradio' in raw, 'no menuitemradio rows -- nothing replaced the row'
+    return 'no .filters markup or rule; menuitemradio rows replace it'
+
+
+def t_strips_and_pills():
+    """A surface ends by its fill. The four pane title strips and the four
+    panel strips carry .gl-strip; the two count substats carry .gl-pill; and
+    no pane, panel or bar draws a gl-seam-. The menu's and the dialog's own
+    title strips float and keep theirs (the judged direction: the glass
+    menus and dialogs do not move), and are the only gl-seam- left."""
+    import re
+    raw = open(CURATE).read()
+    body = raw.split('</style>')[1].split('<body>')[1].split('<script')[0]
+
+    def first_strip_after(anchor):
+        i = body.index(anchor)
+        m = re.compile(r'class="plabel[^"]*"').search(body, i)
+        assert m, 'no .plabel after %s' % anchor
+        return m.group(0)
+    for anchor in ('id="left"', 'id="src"', 'id="mid"', 'id="right"',
+                   'id="lsheet"', 'id="rsheet"', 'id="sp"', 'id="tp"'):
+        strip = first_strip_after(anchor)
+        assert re.search(r'\bgl-strip\b', strip), '%s strip is %s, not .gl-strip' % (anchor, strip)
+    for pid in ('sstat', 'rstat'):
+        assert re.search(r'class="[^"]*\bgl-pill\b[^"]*" id="%s"' % pid, body), '#%s is not a .gl-pill' % pid
+    for sub in re.findall(r'<div class="substat[^"]*"[^>]*>', body):
+        assert 'gl-seam-' not in sub, 'a substat still draws a seam: %s' % sub
+    seams = [ln.strip() for ln in body.splitlines() if 'gl-seam-' in ln]
+    stray = [ln for ln in seams if not ('id="menuh"' in ln or 'id="dlgt"' in ln or '<header' in ln or '<footer' in ln)]
+    assert not stray, 'gl-seam- on a pane or panel, which ends by its fill: %s' % stray[0][:160]
+    return '8 .gl-strip strips, 2 .gl-pill counts, seams only on the %d floating strips' % len(seams)
+
+
+def t_ground_present():
+    """The ground element, as the system wants it: first in <body>, two
+    picture layers and a scrim, hidden from assistive technology."""
+    import re
+    html, _style = _html_and_style()
+    body = html.split('</head><body>')[1]
+    m = re.search(r'<(\w+)[^>]*>', body)
+    assert m, 'no element in <body> at all'
+    first = m.group(0)
+    assert 'id="ground"' in first and 'gl-ground' in first, (
+        'the first element in <body> is not #ground.gl-ground: %s' % first)
+    assert 'aria-hidden="true"' in first, 'the ground is not aria-hidden: %s' % first
+    inner = body.split(first, 1)[1].split('</div>\n', 1)[0]
+    imgs = re.findall(r'<img\b[^>]*>', inner)
+    assert len(imgs) == 2, 'the ground should carry two <img> layers, found %d' % len(imgs)
+    assert all('alt=""' in i for i in imgs), 'a ground layer has alt text: %s' % imgs
+    assert re.search(r'<div class="scrim">', inner), 'the ground has no .scrim'
+    return 'first in body, two img layers, one scrim, aria-hidden'
+
+
+def t_page_never_measures():
+    """The layer rule at the ground: the server measures a cover's colour
+    and hands the page the scrim; the page never reads a pixel. One hit on
+    any of these names is the page starting to work something out."""
+    html, _style = _html_and_style()
+    hits = [name for name in ('getContext', 'getImageData', 'createImageBitmap') if name in html]
+    assert not hits, 'the page can read pixels: %s' % hits
+    assert 't.ground' in html or '.ground||' in html, (
+        'the page does not read ground from the payload at all')
+    return 'no getContext / getImageData / createImageBitmap; ground read from the payload'
+
+
+def t_glass_twins_present():
+    """Every motion and transparency the system adds has a twin, and all
+    four twins are in the sheet in the order a browser resolves them."""
+    import re
+    _html, css = _html_and_style()
+    # the page has reduce blocks of its own above the marker; the four twins
+    # that cover the system's materials must be the system's, below it
+    assert 'saltglass:css @' in css, 'saltglass is not vendored into the stylesheet'
+    vendored = css[css.index('saltglass:css @'):]
+    twins = [r'@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)',
+             r'@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)',
+             r'@media\s*\(\s*prefers-contrast:\s*more\s*\)',
+             r'@supports\s+not\s*\(\s*backdrop-filter:\s*blur\(1px\)\s*\)']
+    where = []
+    for pat in twins:
+        m = re.search(pat, vendored)
+        assert m, 'missing twin in the vendored block: %s' % pat
+        where.append(m.start())
+    # the system's own order: motion, transparency, contrast, support
+    assert where == sorted(where), 'the vendored twins are out of their documented order'
+    return 'reduced-motion, reduced-transparency, contrast: more, @supports not backdrop-filter'
+
+
+def t_action_is_glass():
+    """The one action is accent-tinted glass and the blue gradient is gone:
+    no linear-gradient anywhere in the stylesheet (the page's own rules or
+    the vendored system's), #dosync carries .gl-action in the markup, and
+    every primary the script builds carries it too. The search field is the
+    system's field."""
+    import re
+    html, style = _html_and_style()
+    assert 'linear-gradient' not in style, 'a linear-gradient survives in the stylesheet'
+    body = html.split('</style>')[1].split('<body>')[1].split('<script')[0]
+    m = re.search(r'<button id="dosync"[^>]*>', body)
+    assert m and 'gl-action' in m.group(0), '#dosync does not carry .gl-action: %s' % (m and m.group(0))
+    q = re.search(r'<input[^>]*id="q"[^>]*>', body)
+    assert q and 'gl-field' in q.group(0), '#q does not carry .gl-field: %s' % (q and q.group(0))
+    script = html.split('<script>')[1].split('</script>')[0]
+    bare = re.findall(r'<button class="go"[ >]', script)
+    assert not bare, '%d primary button(s) built without .gl-action' % len(bare)
+    n = len(re.findall(r'class="go gl-action"', script))
+    return 'no gradient; #dosync and %d script-built primaries are .gl-action; #q is .gl-field' % n
+
+
+def t_footer_context():
+    """The footer's keys follow the context, from the page's own table; the
+    ? key is handled by the keydown handler, not invented by the footer."""
+    html, _style = _html_and_style()
+    script = html.split('<script>')[1].split('</script>')[0]
+    assert "k==='?'" in script and 'toggleKeysMenu' in script, 'the keydown handler does not handle ?'
+    assert 'const KEYS=' in script, 'the keys are not a table in the page'
+    return node_check('the footer names the keys for the context; ? lists them all')()
+
+
+def t_playlist_rows():
+    """Music rows: a .mosaic from the payload or the empty thumbnail; the
+    count and the month from the payload. The page never tiles."""
+    html, _style = _html_and_style()
+    script = html.split('<script>')[1].split('</script>')[0]
+    assert "createElement('canvas')" not in script and '<canvas' not in html, 'the page makes a canvas -- the mosaic is the server\'s to tile'
+    return node_check('Music rows carry a mosaic from the payload, or the empty thumbnail')()
+
+
+def t_panels_patterned():
+    """#sp and #rsheet from the system's parts: no .box, no colour in an
+    inline style, their strips and the sync action bar .gl-strip, the one
+    action .gl-action. Rendered in the harness from the fixture plan."""
+    return node_check('the panels are patterned from the system\'s parts')()
 
 
 def t_token_census_ref():
@@ -978,15 +1431,35 @@ def _run_all():
 
     section('law 7 -- nothing is drag-only')
     check('every draggable row has a menu equivalent', node_check('law 7: nothing is drag-only'))
+    check('the row menu moves a row, the footer undoes', node_check('law 7: the row menu moves a row, the footer undoes'))
 
     section('behaviour -- pass(), mark(), load()')
     check('load() boots every pane from the real functions', node_check('load() boots every pane'))
-    check('pass() honors a real filter-pill click', node_check('pass() honors a real filter-pill click'))
+    check('pass() honors a real filter-popover choice', node_check('pass() honors a real filter-popover choice'))
     check('pass() honors a real search input', node_check('pass() honors a real search input'))
     check('mark() tracks the cursor, leaves MARK alone', node_check('mark() tracks the cursor without touching a MARKed row'))
     check('owned-but-offline is its own state', node_check('owned-but-offline is its own state, not unowned'))
-    check('busy and filter dots are spoken', node_check('the busy dot and the filter dot are spoken, not only coloured'))
+    check('busy dot and filter state are spoken', node_check('the busy dot and the filter dot are spoken, not only coloured'))
     check('the strip shows volumes, not sources', node_check('the health strip shows volumes, not sources'))
+
+    section('endings -- a surface ends by its fill')
+    check('strips are .gl-strip, counts .gl-pill, no pane seam', t_strips_and_pills)
+
+    section('the filter -- a popover from the funnel, no row')
+    check('no .filters row remains', t_no_filter_row)
+    check('the funnel opens radio rows; counts from the server', node_check('the funnel opens a filter popover of radio rows'))
+
+    section('the ground -- the page looks up, never measures')
+    check('the ground element is present and hidden', t_ground_present)
+    check('the ground follows the selection, from the payload', node_check('the ground follows the selection, from the payload only'))
+    check('the page never reads a pixel', t_page_never_measures)
+    check('the four glass twins are in the sheet', t_glass_twins_present)
+
+    section('the chrome -- Sync as glass, the context footer, mosaics, the panels')
+    check('the one action is glass; no gradient', t_action_is_glass)
+    check('the footer keys follow the context; ? lists all', t_footer_context)
+    check('Music rows carry a mosaic or the empty thumbnail', t_playlist_rows)
+    check('#sp and #rsheet are patterned from the parts', t_panels_patterned)
 
     section('tokens (see bin/selftest.py -- not duplicated here)')
     check('no colour/radius/font-size literal outside :root', t_token_census_ref)
