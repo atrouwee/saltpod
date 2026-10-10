@@ -6,6 +6,19 @@ The idea in one line:
 
 > You arrange the sequence; the tool makes the iPod carry it.
 
+## Why salt
+
+Salt is how people have always kept things: fish through a winter, meat
+through a voyage, a harvest past its season. It does not freeze a thing or
+change it; it keeps it good for longer than it would last on its own.
+
+saltpod salts an iPod Classic. The device stops being a relic in a drawer
+and stays what it was made to be: a pocket full of music you own, arranged
+by you, playing without a signal, an account or a subscription. Nothing
+here restores it as a museum piece. It keeps it in use.
+
+The icon says the same thing: the click wheel, made of salt crystals.
+
 An iPod Classic navigates by its database, not by its files, so anything copied
 onto it is invisible until something writes a database entry — and the firmware
 refuses a database whose checksum is wrong, showing an empty library. That
