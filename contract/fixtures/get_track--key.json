@@ -1,0 +1,41 @@
+{
+ "art": "/api/art?key=alder-quartet%7Cmorning-field",
+ "artist": "Alder Quartet",
+ "device": {
+  "artist": "",
+  "on": true,
+  "title": ""
+ },
+ "fields": {
+  "album": "Field Notes (Deluxe)",
+  "album_artist": "",
+  "artist": "Alder Quartet",
+  "genre": "Jazz",
+  "title": "Morning Field",
+  "track": "",
+  "year": "2024"
+ },
+ "file": {
+  "codec": "pcm_s16le",
+  "ext": ".wav",
+  "folder": "Bought",
+  "has_art": true,
+  "name": "Alder Quartet - Morning Field.wav",
+  "on_disk": true,
+  "path": "/fixture/f/library/Music/Bought/Alder Quartet - Morning Field.wav",
+  "seconds": 2.0,
+  "size": 32158,
+  "why": "",
+  "writable": true
+ },
+ "guess": {
+  "artist": "Alder Quartet",
+  "from": "Alder Quartet - Morning Field.wav",
+  "title": "Morning Field"
+ },
+ "key": "alder-quartet|morning-field",
+ "ok": true,
+ "path": "/fixture/f/library/Music/Bought/Alder Quartet - Morning Field.wav",
+ "rev": 1791789447118,
+ "title": "Morning Field"
+}

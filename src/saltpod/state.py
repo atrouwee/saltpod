@@ -8,8 +8,10 @@ Four tiers, per AJ's own model:
     maybe        defer; resurfaces next quarter.
     skipped      not this one.
 
-plus two independent flags that are NOT tiers, because they answer different
-questions: `vinyl` (feeds a Discogs want-list) and `bought` (a file exists).
+plus a flag that is NOT a tier, because it answers a different question:
+`vinyl` (feeds a Discogs want-list). Whether a track is bought is not stored
+at all: a file on disk or on the iPod is the proof (curate._answers, `held`).
+The old `bought` flag still sits in older records and nothing reads it.
 `on_ipod` is owned by the sync step, never by curation.
 
 Monthly playlists are METADATA here, not structure -- a track carries the list
@@ -36,7 +38,11 @@ import sys
 import unicodedata
 from datetime import datetime, timezone
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 STATE = os.path.join(ROOT, 'data', 'state.json')
 
 DECISION_FIELDS = ('tier', 'vinyl', 'collections', 'bought', 'on_ipod', 'decided_at')
@@ -96,7 +102,31 @@ def save(st):
     os.replace(tmp, STATE)          # atomic: a crash mid-write cannot truncate state
 
 
-def import_device(mount=None, verbose=True):
+def device_db(mount=None):
+    """Which database a device read would use: (path, 'device'|'backup'),
+    or (None, None) when there is no iPod and no backup to read.
+
+    ONE ANSWER FOR BOTH CLIENTS. The terminal printed "(iPod not mounted -
+    reading ...)" and the page said "device re-read" either way, so only one
+    of them knew it had read last week's backup. Asked here once, the page's
+    toast and the terminal's line say the same thing.
+    """
+    if mount is None:
+        from . import config
+        try:
+            mount = config.load()['mount']
+        except SystemExit:
+            mount = '/Volumes/IPOD'
+    dbp = os.path.join(mount, 'iPod_Control/iTunes/iTunesDB')
+    if os.path.exists(dbp):
+        return dbp, 'device'
+    cand = sorted(glob.glob(os.path.join(ROOT, 'backups/ipod-*/iTunesDB')))
+    if cand:
+        return cand[-1], 'backup'
+    return None, None
+
+
+def import_device(mount=None, verbose=True, db_path=None):
     """Bring the tracks already ON the iPod into curation.
 
     These merge with playlist tracks by the same key, so something that is both
@@ -104,20 +134,16 @@ def import_device(mount=None, verbose=True):
     both facts. For a device track the tiers read differently but mean the same
     thing: `sync` = keep it, `remove` = take it off.
 
-    Sets bought=True: it is on the device, so it is owned, whatever route it
-    took to get there.
+    Being on the device is what makes it owned (curate._answers counts the
+    device as held); no flag is set for it.
     """
     from . import itunesdb as I
-    if mount is None:
-        from . import config
-        mount = config.load()['mount']
-    dbp = os.path.join(mount, 'iPod_Control/iTunes/iTunesDB')
-    if not os.path.exists(dbp):
-        cand = sorted(glob.glob(os.path.join(ROOT, 'backups/ipod-*/iTunesDB')))
-        if not cand:
+    dbp = db_path
+    if dbp is None:
+        dbp, source = device_db(mount)
+        if not dbp:
             raise SystemExit('iPod not mounted and no backup found')
-        dbp = cand[-1]
-        if verbose:
+        if source == 'backup' and verbose:
             print('(iPod not mounted - reading %s)' % os.path.relpath(dbp, ROOT))
     db = I.read(dbp)
 
@@ -141,7 +167,6 @@ def import_device(mount=None, verbose=True):
             added += 1
         r = st['tracks'][k]
         r['on_ipod'] = True
-        r['bought'] = True
         r['device'] = {'location': t.get('location'), 'album': t.get('album'),
                        'seconds': round((t.get('ms') or 0) / 1000.0, 1),
                        'size': t.get('size'), 'bitrate': t.get('bitrate')}
@@ -330,7 +355,9 @@ def stats():
     for t in TIERS:
         if by.get(t):
             print('  %-12s %4d' % (t, by[t]))
-    print('  %-12s %4d' % ('bought', sum(1 for r in tr.values() if r['bought'])))
+    # held, not the stored `bought` flag: a file on disk or on the iPod is
+    # what owning a track means (see _server_rows)
+    print('  %-12s %4d' % ('held', sum(1 for t in _server_rows()['tracks'] if t['held'])))
     print('  %-12s %4d' % ('vinyl', sum(1 for r in tr.values() if r['vinyl'])))
     print('  %-12s %4d' % ('on iPod', sum(1 for r in tr.values() if r['on_ipod'])))
     miss = sum(1 for r in tr.values() if not r.get('itunes'))
@@ -350,42 +377,58 @@ def _fmt(sec):
     return '%d:%02d' % (int(sec) // 60, int(sec) % 60) if sec else '?'
 
 
+def _server_rows():
+    """The rows /api/tracks sends, with the server's lists on each.
+
+    THE FILE IS THE PROOF (control room, "Two buy lists that disagree").
+    Whether a track is bought is whether a file for it is on disk or on the
+    iPod -- `held` in curate._answers -- and the buy list is the server's
+    'to buy' list. This used to read the stored `bought` flag, which the
+    Buy pane never looked at, so after an index the two lists disagreed.
+    The flag is left in state.json and IGNORED: nothing reads it for
+    ownership any more (not migrated, because a file on disk already says
+    everything it meant, and an old state file still opens).
+    """
+    from . import curate as C
+    return C.tracks_payload()
+
+
 def buylist():
-    """The buy guide for what was CHOSEN, not for whole playlists."""
-    st = load()
-    sel = [r for r in st['tracks'].values() if r['tier'] == 'sync' and not r['bought']]
+    """The buy guide for what was CHOSEN, not for whole playlists: the
+    server's 'to buy' list, the same rows the Buy pane shows."""
+    pay = _server_rows()
+    sel = [t for t in pay['tracks'] if 'to buy' in t['lists']]
     if not sel:
-        print('nothing marked sync yet - curate first: python3 src/curate.py'); return
+        print('nothing to buy - every track marked sync has a file'); return
     sel.sort(key=lambda r: (r['artist'].lower(), r['title'].lower()))
-    itunes_total = sum((r.get('itunes') or {}).get('price') or 0 for r in sel)
-    have_flac = [r for r in sel if (r.get('bandcamp') or {}).get('verdict') == 'confirmed']
+    itunes_total = pay['totals']['to_buy_eur']
+    have_flac = [r for r in sel if 'FLAC to buy' in r['lists']]
 
     L = ['# Buy list - chosen, not defaulted\n',
-         '%d tracks marked sync and not yet bought.\n' % len(sel),
+         '%d tracks marked sync with no file for them.\n' % len(sel),
          '| | |', '|---|---|',
          '| iTunes equivalent (AAC 256) | **EUR %.2f** |' % itunes_total,
          '| of these, confirmed lossless on Bandcamp | **%d** |' % len(have_flac), '']
     for r in sel:
-        it = r.get('itunes') or {}
-        bc = r.get('bandcamp') or {}
         months = ', '.join(p.replace('2026-', '').title() for p in r['playlists'])
         L.append('### %s - %s' % (r['artist'], r['title']))
-        bits = [_fmt(it.get('seconds'))]
-        if it.get('album'):
-            bits.append(it['album'])
-        bits.append('from %s' % months)
+        bits = [_fmt(r.get('seconds'))]
+        if r.get('album'):
+            bits.append(r['album'])
+        if months:
+            bits.append('from %s' % months)
         if r['vinyl']:
             bits.append('**also wanted on vinyl**')
         if r['collections']:
             bits.append('for: %s' % ', '.join(r['collections']))
         L.append('- ' + '  ·  '.join(bits))
         links = []
-        if bc.get('url'):
-            tag = 'Bandcamp FLAC' + (' (duration confirmed)' if bc.get('verdict') == 'confirmed'
+        if r.get('bandcamp'):
+            tag = 'Bandcamp FLAC' + (' (duration confirmed)' if r.get('bc_verdict') == 'confirmed'
                                      else ' (CHECK LENGTH)')
-            links.append('[%s](%s)' % (tag, bc['url']))
-        if it.get('url'):
-            links.append('[iTunes AAC 256 - EUR %.2f](%s)' % (it.get('price') or 0, it['url']))
+            links.append('[%s](%s)' % (tag, r['bandcamp']))
+        if r.get('url'):
+            links.append('[iTunes AAC 256 - EUR %.2f](%s)' % (r.get('price') or 0, r['url']))
         if links:
             L.append('')
             L.append('  ' + '  ·  '.join(links))
@@ -427,13 +470,14 @@ def collections():
     """What would actually go on the iPod, as the user named it."""
     st = load()
     cols = {}
-    for r in st['tracks'].values():
+    for k, r in st['tracks'].items():
         for c in r['collections']:
-            cols.setdefault(c, []).append(r)
+            cols.setdefault(c, []).append(k)
     if not cols:
         print('no collections yet - press c while curating'); return
+    held = {t['key'] for t in _server_rows()['tracks'] if t['held']}
     for c, rs in sorted(cols.items()):
-        ready = [r for r in rs if r['bought']]
+        ready = [k for k in rs if k in held]
         print('%-26s %3d tracks  %3d owned  %3d still to buy'
               % (c, len(rs), len(ready), len(rs) - len(ready)))
 

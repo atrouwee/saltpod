@@ -12,8 +12,10 @@ from . import __version__
 from .console import receipt, step, note, fail
 
 
-def _repo_root():
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+def _data_root():
+    """data/, backups/, reports/ -- SALTPOD_HOME when set (see paths.py)."""
+    from .paths import DATA_ROOT
+    return DATA_ROOT
 
 
 def _local_index():
@@ -96,21 +98,54 @@ def _service(a):
             fail("discard takes back every staged change and cannot be undone",
                  "run it again with --yes if that is what you want")
     elif a.cmd == "decide":
-        body = {"keys": a.keys}
-        if a.tier:
-            body["tier"] = a.tier
-        if a.collection:
-            body["collection"] = a.collection
-            body["mode"] = a.mode
-        for flag in ("vinyl", "bought"):
-            v = getattr(a, flag)
-            if v is not None:
-                body[flag] = (v == "yes")
-        if len(body) == 1:
-            fail("nothing decided",
-                 "add --tier sync, --collection NAME, --vinyl yes or --bought yes")
+        # A key or a path, told apart the way `track` and `tags` do; a path
+        # is resolved to its record by the server (curate._resolve_paths).
+        keys, paths = [], []
+        for v in a.keys:
+            (paths if "path" in _ident(v) else keys).append(v)
+        body = {"keys": keys}
+        if paths:
+            body["paths"] = [os.path.abspath(p) for p in paths]
+        if a.reorder:
+            # the keys, in the order given, ARE the new sequence
+            if paths:
+                fail("--reorder takes track keys", "a collection's members all have one; "
+                     "`saltpod tracks --json` lists them")
+            if not keys:
+                fail("--reorder needs the keys in their new order",
+                     "saltpod decide --reorder NAME 'artist|title' 'artist|title' ...")
+            body = {"reorder": {"collection": a.reorder, "keys": keys}}
+        elif a.rename or a.delete:
+            if a.rename and a.delete:
+                fail("--rename or --delete, not both")
+            if a.rename and not (a.to or "").strip():
+                fail("--rename needs --to NEW", "to take a collection away, --delete NAME")
+            body = {"rename_collection": a.rename or a.delete,
+                    "to": (a.to or "").strip() if a.rename else ""}
+        else:
+            if not (keys or paths):
+                fail("which tracks?", "name them by key (artist|title) or by path")
+            if a.tier:
+                body["tier"] = a.tier
+            if a.collection:
+                body["collection"] = a.collection
+                body["mode"] = a.mode
+            if a.vinyl is not None:
+                body["vinyl"] = (a.vinyl == "yes")
+            if not ({"tier", "collection", "vinyl"} & set(body)):
+                fail("nothing decided",
+                     "add --tier sync, --collection NAME, --vinyl yes, "
+                     "--reorder NAME, --rename NAME --to NEW or --delete NAME")
     elif a.cmd == "recover":
         body = {"key": a.key}
+    elif a.cmd == "decision":
+        body = {"keys": a.keys}
+    elif a.cmd == "cover":
+        try:
+            image = open(a.image, "rb").read()
+        except OSError as e:
+            fail("cannot read %s" % a.image, str(e))
+        body = dict(_ident(a.ident), image=image)
 
     out = C.OPS[op](body)
     if a.json:
@@ -144,6 +179,26 @@ def _service(a):
         if k == "ok" or isinstance(v, (dict, list)):
             continue
         receipt(k.replace("_", " "), str(v))
+    if a.cmd == "decision":
+        receipt("sets tier", str((out.get("sets") or {}).get("tier")))
+    if a.cmd == "decide" and out.get("touched"):
+        receipt("decided", "%d track%s" % (len(out["touched"]), "" if len(out["touched"]) == 1 else "s"),
+                tone="good")
+    if a.cmd == "decide" and out.get("order") is not None:
+        receipt("order", "%d tracks in %s" % (len(out["order"]), body["reorder"]["collection"]),
+                tone="good")
+        for i, k in enumerate(out["order"][:20], 1):
+            print("   %3d  %s" % (i, k))
+        if len(out["order"]) > 20:
+            note("and %d more" % (len(out["order"]) - 20))
+    if a.cmd == "decide" and out.get("renamed"):
+        rn = out["renamed"]
+        receipt("deleted" if not rn["to"] else "renamed",
+                ("%s; its %d track%s keep their other decisions"
+                 % (rn["from"], rn["members"], "" if rn["members"] == 1 else "s"))
+                if not rn["to"] else "%s -> %s, %d track%s" % (
+                    rn["from"], rn["to"], rn["members"], "" if rn["members"] == 1 else "s"),
+                tone="good")
     if out.get("ok") is False:
         return 1
     note("the file on disk is the master; the iPod catches up on the next sync"
@@ -223,6 +278,55 @@ def _mosaic(a):
         for s, e in failed[:20]:
             print("   %s: %s" % (s, e))
     return 1 if failed else 0
+
+
+def _tracks(a):
+    """`saltpod tracks`: the centre list's payload, as /api/tracks sends it.
+
+    The read route had no verb, so the answers the page reads off it --
+    the totals, and per row `lists`, `state`, `play`, `decision` -- could be
+    seen only through a browser. Same function the handler calls
+    (curate.tracks_payload); nothing is worked out here.
+    """
+    import json as _json
+    from . import curate as C
+    pay = C.tracks_payload(a.scope or "")
+    if a.key:
+        row = next((t for t in pay["tracks"] if t["key"] == a.key), None)
+        if row is None:
+            fail("no track %r in the state" % a.key, "`saltpod tracks --json` lists every key")
+            return 1
+        print(_json.dumps(row, indent=2, default=str))
+        return 0
+    if a.json:
+        print(_json.dumps(pay, indent=2, default=str))
+        return 0
+    receipt("tracks", str(len(pay["tracks"])))
+    for k, v in pay["totals"].items():
+        receipt(k.replace("_", " "), str(v))
+    return 0
+
+
+def _health(a):
+    """`saltpod health`: /api/health in the terminal -- the iPod, Music, the
+    sources and volumes, the tools, the index, and the headline the clients
+    show (curate.health; a job runs in the server, so here it is none)."""
+    import json as _json
+    from . import curate as C
+    h = C.health()
+    if a.json:
+        print(_json.dumps(h, indent=2, default=str))
+        return 0
+    hl = h.get("headline") or {}
+    receipt("headline", hl.get("text", "?"),
+            tone={"ok": "good", "fault": "bad"}.get(hl.get("level"), "accent"))
+    receipt("ipod", str(h.get("ipod")))
+    receipt("music", str(h.get("music")))
+    for v in h.get("volumes") or []:
+        receipt("volume", "%s %s" % (v.get("name"), "online" if v.get("online") else "offline"))
+    idx = h.get("index") or {}
+    receipt("index", "%s files, %s" % (idx.get("tracks"), idx.get("built")) if idx else "never built")
+    return 0
 
 
 def _ground(a):
@@ -310,6 +414,139 @@ def _ground(a):
     return 0
 
 
+
+def _plays_write(a, mount, dbp):
+    """`saltpod plays write [--write]`: merged plays back onto the device.
+
+    Rehearse by default: the sidecar merged into a COPY of state, the rows
+    worked out against the database, nothing saved or written. With
+    --write: the sidecar merged into state FIRST and saved (the plays
+    happened whatever the write does, and the sidecar is positional, so it
+    can only be read against the database it was written with -- the
+    reason sync merges before it replaces, PROPOSALS' merge-order note),
+    then the guarded write: back up, change the fields, re-sign, check,
+    write, read back, check -- and put the backup back by itself if any
+    check fails. Only after a verified write is the sidecar removed (its
+    plays are in the tracks' own fields now; left there the device would
+    count them twice, which is why libgpod removes it too).
+    """
+    import copy
+    import datetime
+    import json as _json
+    from . import playcounts as PC, state as S, config as CFG
+    from . import ipod_edit as E, itunesdb_write as W, apply as A
+    if not os.path.exists(dbp):
+        fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
+    guid = CFG.load()["firewire_guid"]
+    st = S.load()
+    work = st if a.write else copy.deepcopy(st)
+    side = PC.find(mount)
+    merged = None
+    if side:
+        try:
+            merged = PC.merge(work, PC.read(side, dbp), PC.fingerprint(side),
+                              entries=len(PC.parse(side)))
+        except PC.PlayCountError as e:
+            fail(str(e), "nothing was merged or written")
+        if a.write:
+            S.save(st)
+    root = W.parse(open(dbp, "rb").read())
+    rows = PC.writeback_rows(work, root)
+    if a.json:
+        print(_json.dumps({"rehearsal": not a.write, "merged": merged,
+                           "rows": [{k: v for k, v in r.items() if k != "mhit"} for r in rows]},
+                          indent=2, default=str))
+        if not a.write:
+            return 0
+    else:
+        if merged:
+            receipt("Play Counts", merged.get("skipped") or
+                    "%d plays merged first" % merged.get("added", 0))
+        receipt("tracks to change", str(len(rows)), tone="good" if rows else "accent")
+        if rows:
+            receipt("plays on the device", "%d -> %d" % (
+                sum(r["was"]["plays"] for r in rows), sum(r["now"]["plays"] for r in rows)))
+        day = lambda v: datetime.date.fromtimestamp(v).isoformat() if v else "-"
+        for r in rows[:25]:
+            w, n = r["was"], r["now"]
+            bits = []
+            if n["plays"] != w["plays"]:
+                bits.append("plays %d -> %d" % (w["plays"], n["plays"]))
+            if n["last_played"] != w["last_played"]:
+                bits.append("last played %s" % day(n["last_played"]))
+            if n["skips"] != w["skips"]:
+                bits.append("skips %d -> %d" % (w["skips"], n["skips"]))
+            if n["last_skipped"] != w["last_skipped"]:
+                bits.append("last skipped %s" % day(n["last_skipped"]))
+            if n["rating"] != w["rating"]:
+                bits.append("rating %s -> %s" % ("*" * w["rating"] or "-", "*" * n["rating"]))
+            print("   %-36s %s" % (("%s - %s" % (r["artist"], r["title"]))[:36], ", ".join(bits)))
+        if len(rows) > 25:
+            note("... and %d more" % (len(rows) - 25))
+    if not a.write:
+        PC.writeback_apply(rows)
+        bad = E.invariants(None, W.serialise(root, guid), guid)
+        note("a rehearsal: nothing was saved or written. `saltpod plays write --write` does it")
+        if bad:
+            note("invariants: " + "; ".join(bad))
+            return 1
+        return 0
+    if not rows:
+        note("the device already carries every play saltpod knows of")
+        return 0
+    try:
+        E.guarded_write(mount, lambda r: PC.writeback_apply(PC.writeback_rows(work, r)),
+                        guid, label="plays")
+    except Exception as e:
+        receipt("write", str(e)[:200], tone="bad")
+        if "RESTORE DID NOT VERIFY" in str(e):
+            receipt("restored", "DID NOT VERIFY", tone="bad")
+            note("restore by hand from the newest folder in backups/")
+        else:
+            receipt("restored", A.AS_IT_WAS, tone="good")
+        return 1
+    if side and os.path.exists(side):
+        os.remove(side)                # it is in the backup taken above
+        st.pop(PC.LAST, None)          # the iPod starts a new sidecar from zero
+    S.save(st)
+    receipt("written", "%d tracks, re-signed and verified on the device" % len(rows), tone="good")
+    return 0
+
+
+def _plays_applemusic(a, mount, dbp):
+    """`saltpod plays applemusic [PATH]`: Apple Music's plays into state.
+
+    Read from a FILE, never from Music.app: the house rule is that nothing
+    launches or scripts Music, and the decision (12 October) is that this
+    runs with the iPod ejected and Music closed. Music closed means its
+    library file is not being rewritten under the read; the iPod ejected
+    means Music cannot have folded the device's plays in since, which is the
+    double count listening.py exists to prevent. Both are checked, by the
+    mount and by the process list, before anything is read.
+    """
+    from . import listening as LS, state as S
+    if os.path.exists(dbp):
+        fail("the iPod is mounted at " + mount,
+             "eject it first: Apple Music's counts are read with the iPod away")
+    if LS.music_running():
+        fail("Music is open", "quit Music, then run this again (saltpod never opens or scripts it)")
+    src = a.path or os.path.expanduser(LS.SHARED_XML)
+    if not os.path.exists(src):
+        fail("no Apple Music library file at " + src,
+             "in Music: Settings > Advanced > Share Library XML with other applications, "
+             "or File > Library > Export Library -- then name the file")
+    st = S.load()
+    try:
+        r = LS.import_apple_music(st, src)
+    except LS.LibraryUnreadable as e:
+        fail(str(e), "name a Music XML library export, or a saved read")
+    S.save(st)
+    receipt("library", "%d tracks read from %s" % (r["library"], os.path.basename(src)))
+    receipt("matched", "%d tracks in saltpod's library" % r["matched"], tone="good")
+    receipt("plays overall", str(sum(LS.overall(x) for x in st["tracks"].values())))
+    note("`saltpod plays overall` ranks them; nothing on the device was touched")
+    return 0
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -360,8 +597,9 @@ def main(argv=None):
     p.add_argument("what", choices=["rebuild", "stats", "buylist", "vinyl", "collections"], nargs="?", default="stats")
 
     p = sub.add_parser("applemusic", help="read Apple Music: its playlists, their dates, and every track in the library")
-    p.add_argument("what", choices=["read", "playlists", "peek"], nargs="?", default="read")
+    p.add_argument("what", choices=["read", "playlists", "peek", "library"], nargs="?", default="read")
     p.add_argument("name", nargs="?", help="for peek: the playlist to look inside, without importing it")
+    p.add_argument("--json", action="store_true", help="for library: the rows as /api/library sends them")
 
     p = sub.add_parser("elsewhere", help="for tracks iTunes does not carry, ask MusicBrainz and Deezer who made them and where they are sold")
     p.add_argument("slugs", nargs="+", help="playlist slugs, as listed by `saltpod state stats`")
@@ -378,6 +616,14 @@ def main(argv=None):
     # calls, through `curate.OPS`, so there is one implementation and two
     # ways in. `bin/layer_census.py --strict` fails if that stops being true.
 
+    p = sub.add_parser("health", help="what saltpod can reach now: the iPod, Music, the drives, the tools, and the one-line headline")
+    p.add_argument("--json", action="store_true", help="the payload as /api/health sends it")
+
+    p = sub.add_parser("tracks", help="the centre list as the page reads it: totals, or every row's answers with --json")
+    p.add_argument("--key", help="print one row (artist|title)")
+    p.add_argument("--scope", help="only tracks from playlists starting with this")
+    p.add_argument("--json", action="store_true", help="the whole payload")
+
     p = sub.add_parser("track", help="everything known about one track: the panel's payload, in the terminal")
     p.add_argument("ident", help="a key (artist|title) or a path to a file on the drive")
     p.add_argument("--json", action="store_true", help="the payload as the clients see it")
@@ -389,6 +635,11 @@ def main(argv=None):
                         "Only the fields you name are touched.")
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("cover", help="put a cover on a track: into the art cache, into the file, and onto the iPod with `saltpod art write`")
+    p.add_argument("ident", help="a key (artist|title) or a path to a file on the drive")
+    p.add_argument("image", help="a jpeg or png (webp and heic go in as a 320px jpeg)")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("undo", help="step the undo stack back, or forward with --redo")
     p.add_argument("--redo", action="store_true", help="go the other way")
     p.add_argument("--list", action="store_true", help="say what is on the stack and change nothing")
@@ -398,8 +649,10 @@ def main(argv=None):
     p.add_argument("--yes", action="store_true", help="required: this cannot be undone")
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("decide", help="mark tracks: sync, remove, buy, want the vinyl, or put them in a collection")
-    p.add_argument("keys", nargs="+", help="one or more track keys (artist|title)")
+    p = sub.add_parser("decide", help="mark tracks: sync, remove, buy, want the vinyl, put them in a collection, "
+                                      "order a collection, rename or delete one")
+    p.add_argument("keys", nargs="*", help="track keys (artist|title) or paths to files on the drive; "
+                                           "with --reorder, the collection's keys in their new order")
     p.add_argument("--tier", choices=["sync", "remove", "undecided"],
                    help="sync it, take it off, or take the decision back")
     p.add_argument("--collection", help="the collection to add to or remove from")
@@ -407,7 +660,18 @@ def main(argv=None):
                    help="what to do with --collection; default toggle, because a "
                         "control that undoes itself is the product's rule")
     p.add_argument("--vinyl", choices=["yes", "no"], help="want the record")
-    p.add_argument("--bought", choices=["yes", "no"], help="own the digital")
+    # No --bought: a file on disk is what bought means (the index finds it).
+    p.add_argument("--reorder", metavar="NAME",
+                   help="put collection NAME in the order the keys are given; members "
+                        "not named keep their order at the end")
+    p.add_argument("--rename", metavar="NAME", help="rename collection NAME (with --to)")
+    p.add_argument("--to", metavar="NEW", help="the new name, for --rename")
+    p.add_argument("--delete", metavar="NAME",
+                   help="take collection NAME away; its tracks stay, their other decisions too")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("decision", help="the one decision a track menu offers for these tracks, and the tier it would set; changes nothing")
+    p.add_argument("keys", nargs="+", help="one or more track keys (artist|title)")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("recover", help="copy a track off the iPod back onto the drive, named from the database")
@@ -424,10 +688,19 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("plays", help="play counts and ratings: what the iPod recorded, and fold it into the library")
-    p.add_argument("what", choices=["show", "device", "adopt", "merge", "overall"], nargs="?", default="show",
+    p.add_argument("what", choices=["show", "device", "adopt", "merge", "overall", "write",
+                                    "applemusic"], nargs="?", default="show",
                    help="show: what the library holds; device: what is on the iPod right now; "
                         "adopt: take the counts iTunes left in the iTunesDB; "
-                        "merge: add the Play Counts delta (the file is never deleted)")
+                        "merge: add the Play Counts delta (the file is never deleted); "
+                        "write: put merged plays, last played, skips and ratings into the "
+                        "iPod's own fields (a rehearsal unless --write); "
+                        "applemusic: read Apple Music's plays, last played and skips from its "
+                        "library file, with the iPod ejected and Music closed")
+    p.add_argument("path", nargs="?", help="for `applemusic`: the library file to read "
+                   "(Music's XML library export, or a saved read); default: the shared XML library")
+    p.add_argument("--write", action="store_true",
+                   help="for `write`: do it -- back up, write, re-sign, verify, restore on failure")
     p.add_argument("--mount")
     p.add_argument("--json", action="store_true")
 
@@ -468,10 +741,16 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("podcasts", help="file episodes as podcasts so the iPod resumes them instead of restarting")
-    p.add_argument("what", choices=["status", "rehearse", "write", "group"], nargs="?", default="status",
-                   help="status: what declares itself a podcast and what the device thinks; "
-                        "rehearse: do it against a COPY and verify; write: do it for real, after a backup; "
+    p.add_argument("what", choices=["status", "rehearse", "write", "group", "add", "remove", "seed"],
+                   nargs="?", default="status",
+                   help="status: the Podcasts collection, what declares itself a podcast and what the device thinks; "
+                        "add/remove KEY...: put tracks in the Podcasts collection or take them out "
+                        "(the next sync files them as podcasts, or as music again); "
+                        "seed: put in every file that declares itself a podcast; "
+                        "rehearse: do it against a COPY and verify; write: do it for real, after a backup "
+                        "and only after a rehearsal of the same database; "
                         "group: give an existing Podcasts list its show headers")
+    p.add_argument("keys", nargs="*", help="add/remove: track keys (artist|title)")
     p.add_argument("--mount", help="the device, or an iTunesDB file to rehearse against")
     p.add_argument("--json", action="store_true")
 
@@ -528,7 +807,7 @@ def main(argv=None):
 
     a = parser.parse_args(argv)
 
-    if a.cmd in ("track", "tags", "undo", "discard", "recover", "decide"):
+    if a.cmd in ("track", "tags", "undo", "discard", "recover", "decide", "decision", "cover"):
         return _service(a)
 
     if a.cmd == "art":
@@ -554,9 +833,17 @@ def main(argv=None):
                     return W.mhod_string(c)
             return ""
 
-        adb = ADB.parse(os.path.join(adir, "ADB" if False else "ArtworkDB"))
-        have = ADB.dbids(adb)
-        fmts = ADB.formats(adb)
+        # A DEVICE THAT NEVER HAD A COVER HAS NO ArtworkDB, and that is an
+        # answer for `status` (it holds none; here is what could be added),
+        # not a crash. Writing still needs one: an entry is cloned from one
+        # the firmware already took, never authored.
+        adb_path = os.path.join(adir, "ArtworkDB")
+        adb = ADB.parse(adb_path) if os.path.exists(adb_path) else None
+        if adb is None and a.what != "status":
+            fail("the device has no ArtworkDB yet",
+                 "a cover entry is cloned from one the firmware made; nothing to clone")
+        have = ADB.dbids(adb) if adb is not None else set()
+        fmts = ADB.formats(adb) if adb is not None else {}
         idx = {}
         for e in _local_index():
             idx[S.key_for(e.get("artist"), e.get("title"))] = e
@@ -569,7 +856,8 @@ def main(argv=None):
         # at that one image and never appear there by dbid, so checking the
         # dbid alone treated them as coverless and wrote a SECOND copy: the
         # taxonomy sweep found 215 covers duplicated this way. Both tests now.
-        image_ids = {c.get32(0x10) for c in ADB.images(adb).children if c.magic == b"mhii"}
+        image_ids = ({c.get32(0x10) for c in ADB.images(adb).children if c.magic == b"mhii"}
+                     if adb is not None else set())
         for m in mhits:
             dbid = _st.unpack_from("<Q", m.hdr, 0x70)[0]
             if dbid in have:
@@ -584,7 +872,8 @@ def main(argv=None):
 
         receipt("tracks on the device", str(len(mhits)))
         receipt("covers the device holds", str(len(have)))
-        receipt("formats it wants", " ".join("%d(%dB)" % kv for kv in sorted(fmts.items())))
+        receipt("formats it wants", " ".join("%d(%dB)" % kv for kv in sorted(fmts.items()))
+                or "unknown: no ArtworkDB on the device yet")
         receipt("covers we could add", str(len(todo)),
                 tone="good" if todo else None)
         if a.what == "status":
@@ -616,11 +905,11 @@ def main(argv=None):
             # covered the artwork files this is about to change. The undo for
             # an append-only operation is the old database plus the previous
             # lengths, so that is what gets kept -- 199 KB, not 63 MB.
-            snap = os.path.join(_repo_root(), "backups",
+            snap = os.path.join(_data_root(), "backups",
                                 "artwork-%s" % _t.strftime("%Y-%m-%d-%H%M%S"))
             A.backup(mount)
             ADB.snapshot(adir, snap)
-            receipt("undo point", os.path.relpath(snap, _repo_root()))
+            receipt("undo point", os.path.relpath(snap, _data_root()))
 
         step("rendering %d covers" % len(todo))
         entries = []
@@ -740,6 +1029,10 @@ def main(argv=None):
                 print("   %4d  %-44s %s" % (b["overall"], ("%s - %s" % (r["artist"], r["title"]))[:44],
                                           ("+%d iPod" % b["collected_from_ipod"]) if b["collected_from_ipod"] else ""))
             return 0
+        if a.what == "write":
+            return _plays_write(a, mount, dbp)
+        if a.what == "applemusic":
+            return _plays_applemusic(a, mount, dbp)
         if a.what in ("adopt", "merge"):
             if not os.path.exists(dbp):
                 fail("no iPod at " + mount, "plug it in and put it in Disk Mode")
@@ -803,7 +1096,7 @@ def main(argv=None):
             return 0
 
         if a.what == "import":
-            src = a.path or os.path.join(_repo_root(), "data", "local", "loudness_scan.json")
+            src = a.path or os.path.join(_data_root(), "data", "local", "loudness_scan.json")
             if not os.path.exists(src):
                 fail("no scan file at " + src, "run `saltpod loudness scan` first, or name the file")
             r = L.import_scan(src)
@@ -1066,8 +1359,16 @@ def main(argv=None):
                     continue
                 seen.add(name)
                 receipt(name, "%d -> %d" % (before, after), tone="good")
-            note("written to both playlist sections" if a.what == "write"
-                 else "a rehearsal: nothing was written")
+            if a.what == "write" and os.path.isfile(mount):
+                # A FILE IS NOT A DEVICE. --mount naming a database file (a
+                # backup, usually) is refreshed in memory and never written:
+                # a backup is the undo for a write, so a write must not land
+                # in it. Said, rather than claiming both sections were written.
+                note("refreshed in memory only: %s is a file, not an iPod, and was "
+                     "not written" % os.path.basename(mount))
+            else:
+                note("written to both playlist sections" if a.what == "write"
+                     else "a rehearsal: nothing was written")
             if bad:
                 note("invariants: " + "; ".join(bad))
                 return 1
@@ -1180,6 +1481,28 @@ def main(argv=None):
         import tempfile as _tf
         from . import podcasts as P, ipod_edit as E, itunesdb_write as W
         from . import config as CFG, state as S, hash58 as H
+        from . import curate as C
+
+        if a.what in ("add", "remove", "seed"):
+            # The collection, not the device: the same operation the page's
+            # drop calls (curate.podcasts_op), so the two cannot disagree.
+            if a.what != "seed" and not a.keys:
+                fail("name the tracks", "saltpod podcasts %s 'Artist|Title' ..." % a.what)
+            out = C.OPS["/api/podcasts"]({"action": a.what, "keys": a.keys})
+            if a.json:
+                print(_json.dumps(out, indent=2, default=str))
+                return 0 if out.get("ok") else 1
+            if not out.get("ok"):
+                fail(out.get("error") or "refused")
+            if a.what == "seed":
+                receipt("declaring files put in", str(len(out.get("added") or [])),
+                        tone="good" if out.get("added") else None)
+            pc = out.get("podcasts") or {}
+            receipt("in the Podcasts collection", str(pc.get("n", 0)))
+            receipt("the next sync changes", str(pc.get("pending", 0)),
+                    tone="warn" if pc.get("pending") else None)
+            note("the next sync files them as podcasts; nothing on the device changed yet")
+            return 0
 
         mount = a.mount or (CFG.load().get("mount") or "/Volumes/IPOD")
         # A plain file is accepted so a backup can be rehearsed against with
@@ -1244,7 +1567,16 @@ def main(argv=None):
         # podcast from a genre string or a folder name.
         idx = {S.key_for(e.get("artist"), e.get("title")): e for e in _local_index()}
         want, unreadable = set(), 0
-        for t in E.tracks(root):
+        # ONCE STATE NAMES THE PODCASTS COLLECTION, IT IS THE TRUTH -- the
+        # same answer a sync acts on. Before that, the declaring files.
+        st = S.load()
+        coll = None
+        if P.COLLECTION in (st.get("collections") or []) or S.order_for(st, P.COLLECTION):
+            by_key = {S.key_for(_mhod_of(t, 4), _mhod_of(t, 1)): E.track_dbid(t)
+                      for t in E.tracks(root)}
+            coll = [by_key[k] for k in S.order_for(st, P.COLLECTION)
+                    if k in by_key and (st["tracks"].get(k) or {}).get("tier") != "remove"]
+        for t in (E.tracks(root) if coll is None else ()):
             e = idx.get(S.key_for(_mhod_of(t, 4), _mhod_of(t, 1)))
             if not e or not e.get("path"):
                 continue
@@ -1257,7 +1589,10 @@ def main(argv=None):
             except Exception:
                 unreadable += 1
 
+        if coll is not None:
+            want = set(coll)
         pl = P.plan(root, want)
+        cplan = P.collection_plan(root, coll) if coll is not None else None
         flagged = P._flagged_playlists(root)
         if a.json and a.what == "status":
             print(_json.dumps({"plan": pl, "flagged_playlists": flagged,
@@ -1265,8 +1600,15 @@ def main(argv=None):
             return 0
 
         receipt("tracks on the device", str(len(list(E.tracks(root)))))
-        receipt("declare themselves podcasts", str(len(pl["tracks"])),
-                tone="good" if pl["tracks"] else None)
+        if coll is not None:
+            receipt("in the Podcasts collection, on the device", str(len(coll)),
+                    tone="good" if coll else None)
+            receipt("to file / back to music", "%d / %d%s"
+                    % (len(cplan["file"]), len(cplan["unfile"]),
+                       ", reordered" if cplan["reorder"] else ""))
+        else:
+            receipt("declare themselves podcasts", str(len(pl["tracks"])),
+                    tone="good" if pl["tracks"] else None)
         receipt("already filed as podcasts", str(pl["already"]))
         receipt("playlists carrying the podcast flag",
                 ", ".join(map(str, flagged)) if flagged else "none",
@@ -1280,8 +1622,29 @@ def main(argv=None):
 
         if a.what == "status":
             return 0
-        if not want:
+        if coll is None and not want:
             note("nothing to file"); return 0
+        if coll is not None and not cplan["changed"]:
+            note("the device already files exactly the collection"); return 0
+
+        # A WRITE NEEDS A REHEARSAL OF THIS DATABASE AND THIS SET FIRST, the
+        # discipline every other device writer keeps (PROPOSALS: "accepts a
+        # write with no rehearsal before it"). The rehearsal leaves a receipt
+        # naming the database's digest and the dbids it filed; a write whose
+        # database or set has moved since is refused.
+        import hashlib as _hl
+        receipt_path = os.path.join(_data_root(), "data", "podcasts-rehearsal.json")
+        db_sha = _hl.sha1(open(dbp, "rb").read()).hexdigest()
+        wanted = ["%016x" % d for d in (coll if coll is not None else sorted(want))]
+        if a.what == "write":
+            try:
+                last = _json.load(open(receipt_path))
+            except (OSError, ValueError):
+                last = {}
+            if last.get("db") != db_sha or last.get("want") != wanted:
+                fail("rehearse first", "`saltpod podcasts rehearse` against this device, "
+                     "then write; the database or the set has changed since the last one"
+                     if last else "`saltpod podcasts rehearse` against this device, then write")
 
         if a.what == "rehearse":
             work = _tf.mkdtemp(prefix="saltpod-podcasts-")
@@ -1297,11 +1660,18 @@ def main(argv=None):
 
         root2 = W.parse(open(target if a.what == "rehearse" else dbp, "rb").read())
         try:
-            res = P.apply(root2, want)
-            # Filing a track as a podcast without giving the list its show
-            # headers produces a menu that counts correctly and will not
-            # open. The two belong in one write.
-            grp = P.group_episodes(root2)
+            if coll is not None:
+                # the sync's own phase, so the terminal and the sync agree
+                cres = P.sync_collection(root2, coll)
+                res = {"playlist": cres["playlist"] or P.COLLECTION,
+                       "created": cres["created"], "members": cres["members"]}
+                grp = {"shows": cres["shows"]}
+            else:
+                res = P.apply(root2, want)
+                # Filing a track as a podcast without giving the list its show
+                # headers produces a menu that counts correctly and will not
+                # open. The two belong in one write.
+                grp = P.group_episodes(root2)
         except P.PodcastError as e:
             fail("refusing to write: " + str(e), "nothing was changed")
 
@@ -1325,11 +1695,20 @@ def main(argv=None):
         receipt("flagged playlists after the write",
                 ", ".join(map(str, again)), tone="warn" if len(again) != 1 else "good")
         receipt("hash58", "re-signed and verified", tone="good")
-        if len(again) != 1:
+        if len(again) != 1 and (coll is None or coll):
             note("exactly one flagged playlist is required -- the firmware shows none otherwise")
             return 1
         if a.what == "rehearse":
+            os.makedirs(os.path.dirname(receipt_path), exist_ok=True)
+            with open(receipt_path, "w") as fh:
+                _json.dump({"db": db_sha, "want": wanted, "at": int(__import__("time").time()),
+                            "mount": "file" if as_file else "device"}, fh)
             note("that was a copy; nothing on the device changed")
+        else:
+            try:
+                os.remove(receipt_path)        # one rehearsal, one write
+            except OSError:
+                pass
         return 0
 
     if a.cmd == "repair":
@@ -1540,13 +1919,43 @@ def main(argv=None):
         if getattr(a, "exclude", None):
             import json as _j
             ex = _j.load(open(a.exclude))
-        apply.sync(mount, eject=not a.no_eject, exclude=ex); return 0
+        try:
+            apply.sync(mount, eject=not a.no_eject, exclude=ex)
+        except apply.Restored as e:
+            # the receipt for a write that failed its check: the backup's
+            # database is back on the device and was read back to prove it
+            print()
+            receipt("write", "failed its check", tone="bad")
+            if e.ok:
+                receipt("restored", apply.AS_IT_WAS, tone="good")
+                note("the backup was put back and read back byte for byte: "
+                     + os.path.relpath(e.bdir, apply.ROOT))
+            else:
+                receipt("restored", "DID NOT VERIFY", tone="bad")
+                note("restore by hand from " + e.bdir)
+            return 1
+        return 0
     if a.cmd == "device":
         from . import state
-        state.import_device(a.mount); return 0
+        try:
+            state.import_device(a.mount)
+        except SystemExit as e:
+            fail(str(e), "plug it in and put it in Disk Mode")
+        return 0
     if a.cmd == "read":
-        from . import itunesdb
-        return itunesdb.main([a.path] if a.path else [])
+        from . import itunesdb, config as CFG
+        path = a.path
+        if not path:
+            try:
+                path = CFG.load().get("mount") or "/Volumes/IPOD"
+            except SystemExit:
+                path = "/Volumes/IPOD"
+        dbp = path if os.path.isfile(path) else os.path.join(path, "iPod_Control/iTunes/iTunesDB")
+        if not os.path.exists(dbp):
+            # a fail line, not a FileNotFoundError traceback
+            fail("no iPod database at " + dbp,
+                 "plug it in and put it in Disk Mode, or name a database: saltpod read FILE")
+        return itunesdb.main([dbp])
     if a.cmd == "verify":
         from . import hash58, config
         cfg = config.load()
@@ -1565,8 +1974,9 @@ def main(argv=None):
     if a.cmd == "sources":
         import json as _json
         from . import local_index as LI, config as CFG
-        cfg = CFG.load()
-        roots = list(cfg.get("library_roots") or [])
+        # roots(), not load(): a fresh install names its music folder before
+        # it has an iPod's GUID to give
+        roots = CFG.roots()
         d = LI.load(resolved=False)
 
         if a.what == "list":
@@ -1613,11 +2023,12 @@ def main(argv=None):
                  "and needs every remaining root mounted")
             return 0
 
-        # add
-        if not os.path.isdir(folder):
-            fail("no such folder: " + folder)
-        if folder in [os.path.abspath(os.path.expanduser(r)) for r in roots]:
+        # add -- the same check the Data sheet's field makes (config.check_root)
+        folder, why = CFG.check_root(a.folder)
+        if why and why.startswith("already"):
             note("already a source"); return 0
+        if why:
+            fail(why)
         step("walking %s" % folder)
         try:
             res = LI.add_root(folder)
@@ -1641,10 +2052,17 @@ def main(argv=None):
 
     if a.cmd == "index":
         from . import local_index, config
-        roots = a.roots or config.load().get("library_roots") or []
+        # roots(), not load(): indexing needs the folders, not the iPod's GUID
+        roots = a.roots or config.roots()
         if not roots:
-            fail("no library root", "pass folders, or set library_roots in data/device.json")
-        return local_index.main(roots)
+            fail("no music folder named yet",
+                 "saltpod sources add FOLDER, or the Data sheet's music folder field")
+        try:
+            return local_index.main(roots)
+        except local_index.MissingRoot as e:
+            # one sentence, the one the page's job box shows, never a traceback
+            fail("%s -- nothing to walk, the index is unchanged" % e,
+                 "plug the drive in, then index again")
     if a.cmd == "applemusic":
         from . import curate as C
         if a.what == "read":
@@ -1652,7 +2070,20 @@ def main(argv=None):
             d = C.refresh_am_index()
             receipt("playlists", str(len(d["playlists"])))
             receipt("library tracks", str(len(d.get("library") or [])))
-            receipt("cached", os.path.relpath(C.AM_INDEX, os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+            receipt("cached", os.path.relpath(C.AM_INDEX, _data_root()))
+            return 0
+        if a.what == "library":
+            # /api/library's payload: each row with the answers the page
+            # reads (am_owned, am_status, state, play), from library_payload
+            pay = C.library_payload()
+            if a.json:
+                import json as _json
+                print(_json.dumps(pay, indent=2))
+                return 0
+            rows = pay["tracks"]
+            receipt("library tracks", str(len(rows)))
+            receipt("owned", str(sum(1 for r in rows if r["am_owned"])))
+            receipt("gone", str(sum(1 for r in rows if r["am_status"])))
             return 0
         if a.what == "playlists":
             d = C.am_index()
@@ -1671,8 +2102,9 @@ def main(argv=None):
         if not a.name:
             fail("peek needs a playlist name", 'try: saltpod applemusic peek "Jazz Party"')
         import subprocess as _sp
+        from .paths import CODE_ROOT
         r = _sp.run(["osascript", "-l", "JavaScript", "bin/export_playlists.js", "--peek", a.name],
-                    capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                    capture_output=True, text=True, cwd=CODE_ROOT)
         import json as _json
         d = _json.loads(r.stdout or "{}")
         if d.get("error"):
@@ -1715,6 +2147,10 @@ def main(argv=None):
                                       " · ".join(y for y in (x["label"], x["format"], x["year"]) if y and y != "0")))
         note("%d releases" % len(d[a.what]))
         return 0
+    if a.cmd == "tracks":
+        return _tracks(a)
+    if a.cmd == "health":
+        return _health(a)
     if a.cmd == "ground":
         return _ground(a)
     if a.cmd == "mosaic":

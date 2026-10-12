@@ -468,3 +468,91 @@ def apply(root, want_dbids, meta=None):
         E.playlist_set_tracks(root, name, ids)
     return {'tracks': changed, 'playlist': name, 'created': made,
             'members': len(ids)}
+
+
+# ------------------------------------------------ the Podcasts collection
+#
+# THE OWNER'S WORDS, decided 12 October: a collection named Podcasts in the
+# iPod pane whose effect on sync is the podcast media type rather than a
+# playlist. Seeded from the files that declare themselves (declares_podcast,
+# above), open to anything dragged in -- a long mix, an audiobook.
+#
+# Membership lives where every collection's does (state.collections and
+# collection_order), so the page, `saltpod decide` and undo already know how
+# to fill, order and empty it. What differs is only what sync does with it,
+# and that is here: each member filed as mediatype 4 in the one flagged list
+# in the collection's order, grouped by show; a track taken out goes back to
+# being music. A device podcast that the collection does not name is put back
+# too -- the collection is the truth, as every collection is.
+
+COLLECTION = PLAYLIST_NAME
+
+
+def filed(root):
+    """The dbids the device files as podcasts right now."""
+    return {E.track_dbid(t) for t in E.tracks(root) if t.get32(MEDIATYPE) == PODCAST}
+
+
+def list_dbids(root):
+    """The flagged list's episodes, in order, as dbids; [] when there is none.
+
+    Read from the type-2 copy, which is flat: the type-3 copy carries the
+    show headers, which name a show and no track.
+    """
+    flagged = _flagged_playlists(root)
+    name = flagged[0] if flagged else COLLECTION
+    try:
+        pl = E.find_playlist(root, W.section(root, 2), name)
+    except (KeyError, Exception):
+        return []
+    by_id = {E.track_id(t): E.track_dbid(t) for t in E.tracks(root)}
+    return [by_id[c.get32(0x18)] for c in pl.children
+            if c.magic == b'mhip' and c.get32(0x18) in by_id]
+
+
+def collection_plan(root, want):
+    """What a sync would change for these dbids, in this order. Touches nothing."""
+    now = filed(root)
+    order = list_dbids(root)
+    file = [d for d in want if d not in now]
+    unfile = sorted(now - set(want))
+    reorder = bool(want) and order != list(want)
+    return {'file': file, 'unfile': unfile, 'reorder': reorder,
+            'changed': bool(file or unfile or reorder)}
+
+
+def unfile(root, dbids):
+    """Put tracks back to being music: mediatype 1, and the 0xA7 flag that
+    the format notes say must be 0 for a non-podcast, cleared."""
+    out = []
+    for t in E.tracks(root):
+        if E.track_dbid(t) in dbids and t.get32(MEDIATYPE) == PODCAST:
+            t.set32(MEDIATYPE, AUDIO)
+            t.hdr[0xA7] = 0
+            out.append(E.track_dbid(t))
+    return out
+
+
+def sync_collection(root, want):
+    """The collection's effect on the database in memory. `want` is dbids in
+    the collection's order. Returns what it did; raises PodcastError on the
+    two documented ways to break a library, before changing anything."""
+    want = list(want)
+    plan_ = collection_plan(root, want)
+    if want:
+        res = apply(root, set(want))       # the guards, the flag, the media type
+        by_dbid = {E.track_dbid(t): E.track_id(t) for t in E.tracks(root)}
+        # apply() lists the members in DATABASE order; the collection's order
+        # is the product, so the list is set again in that order.
+        E.playlist_set_tracks(root, res['playlist'],
+                              [by_dbid[d] for d in want if d in by_dbid])
+        grp = group_episodes(root, res['playlist'])
+    else:
+        res, grp = {'playlist': None, 'created': False}, {'shows': 0}
+        flagged = _flagged_playlists(root)
+        if flagged:
+            E.playlist_set_tracks(root, flagged[0], [])
+    gone = unfile(root, set(plan_['unfile']))
+    return {'filed': len(plan_['file']), 'unfiled': len(gone),
+            'members': len(want), 'playlist': res['playlist'],
+            'created': res['created'], 'shows': grp.get('shows', 0)}

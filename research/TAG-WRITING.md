@@ -188,3 +188,33 @@ Undo after a sync is therefore not a rollback of the device. It rewrites the
 file, which bumps mtime, which re-probes, which finds the reverted values,
 which queues a fresh update. **The device catches up on the next sync** —
 stage-then-commit, extended to metadata.
+
+## Built: a cover into the file (12 October)
+
+The control room ruled "Into the file and onto the iPod" for a cover dropped
+in the track panel. `tags.embed_art(path, image)` puts it there:
+
+| Container | How | Moves the audio |
+|---|---|---|
+| M4A | `write_art` (the `covr` atom; it existed, nothing called it) | only when the `free` atom runs out; `stco` is shifted then |
+| MP3 | an APIC frame in the leading tag, through the text writer's in-place / grow path (`_id3_commit`); the tag keeps its version (v2.4 stays v2.4) | only when the tag had no room |
+| AIFF | the same frame in the `ID3 ` chunk, through write_aiff's three cases (`_aiff_put`) | never |
+| WAV | the same frame in the `id3 ` chunk, rewritten where it stands; a WAV with none gets an `id3 ` chunk appended | never |
+| FLAC | not built: "no artwork writer for flac yet" | |
+
+Every APIC frame is replaced, as `write_art` replaces every `covr`: the cover
+you drop becomes THE picture, and `art_bytes` (what `saltpod art write`
+sends) takes the largest, so a back cover left behind could win. Every other
+frame keeps its id, payload and order; the selftest builds an MP3 (v2.3 and
+v2.4), a WAV with and without the chunk among INFO and cue labels, an AIFF
+and an ffmpeg-made m4a, and checks exactly that, plus the audio digest. No
+library was needed: an APIC frame is five header bytes and the image.
+
+The server (`curate.embed_cover`) writes into a copy beside the file, checks
+the audio digest on the copy, and only then renames it over the original.
+
+**The WAV refusal is named now.** The panel said "an id3 chunk needs the
+ID3v2 writer" for every WAV `supported()` turned down, months after that
+writer was built. `tags.why_not` says what is actually refused: a chunk
+whose frame walk could not be read cleanly, an ID3v2.2 chunk with a frame
+that has no v2.3 name, a tag chunk before the audio.

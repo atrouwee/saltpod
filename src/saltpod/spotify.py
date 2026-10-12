@@ -35,7 +35,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 CONFIG = os.path.join(ROOT, 'data', 'spotify.json')
 CACHE = os.path.join(ROOT, 'data', 'local', 'spotify.json')
 

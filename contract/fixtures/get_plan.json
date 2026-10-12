@@ -1,0 +1,113 @@
+{
+ "add_bytes": 17678,
+ "adds": [
+  {
+   "artist": "Dune Society",
+   "bytes": 17678,
+   "convert": true,
+   "key": "dune-society|low-tide",
+   "title": "Low Tide"
+  }
+ ],
+ "delete": [
+  "Old Mix"
+ ],
+ "free_bytes": 15791620096,
+ "members": {
+  "Evening": [
+   {
+    "artist": "Alder Quartet",
+    "key": "alder-quartet|morning-field",
+    "off": false,
+    "on": true,
+    "title": "Morning Field"
+   },
+   {
+    "artist": "Birch Ensemble",
+    "key": "birch-ensemble|second-light",
+    "off": false,
+    "on": true,
+    "title": "Second Light"
+   },
+   {
+    "artist": "Dune Society",
+    "key": "dune-society|low-tide",
+    "off": false,
+    "on": false,
+    "title": "Low Tide"
+   }
+  ],
+  "Night Drive": [
+   {
+    "artist": "Elm Street Trio",
+    "key": "elm-street-trio|far-room",
+    "off": false,
+    "on": false,
+    "title": "Far Room"
+   }
+  ]
+ },
+ "mount": "/fixture/f/mount",
+ "new": [
+  "Night Drive"
+ ],
+ "no_source": [
+  {
+   "artist": "Elm Street Trio",
+   "title": "Far Room"
+  },
+  {
+   "artist": "Cedar Lines",
+   "title": "Open Water"
+  }
+ ],
+ "ok": true,
+ "podcasts": {
+  "changed": false,
+  "file": 0,
+  "named": false,
+  "reorder": false,
+  "unfile": 0
+ },
+ "removes": [
+  {
+   "artist": "Fern Collective",
+   "key": "fern-collective|last-call",
+   "title": "Last Call"
+  }
+ ],
+ "retags": [
+  {
+   "artist": "Alder Quartet",
+   "fields": {
+    "album": "Field Notes (Deluxe)",
+    "artist": "Alder Quartet",
+    "title": "Morning Field"
+   },
+   "key": "alder-quartet|morning-field",
+   "title": "Morning Field",
+   "winner": "file"
+  }
+ ],
+ "rev": 1791789447118,
+ "sizes": {
+  "Evening": 3,
+  "Keepers": 1,
+  "Night Drive": 1
+ },
+ "smart": [
+  {
+   "name": "Since 2000",
+   "now": 0,
+   "would": 2
+  }
+ ],
+ "smart_line": "smart playlists: 1 ours, 1 would change, 0 refused",
+ "soundcheck_line": "sound check: 0 tracks have a value, 3 do not",
+ "unchanged": [
+  "Keepers"
+ ],
+ "update": [
+  "Evening"
+ ]
+}

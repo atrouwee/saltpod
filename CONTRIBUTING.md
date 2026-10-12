@@ -200,6 +200,19 @@ python3 bin/selftest.py --device   # include the iPod, read-only
 It writes nothing to your library or your device: tag tests run on copies
 in a temp directory, device tests read only.
 
+**Point it at other data with `SALTPOD_HOME`.** The code and the data are
+two roots (`src/saltpod/paths.py`): the source tree, and the folder that
+holds `data/`, `backups/` and `reports/`. Unset, both are the source tree,
+as they always were. Set, every verb, the page and its jobs read and write
+under that folder instead -- which is how a test runs against a made-up
+library and a fake iPod without going near yours:
+
+```
+SALTPOD_HOME=/tmp/elsewhere saltpod curate --no-open
+```
+
+A `SALTPOD_HOME` that is not a directory is refused rather than created.
+
 **And when you replace something that works, run the old path and the new
 one over the same input and diff every field — before the new one becomes
 the default.** This is not caution for its own sake. A Spotlight-based

@@ -1888,6 +1888,9 @@ const $=s=>document.querySelector(s), au=$('#au');
 let ALL=[], COLS=[], ORDER={}, SLUGS=[], view=[], sel=0, filter='all', q='', job=null;
 let FSHOWN=[], MIDROWS=0;   // the filters the list offers, and its unfiltered row count (drawMid); the popover reads both
 let TOTALS={};              // answered by the server, never recomputed here
+let ONPOD_ORDER=[];         // "All on iPod", in the server's order (keys)
+let VINYL_ORDER=[];         // the vinyl pane's release cards, in the server's order
+let REVSEEN=0;              // the newest server rev this page holds (events and payloads carry one)
 
 /* THE GROUND follows the selection. saltglass's Ground (vendored above in
    its own script tag) owns the two picture layers under the page: it waits
@@ -1942,6 +1945,7 @@ let rtab='buy';
 // A collection made with "+ new" does not exist on the server until its first
 // track lands. Until then it lives here, so it does not vanish on the next load.
 let PENDING=new Set();
+let PODCASTS={name:'Podcasts',n:0,pending:0};   // the server's answers for that row (curate.podcasts_summary)
 let newMode=false, newQ='';           // the new-collection sheet, open or not
 // What the iPod actually carries, ours or not. devPick shows one of the others
 // in the middle, read-only, with one way in: make it a collection.
@@ -1950,10 +1954,9 @@ let HEALTH=null;
 // The Discogs exports, and two maps from a match key to a release. A track
 // meets a release on artist + album; see discogs.py for what the key strips.
 let DISCOGS={wantlist:[],collection:[],files:{},dir:'data/discogs'}, OWN=new Map(), WANT=new Map();
-const norm=s=>(s||'').toLowerCase().replace(/\s*[\(\[].*?[\)\]]/g,'').replace(/^(the|a)\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();
-const vkey=t=>{const a=norm(t.artist), b=norm(t.album||t.dev_album||''); return a&&b ? a+'|'+b : null;};
 /* The matching RULE moved to the server -- it lived here as vkey() and in
    discogs.py as norm(), which is the same rule twice in two languages.
+   The last copies of both went with debt D9.
    The page now asks whether the server said yes, and only reaches for the
    release row itself to show its label and year. */
 const owned=t=>t.vinyl_owned?(OWN.get(t.release_key)||true):undefined,
@@ -2191,7 +2194,10 @@ async function load(){
   if(a){AMP=a.playlists||[]; AMREAD=a.read_at; AMLIB=a.library||0;
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
   SYNCED=r.synced||[];
+  if(r.podcasts)PODCASTS=r.podcasts;
   ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs; TOTALS=r.totals||{};
+  ONPOD_ORDER=r.on_ipod_order||[]; VINYL_ORDER=r.vinyl_order||[];
+  if(r.rev)REVSEEN=Math.max(REVSEEN,r.rev);
   BYKEY=new Map(ALL.map(t=>[t.key,t]));
   COLS.forEach(c=>PENDING.delete(c));                    // it exists now
   if(colPick&&!COLS.includes(colPick)&&!PENDING.has(colPick))colPick=null;   // renamed or deleted under us
@@ -2203,14 +2209,11 @@ function counts(){
   // "to buy" is what you still have to go and get: marked sync, not held
   // bought, and no file for it anywhere on your drives.
   const todo={length:(TOTALS.to_buy||0)}, eur=TOTALS.to_buy_eur||0;
-  // what the next sync would do, as far as the page can know without the device
-  const offs=ALL.filter(t=>t.device&&t.tier==='remove').length;
-  // `reachable`, not `local`: the button says what the next sync WOULD do,
-  // and it cannot write a file on a drive that is not mounted. Counting
-  // those made the button promise work it would then decline to do.
-  const ons=ALL.filter(t=>!t.device&&t.reachable&&t.collections.length).length;
-  const waiting=ALL.filter(t=>!t.device&&t.local&&!t.reachable&&t.collections.length).length;
-  const pend=offs+ons, sb=$('#dosync');
+  // what the next sync would do: the server's count (curate.sync_counts),
+  // looked up, never added up here -- the Swift client reads the same four
+  const offs=TOTALS.sync_off||0, ons=TOTALS.sync_on||0;
+  const waiting=TOTALS.sync_waiting||0;
+  const pend=TOTALS.sync_pending||0, sb=$('#dosync');
   sb.textContent = pend ? `Sync · ${pend}` : 'Sync';
   sb.classList.toggle('pending',pend>0);
   sb.title = (pend ? `${offs} to take off the iPod, ${ons} to put on — nothing has changed on the device yet`
@@ -2232,10 +2235,11 @@ function pass(t){
 }
 const filtered=()=>!!q||filter!=='all';
 // what a click would actually play, named rather than left to be guessed
+// -- `play` is the server's answer (curate.row_play); this only words it
+const PLAYS_FROM={t7:'plays from the T7', ipod:'plays from the iPod'};
 function heard(t){
-  if(t.play_from==='t7')   return '<span style="color:var(--ink)">plays from the T7</span>';
-  if(t.play_from==='ipod') return '<span style="color:var(--ink)">plays from the iPod</span>';
-  if(t.preview)            return 'a 30s preview';
+  if(t.play==='file')    return `<span style="color:var(--ink)">${PLAYS_FROM[t.play_from]||'plays the file'}</span>`;
+  if(t.play==='preview') return 'a 30s preview';
   return '<span class="warn">nothing to play</span>';
 }
 // every place that holds it, in a fixed order -- never a claim about which came first
@@ -2273,24 +2277,24 @@ function tagsFor(t){
 // A row for something seen only in Apple Music. It renders like any other so
 // the eye does not have to switch modes; the moment you decide on it, `adopt`
 // gives it a record and it becomes one.
-const AM_OWNED=['purchased','matched','uploaded'];
+// Which cloud statuses mean owned, and the row's state, are the server's
+// answers (curate.am_row_answers, on /api/library and /api/peek rows).
 function libRow(r){
   const hit=BYKEY.get(r.key); if(hit)return hit;
   return {key:r.key, artist:r.artist, title:r.title, album:r.album, seconds:r.secs,
           tier:'', vinyl:false, bought:false, collections:[], playlists:[],
-          device:false, t7:false, am:true, am_owned:AM_OWNED.includes(r.cloud),
-          am_status:(r.cloud==='subscription'||AM_OWNED.includes(r.cloud))?null:r.cloud,
+          device:false, t7:false, am:true, am_owned:!!r.am_owned, am_status:r.am_status||null,
+          state:r.state, play:r.play, decision:r.decision,
           play_from:null, audio:false, preview:null, art:null, lean:true};
 }
 function rowHTML(t,i,seq){
   const dur=mmss(t.seconds||t.dev_seconds);
-  const own  = t.device || t.local;       // you hold this music
-  const have = t.device || t.reachable;   // ...and sync could write it today
   // LAW 3 IN WORDS, NOT JUST OPACITY. Each state is a 45% or 30% opacity
   // drop and nothing else, so a title carries the same fact for anyone who
   // cannot see the difference -- and now there are three of them, because
-  // "buy it" and "plug the drive in" are not the same instruction.
-  const state = !own ? 'unowned' : (have ? '' : 'offline');
+  // "buy it" and "plug the drive in" are not the same instruction. Which
+  // one a row is in is the server's answer (`state`, curate.row_state).
+  const state = t.state==='ready' ? '' : (t.state||'');
   const stateTitle = state === 'unowned'
       ? ' title="not yet available — buy it or sync the file"'
       : state === 'offline'
@@ -2428,7 +2432,7 @@ function currentList(){
   const dp=devPick&&DEV.playlists.find(p=>p.name===devPick);
   if(dp) return {rows:dp.keys.map(k=>BYKEY.get(k)).filter(Boolean), lib:'on the iPod',
     ordered:true, readonly:true, title:dp.name, picked:true,
-    note: dp.smart?'a smart playlist, never written':'not a collection yet',
+    note: dp.smart?'a smart playlist, refreshed on every sync':'not a collection yet',
     takeover: dp.smart?null:dp, blank:'Empty on the device.'};
   if(colPick) return {rows:(ORDER[colPick]||[]).map(k=>ALL.find(t=>t.key===k)).filter(Boolean),
     lib:'collection', ordered:true, readonly:false, title:colPick, picked:true, note:'',
@@ -2438,8 +2442,8 @@ function currentList(){
   // Classic orders it. This used to be the whole curation state -- a leftover
   // from when the pane was a library switcher -- which put 565 rented tracks
   // that are not on the device under a heading that says they are.
-  const on=ALL.filter(t=>t.device).sort((a,b)=>
-    (a.artist||'').localeCompare(b.artist||'')||(a.title||'').localeCompare(b.title||''));
+  // The order is the server's (on_ipod_order, debt D6), sent as keys.
+  const on=ONPOD_ORDER.map(k=>BYKEY.get(k)).filter(Boolean);
   return {rows:on, lib:'', ordered:false, readonly:true, title:'All on iPod',
     picked:true, note:'', blank:'Nothing on the device yet.'};
 }
@@ -2635,6 +2639,16 @@ function nudge(dir){
 }
 
 /* ---------------- left: collections, each a drop target ---------------- */
+// The Podcasts collection: its effect on sync is the podcast media type, not
+// a playlist, so its count and pending mark are the server's answers --
+// looked up here, never worked out from the rows.
+function podRow(c){
+  const p=PODCASTS, on=c===colPick&&active==='ipod', pend=p.pending>0;
+  return colRow({name:esc(c), cnt:(on&&pend?'<span class="pdot"></span>':'')+(pend?`+${p.pending}`:p.n), menu:true,
+    attrs:` data-c="${esc(c)}"`,
+    cls:`${c===colPick?(active==='ipod'?'on':'was'):''} ${pend?'pend':''}`,
+    title:`${esc(c)} — ${p.n} tracks, filed on the iPod as podcasts, not as a playlist${pend?`; the next sync changes ${p.pending}`:''}`});
+}
 function drawCols(){
   $('#left').querySelector('.plabel').classList.toggle('off',active!=='ipod');
   paintModes('ipod',$('#lmodes'));
@@ -2650,9 +2664,10 @@ function drawCols(){
   }
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
-  let h=colRow({name:'All on iPod', cnt:ALL.filter(t=>t.device).length,
+  let h=colRow({name:'All on iPod', cnt:TOTALS.on_ipod||0,
     cls:(colPick===null&&!devPick&&active==='ipod')?'on':'', attrs:' data-all="1"'});
   h+=names.map(c=>{
+      if(c===PODCASTS.name)return podRow(c);
       // what sync would still have to do: tracks in it that are not on the device,
       // plus the playlist itself if it has never been written
       const off=(ORDER[c]||[]).filter(k=>!(BYKEY.get(k)||{}).device);
@@ -2673,10 +2688,10 @@ function drawCols(){
   const others=DEV.playlists.filter(p=>!p.ours);
   if(others.length){
     const allSmart=others.every(p=>p.smart);
-    h+=`<div class="month" title="${allSmart?'the firmware\'s own lists: shown, never written':''}${DEV.mounted?'':' — read from '+esc(DEV.source||'the last backup')}">${allSmart?'smart · read-only':'on the iPod'}${DEV.mounted?'':' · last seen'}</div>`;
+    h+=`<div class="month" title="${allSmart?'smart lists: saltpod refreshes the ones it understands on every sync':''}${DEV.mounted?'':' — read from '+esc(DEV.source||'the last backup')}">${allSmart?'smart · read-only':'on the iPod'}${DEV.mounted?'':' · last seen'}</div>`;
     h+=others.map(p=>colRow({name:esc(p.name), cnt:p.smart?'smart':p.n,
       cls:`dim ${p.name===devPick?(active==='ipod'?'on':'was'):''}`, attrs:` data-dev="${esc(p.name)}"`,
-      title:`${esc(p.name)} — ${p.n} tracks${p.smart?', a smart playlist: shown, never written':', made by iTunes or by hand; not a collection yet'}`
+      title:`${esc(p.name)} — ${p.n} tracks${p.smart?', a smart playlist: refreshed from its rules on every sync':', made by iTunes or by hand; not a collection yet'}`
     })).join('');
   }
   $('#colbody').innerHTML=h;
@@ -3032,6 +3047,7 @@ function t7Row(r){
           tier:'', vinyl:false, bought:false, collections:[], playlists:[],
           device:false, t7:true, local:true, am:false, am_owned:false, am_status:null,
           lossless:r.lossless, origin_ext:r.ext, path:r.path||null,
+          state:r.state, play:r.play, decision:r.decision,   // the server's answers (/api/local)
           play_from:'t7', audio:false, preview:null, art:null, lean:true};
 }
 // Album view needs every track of that source, not one playlist's worth.
@@ -3061,16 +3077,16 @@ function drawRight(){
   document.querySelectorAll('#rtabs .pill').forEach(t=>t.classList.toggle('on',t.dataset.r===rtab));
   const el=$('#rbody');
   if(rtab==='buy'){
-    const short=ALL.filter(t=>t.tier==='sync');   // the decision; the stages below are server-answered
     // Three stages, in the direction they move: still to buy; bought -- a file
     // exists on your drive, found by the index -- and waiting for a sync; and
     // already on the iPod. "Bought" is not a button you have to remember; the
     // index finding the file is what bought means.
     const todo = ALL.filter(t=>(t.lists||[]).includes('to buy'));
     const ready= ALL.filter(t=>(t.lists||[]).includes('to sync'));
-    const done = short.filter(t=>t.device);
+    // every stage is a server list (curate._answers, debt D8), looked up
+    const done = ALL.filter(t=>(t.lists||[]).includes('synced'));
     const eur=TOTALS.to_buy_eur||0;
-    const flac=todo.filter(t=>t.bc_verdict==='confirmed').length;
+    const flac=TOTALS.flac_to_buy||0;
     $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> synced`;
     let h='';
     const dots=t=>`<span class="more" data-card="${esc(t.key)}" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span>`;
@@ -3097,15 +3113,13 @@ function drawRight(){
           ${t.url?`<a href="${t.url}" target="_blank">iTunes €${(t.price||0).toFixed(2)}</a>`
             :(t.looking?'<span class="warn">looking it up…</span>'
               :(t.it_verdict==='not_found'?'<span class="warn">iTunes does not carry it</span>'
-                :'<span class="warn">not looked up</span>'))}
-          <button data-bought="${esc(t.key)}">bought</button></div>${look(t)}</div>`).join('')
+                :'<span class="warn">not looked up</span>'))}</div>${look(t)}</div>`).join('')
       : (ready.length ? '' : `<p class="note">Nothing to buy. Drag a track here, or press <kbd>s</kbd> on one.</p>`);
-    const unknown=todo.filter(t=>!t.url&&!t.it_verdict&&!t.looking).length;
+    const unknown=TOTALS.not_looked_up||0;
     if(unknown) h+=`<p class="note" style="margin-top:10px"><span class="go" id="lookall" style="color:var(--ink);cursor:pointer;text-decoration:underline">Look up the ${unknown} without a source</span> — one iTunes query each.</p>`;
     if(todo.length||ready.length) h+=`<p class="note" style="margin-top:14px">Buy on Bandcamp or iTunes, download, drop the file in your music folder, then
       <b style="color:var(--ink)">Index the drive</b> in the gear. The index finding it is what bought means; the next sync copies it across.</p>`;
     el.innerHTML=h;
-    el.querySelectorAll('[data-bought]').forEach(b=>b.onclick=()=>decide({bought:true},[b.dataset.bought]));
     el.querySelectorAll('[data-card]').forEach(m=>m.onclick=e=>{e.stopPropagation();
       const t=BYKEY.get(m.dataset.card); if(t)openMenu(m,'track',t);});
     el.querySelectorAll('[data-look]').forEach(x=>x.onclick=async()=>{
@@ -3119,14 +3133,18 @@ function drawRight(){
   } else {
     // Vinyl runs in one direction: flagged here -> wanted on Discogs -> owned.
     // The pane shows the three stages, and the first one is the to-do.
-    const by={};
-    ALL.filter(t=>t.vinyl).forEach(t=>{const k=t.artist+' — '+(t.album||'(unknown release)');
-      (by[k]=by[k]||{name:k,key:vkey(t)||('?'+k),tracks:[]}).tracks.push(t);});
-    const flagged=Object.values(by).sort((a,b)=>a.name.localeCompare(b.name));
-    const fkeys=new Set(flagged.map(f=>f.key));
-    const toAdd=flagged.filter(f=>!OWN.has(f.key)&&!WANT.has(f.key));
-    const W=(DISCOGS.wantlist||[]).slice().sort((a,b)=>(b.added||'').localeCompare(a.added||''));
-    const C=(DISCOGS.collection||[]).slice().sort((a,b)=>norm(a.artist).localeCompare(norm(b.artist))||a.title.localeCompare(b.title));
+    // Which releases are still to add is a server list ('vinyl to add',
+    // debt D9), the card's heading is the row's release_label, and both
+    // Discogs lists arrive in display order. Rows are grouped here by that
+    // label only to draw one card per release.
+    const group=rows=>{const by=new Map();
+      rows.forEach(t=>{const k=t.release_label;
+        if(!by.has(k))by.set(k,{name:k,key:t.release_key,tracks:[]}); by.get(k).tracks.push(t);});
+      return VINYL_ORDER.filter(k=>by.has(k)).map(k=>by.get(k));};   // the server's order
+    const flagged=group(ALL.filter(t=>t.vinyl));
+    const fkeys=new Set(flagged.map(f=>f.key).filter(Boolean));
+    const toAdd=group(ALL.filter(t=>(t.lists||[]).includes('vinyl to add')));
+    const W=DISCOGS.wantlist||[], C=DISCOGS.collection||[];
     $('#rstat').innerHTML=`<s>${toAdd.length}</s> to add · <s>${W.length}</s> wanted · <s>${C.length}</s> owned`;
     const rel=x=>`<div class="card" role="listitem"><b>${esc(x.artist)} — ${esc(x.title)}</b>
         <div class="sub">${[x.label,x.format,x.year!=='0'&&x.year].filter(Boolean).map(esc).join(' · ')}</div>
@@ -3203,6 +3221,8 @@ async function decide(patch,keys,advance){
     .filter(Boolean);
   const r=await post('/api/decide',{keys:ks,...(newborn.length?{adopt:newborn}:{}),...patch});
   if(!r.ok){toast('NOT SAVED — check the terminal');return;}
+  // the decision's own event carries this rev; the load below covers it
+  if(r.rev)REVSEEN=Math.max(REVSEEN,r.rev);
   saved();
   announce('Decision saved.');
   // On an unfiltered list the row stays put, so step on; on a filtered list the
@@ -3216,8 +3236,9 @@ async function decide(patch,keys,advance){
 function srcFor(t){
   // A real file beats a 30s preview every time. Tracks already on the device
   // have no iTunes match at all, so this is the only way to hear them.
-  if(t.audio) return {url:'/api/audio?key='+encodeURIComponent(t.key), full:true};
-  if(t.preview) return {url:t.preview, full:false};
+  // which one is the server's answer (`play`, curate.row_play)
+  if(t.play==='file') return {url:'/api/audio?key='+encodeURIComponent(t.key), full:true};
+  if(t.play==='preview') return {url:t.preview, full:false};
   return null;
 }
 let playRow=null;
@@ -3287,15 +3308,20 @@ function openSettings(){
           Music.app has no creation date for a playlist, so the dates are derived: the earliest and
           latest a track in it was added. The list is ordered by the latest, which is when you last
           worked on it.</div>
-        <div class="acts"><button id="doAM">Read Apple Music</button></div>
+        <div class="acts"><button id="doAM">Read Apple Music</button>
+          <button id="doAMPlays">Read its play counts</button></div>
         <div class="month">the drive</div>
         <div class="fact">${HEALTH&&HEALTH.index?`<b>${HEALTH.index.tracks}</b> files indexed, ${HEALTH.index.built}`:'<span class="warn">never indexed</span>'} &middot;
           ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' &middot; ')||'no source configured'}.
           Walks the folders in <code>library_roots</code> and remembers every audio file. Run it after you buy something.</div>
         <div class="acts"><button id="doIndex">Index the drive</button></div>
+        <div class="fact">Name a music folder and it is walked into the index now, and every index after.</div>
+        <div class="acts"><input type="text" id="srcpath" class="gl-field" placeholder="/path/to/your/music"
+          aria-label="music folder" spellcheck="false" autocomplete="off">
+          <button id="doSource">Add the folder</button></div>
         <div class="month">the iPod</div>
-        <div class="fact"><b>${ALL.filter(t=>t.device).length}</b> tracks on the device &middot;
-          ${ALL.filter(t=>t.device&&t.tier==='remove').length} marked to remove &middot;
+        <div class="fact"><b>${TOTALS.on_ipod||0}</b> tracks on the device &middot;
+          ${TOTALS.to_remove||0} marked to remove &middot;
           ${ALL.filter(t=>t.lossless).length} with a lossless original</div>
         <div class="acts"><button id="doDevice">Re-read the device</button></div>
       </div>
@@ -3321,10 +3347,15 @@ function openSettings(){
           <div class="log" id="joblog"></div></div>
       </div>
     </div>`;
-  $('#doDevice').onclick=async()=>{const r=await post('/api/action',{action:'device'});await load();toast(r.ok?'device re-read':'failed');};
+  $('#doDevice').onclick=rereadDevice;
   $('#doRebuild').onclick=async()=>{await post('/api/action',{action:'rebuild'});await load();toast('state rebuilt');};
   $('#doAM').onclick=()=>startJob({action:'am_index'});
+  $('#doAMPlays').onclick=()=>startJob({action:'am_plays'});
   $('#doIndex').onclick=()=>startJob({action:'index'});
+  // the server checks the folder (config.check_root) and runs `saltpod
+  // sources add` as a job; a typo comes back as a toast before any job
+  $('#doSource').onclick=()=>startJob({action:'source',folder:$('#srcpath').value});
+  $('#srcpath').onkeydown=e=>{e.stopPropagation(); if(e.key==='Enter')$('#doSource').click(); else if(e.key==='Escape')e.target.blur();};
   $('#doMatch').onclick=()=>startJob({action:'match',slugs:[$('#slug').value]});
   $('#doVerify').onclick=()=>startJob({action:'verify',slugs:[$('#slug').value]});
   $('#loadMusic').onclick=async()=>{
@@ -3343,6 +3374,15 @@ function openSettings(){
     $('#mrows').querySelectorAll('[data-imp]').forEach(b=>b.onclick=()=>startJob({action:'export',names:[b.dataset.imp]}));
   };
   paintJob(lastJob);
+}
+// The server says which was read (curate.reread_device): the iPod, or with it
+// away the newest backup, named. With neither it refuses with a sentence.
+const REREAD_SAID={device:'device re-read', backup:'no iPod — read the newest backup'};
+async function rereadDevice(){
+  const r=await post('/api/action',{action:'device'});
+  if(!r||!r.ok) return toast((r&&r.error)||'could not read the device');
+  await load();
+  toast(REREAD_SAID[r.read]+(r.from?' ('+r.from+')':''));
 }
 function closeSettings(){$('#rsheet').classList.remove('on');}
 // the gear opens Data, and closes it again: one control, both directions
@@ -3609,7 +3649,7 @@ async function sendArt(file){
                         +'&path='+encodeURIComponent(TP.path||''),
                         {method:'POST', body:buf}).then(x=>x.json()).catch(()=>null);
   if(!r || !r.ok) return toast((r&&r.error) || 'could not save the cover');
-  toast('cover saved — in the file on the next writer, on the iPod after ArtworkDB');
+  toast('cover saved — ' + (r.note || 'saltpod only'));
   TP.data.art = r.art + '&t=' + Date.now();
   paintTrack();
   await load();
@@ -3719,6 +3759,19 @@ function buildSyncRows(){
             : t.on  ? 'on the iPod' : 'copied across'}));
     });
   }
+  // SMART PLAYLISTS, refreshed from their rules after the playlists. The
+  // rows, the summary line and the Sound Check line are the server's
+  // (apply.smart_rows / smart_line / soundcheck_line), drawn as sent.
+  const sm=p.smart||[];
+  if(sm.length){
+    R.push({sec:'smart playlists', n:sm.length, ids:sm.map(x=>'s:'+x.name)});
+    sm.forEach(x=>R.push({id:'s:'+x.name, name:x.name, art:null, tilde:true,
+      meta:'refresh \u00b7 '+x.now+' \u2192 '+x.would}));
+  }
+  if(p.smart_line||p.soundcheck_line){
+    if(!sm.length) R.push({sec:'smart playlists', n:0, ids:[]});
+    [p.smart_line,p.soundcheck_line].filter(Boolean).forEach(t=>R.push({info:t}));
+  }
   R.push({edge:'committed from here'});
   R.push({id:'write',  infra:true, name:'write the database'});
   R.push({id:'verify', infra:true, name:'verify on the device'});
@@ -3733,6 +3786,7 @@ function spCounts(){
           rems:inc.filter(r=>r.id[0]==='r').length,
           pls: inc.filter(r=>r.id[0]==='p').length,
           tags:inc.filter(r=>r.id[0]==='m').length,
+          smart:inc.filter(r=>r.id[0]==='s').length,
           bytes:inc.reduce((a,r)=>a+(r.bytes||0),0)};
 }
 
@@ -3748,6 +3802,7 @@ function paintSync(){
   if(c.adds) bits.push('<b>'+c.adds+'</b> copied across');
   if(c.pls)  bits.push('<b>'+c.pls+'</b> playlist'+(c.pls>1?'s':''));
   if(c.tags) bits.push('<b>'+c.tags+'</b> retagged');
+  if(c.smart) bits.push('<b>'+c.smart+'</b> smart list'+(c.smart>1?'s':'')+' refreshed');
   const same=(p.unchanged||[]).length;
   let sum = bits.length ? bits.join(' \u00b7 ') : 'Nothing selected';
   if(!run){
@@ -3774,6 +3829,7 @@ function paintSync(){
   // character, so no separator is safe to pack a list into an attribute with.
   h += SP.rows.map((r,ri)=>{
     if(r.edge) return gauge+'<div class="month edge">'+esc(r.edge)+'</div>';
+    if(r.info) return '<div class="fact">'+esc(r.info)+'</div>';
     if(r.sec){
       // The count follows the ticks. A header still reading 7 over five
       // ticked rows is the sort of small lie that makes you re-count.
@@ -3835,7 +3891,7 @@ function paintSyncFoot(fits){
   const close=()=>{btn.innerHTML='<button id="spdone">Close</button>';
     const d=$('#spdone'); if(d)d.onclick=closeSync;};
   if(SP.state==='blocked'){ note.textContent=''; close(); return; }
-  const c=spCounts(), n=c.adds+c.rems+c.pls+(c.tags||0);
+  const c=spCounts(), n=c.adds+c.rems+c.pls+(c.tags||0)+(c.smart||0);
   if(SP.state==='review'){
     // The button names the consequence rather than the verb. "Sync" tells you
     // nothing about the seven files it is about to delete.
@@ -3898,9 +3954,9 @@ async function runSync(){
   SP.state='running'; SP.log=[];
   $('#spt').textContent='Syncing';
   paintSync();
-  const ex={tracks:[],playlists:[]};
+  const ex={tracks:[],playlists:[],smart:[]};
   SP.off.forEach(id=>{ const v=id.slice(2);
-    if(id[0]==='p')ex.playlists.push(v); else ex.tracks.push(v); });
+    if(id[0]==='p')ex.playlists.push(v); else if(id[0]==='s')ex.smart.push(v); else ex.tracks.push(v); });
   const r=await post('/api/action',{action:'sync',exclude:ex});
   if(!r.ok||!r.job){ SP.state='error'; SP.log=[r.error||'could not start the sync'];
     $('#spt').textContent='Sync stopped'; paintSync(); return; }
@@ -3919,22 +3975,25 @@ async function runSync(){
     SP.rows.forEach(r2=>{ if(r2.id&&!r2.state&&!SP.off.has(r2.id))
       r2.state = j.state==='done' ? 'done' : 'todo'; });
     paintSync();
-    $('#spnote').textContent = j.state==='done'
+    // `say` is the server's last word on the run -- after a failed check,
+    // "the iPod is as it was" -- shown as sent, never composed here.
+    $('#spnote').textContent = j.say || (j.state==='done'
       ? 'the iPod has been ejected — safe to unplug'
-      : 'stopped before finishing — the pre-write backup is intact';
+      : 'stopped before finishing — the pre-write backup is intact');
+    if(j.say) toast(j.say);
     await load(); pollHealth();
   };
   tick();
 }
 function readSyncLog(j){
+  // Each row's state is the job's (`steps`, complete -- debt D10); the page
+  // no longer parses `@@` lines out of a 60-line window.
   const byId={}; SP.rows.forEach(r=>{ if(r.id)byId[r.id]=r; });
-  const prose=[];
-  for(const ln of (j.log||[])){
-    const m=ln.match(/^@@ (\S+) (doing|done|error)(?: (.*))?$/);
-    if(m){ const r=byId[m[1]]; if(r){ r.state=m[2]; if(m[3])r.err=m[3]; } continue; }
-    if(!ln.startsWith('## ')&&ln.trim())prose.push(ln);
+  for(const s of (j.steps||[])){
+    const r=byId[s.id]; if(!r||s.state==='waiting')continue;
+    r.state=s.state; if(s.error)r.err=s.error;
   }
-  SP.log=prose;
+  SP.log=(j.log||[]).filter(ln=>ln.trim()&&!ln.startsWith('## ')&&!ln.startsWith('@@ '));
 }
 
 /* ---------------- the three-dot menu ----------------
@@ -3947,6 +4006,9 @@ let MENU=null;
 function menuRow(label,key,tick,cls){
   return `<div class="drow ${cls||''}"><span class="dn">${label}</span>${tick?'<span class="dc">&#10003;</span>':''}${key?`<span class="dk">${key}</span>`:''}</div>`;
 }
+// law 8's words, keyed by the server's decision verb: [not yet, already]
+const DECISION_WORDS={remove:['Remove from iPod',"Don't remove"],
+                      sync:['Sync to iPod',"Don't sync"], buy:['Buy',"Don't buy"]};
 function openMenu(anchor,kind,payload){
   MENU={kind,payload,anchor};
   anchor.setAttribute('aria-expanded','true');
@@ -4151,18 +4213,17 @@ function paintMenu(){
   // sync" and "remove" are not the same outcome: sync leaves a track it was
   // never told about exactly where it is, so taking something OFF the
   // device needs its own word.
-  const everyIs = v => !many ? t.tier===v : markedKeys().every(k=>(BYKEY.get(k)||{}).tier===v);
-  const onPod = everyIs('sync'), offPod = everyIs('remove');
-  // Being in a playlist IS the decision, so a track in one cannot be undecided:
-  // the server would put it straight back to `sync` and the row would look
-  // broken. Take it out of the playlist first; that is the row above.
-  const anyCol = many ? markedKeys().some(k=>((BYKEY.get(k)||{}).collections||[]).length>0)
-                      : (t.collections||[]).length > 0;
-  // Marking a track you do not own is not "sync" in any sense you can act on
-  // today -- it is a purchase decision, and the buy list is where it lands.
-  // Say so, rather than making you infer it from the absence of a file.
-  const held  = many ? markedKeys().every(k=>!!(BYKEY.get(k)||{}).held) : !!t.held;
-  const onDev = many ? markedKeys().some(k=>(BYKEY.get(k)||{}).device) : !!t.device;
+  // WHICH decision row, whether it is already made, and the tier a click
+  // sets are the SERVER's answer (curate.decision_of, debt D2): the row's
+  // own `decision` for one track, /api/decision for a selection, asked once
+  // per menu and painted when it lands. Nothing here combines rows.
+  let dec = many ? MENU.dec : t.decision;
+  if(many && MENU.dec===undefined){
+    MENU.dec=null; const was=MENU;
+    fetch('/api/decision?'+markedKeys().map(k=>'key='+encodeURIComponent(k)).join('&'))
+      .then(r=>r.json()).then(d=>{ if(MENU===was){ MENU.dec=(d&&d.ok)?d:null; if(d&&d.ok)paintMenu(); } })
+      .catch(()=>{});
+  }
   const vinylOn = many ? markedKeys().every(k=>(BYKEY.get(k)||{}).vinyl) : !!t.vinyl;
   // OWNING THE RECORD ENDS THE QUESTION. There is nothing to want and
   // nothing to unwant, so the row stops being a control and becomes what it
@@ -4177,22 +4238,22 @@ function paintMenu(){
   // and "Don't sync" on a track nobody has synced is a control for undoing
   // something that has not happened.
   //
-  //   on the iPod        Remove from iPod  /  Don't remove
-  //   owned, not on it   Sync to iPod      /  Don't sync
-  //   not owned          Buy               /  Don't buy
+  //   on the iPod        Remove from iPod  /  Don't remove     verb remove
+  //   owned, not on it   Sync to iPod      /  Don't sync       verb sync
+  //   not owned          Buy               /  Don't buy        verb buy
   //
   // Verb / don't-verb, and the undo drops the object because the row it is
-  // undoing already said it: "Sync to iPod" becomes "Don't sync".
-  const yesKey   = onDev ? 'x' : 's';
-  const yesCls   = onDev ? 'm-skip' : 'm-want';
-  const yesLabel = onDev ? (offPod ? "Don't remove" : 'Remove from iPod')
-                 : held  ? (onPod  ? "Don't sync"   : 'Sync to iPod')
-                         : (onPod  ? "Don't buy"    : 'Buy');
+  // undoing already said it: "Sync to iPod" becomes "Don't sync". The words
+  // are this table's; which row and which way round is `dec`.
+  const remove = !!dec && dec.verb==='remove';
+  const yesKey   = remove ? 'x' : 's';
+  const yesCls   = !dec ? 'inert' : (remove ? 'm-skip' : 'm-want');
+  const yesLabel = dec ? DECISION_WORDS[dec.verb][dec.on?1:0] : '\u2026';
 
   // The digital half of the same idea: once a file exists on your own drive
   // there is nothing to buy, and the row that would have said Buy says what
   // is true instead.
-  const digitalOnly = !onDev && held;
+  const digitalOnly = !!dec && dec.digital_only;
   b.innerHTML=menuRow(yesLabel,yesKey,false,yesCls)
     +(digitalOnly?menuRow('Owned digitally','',false,'inert'):'')
     +'<div class="sep"></div>'
@@ -4212,8 +4273,9 @@ function paintMenu(){
   on('m-add',()=>{MENU.kind='pick';paintMenu();});
   const KS = many ? markedKeys() : [t.key];
   on('m-out',()=>{closeMenu();decide({collection:colPick,mode:'remove'},KS);});
-  on('m-want',()=>{closeMenu();decide({tier:onPod&&!anyCol?'undecided':'sync'},KS);});
-  on('m-skip',()=>{closeMenu(); offPod?decide({tier:'undecided'},KS):deleteFromIpod(t,KS);});
+  on('m-want',()=>{closeMenu();decide(dec.sets,KS);});
+  // not yet marked: deleteFromIpod sets dec.sets on the rows actually on it
+  on('m-skip',()=>{closeMenu(); dec.on?decide(dec.sets,KS):deleteFromIpod(t,KS);});
   // A mixed selection turns vinyl ON -- the majority intent when you picked
   // a set and reached for a flag. Everything already flagged stays flagged.
   on('m-vinyl',()=>{closeMenu();decide({vinyl:!vinylOn},KS);});
@@ -4401,8 +4463,16 @@ const FILTER_TOTAL={'to buy':'to_buy','to sync':'to_sync','needs a drive':'needs
 const qi=$('#q');
 qi.oninput=e=>{q=e.target.value.toLowerCase().trim();sel=0;drawMid();drawFoot();paintPlaying();};
 qi.onkeydown=e=>{e.stopPropagation(); if(e.key==='Escape'){q='';qi.value='';qi.blur();draw();} if(e.key==='Enter')qi.blur();};
+// Esc on a prompt is its Cancel: closes it, changes nothing. A prompt whose
+// field is hidden ("Unsaved changes", "Discard the staged changes") has no
+// focused input to catch the key, so the document has to.
+function dlgKey(e){
+  if(!dlg.classList.contains('on')) return false;
+  if(e.key==='Escape'){ e.preventDefault(); closeDlg(); }
+  return true;
+}
 document.addEventListener('keydown',e=>{
-  if(dlg.classList.contains('on'))return;
+  if(dlgKey(e))return;
   if($('#rsheet').classList.contains('on')){ if(e.key==='Escape')closeSettings(); return; }
   // With the panel up, the list behind it is not what the keyboard is for.
   // UNDO IS GLOBAL AND MUST SURVIVE THE PANELS. Putting these guards above
@@ -4476,6 +4546,8 @@ document.addEventListener('keydown',e=>{
 function paintHealth(){
   const el=$('#hstrip'), h=HEALTH; if(!el)return;
   if(!h){el.innerHTML='';return;}
+  // the one-line summary is the server's (health.headline, debt D12)
+  el.title = h.headline ? h.headline.text : '';
   const dot=(cls,label,word)=>`<i class="${cls}" title="${esc(label)}${word?' — '+esc(word):''}">${esc(label)}${word?` <span class="w">${esc(word)}</span>`:''}</i>`;
   const g=[];
   const ip={ready:['ok','iPod',''],waking:['warn','iPod','waking'],
@@ -4532,9 +4604,18 @@ async function pollHealth(){
     clearTimeout(t);
   }catch(e){ HEALTH={ipod:'absent',music:'closed',sources:[],tools:{ffmpeg:true,ffprobe:true}}; }
   paintHealth();
-  const pod=HEALTH.ipod;
-  if(pod==='ready'&&lastPod!==null&&lastPod!=='ready')preSync();
+  podChanged(HEALTH.ipod);
+}
+// THE BLOCKED PANEL WAITS FOR THE IPOD, it does not ask you to Close and Sync
+// again. When the poll sees the device arrive and Review sync is up showing
+// "plug it in", the panel re-plans itself in place; otherwise the page does
+// the ordinary pre-sync read.
+function podChanged(pod){
+  const arrived = pod==='ready' && lastPod!==null && lastPod!=='ready';
   lastPod=pod;
+  if(!arrived) return;
+  if(SP.state==='blocked' && $('#sp').classList.contains('on')){ load(); openSync(); return; }
+  preSync();
 }
 pollHealth(); setInterval(pollHealth,4000);
 
@@ -4554,7 +4635,10 @@ function liveConnect(){
   ES.onmessage=async ev=>{
     let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
     if(m.type==='reload'){ toast('page changed — reloading'); setTimeout(()=>location.reload(),150); return; }
-    if(m.type==='data'){ await load(); toast(m.why?`updated — ${m.why}`:'updated'); return; }
+    // `rev` (D11): an event this page's data already includes -- its own
+    // decision, answered before the event arrived -- is not news
+    if(m.type==='data'){ if(m.rev&&m.rev<=REVSEEN)return;
+      await load(); toast(m.why?`updated — ${m.why}`:'updated'); return; }
     if(m.type==='job'&&m.state&&m.state!=='running') toast(`${m.name} — ${m.state}`);
   };
   ES.onerror=()=>{};                     // EventSource retries by itself

@@ -1,0 +1,127 @@
+{
+ "built": "2026-01-02 09:00",
+ "folder": "__all__",
+ "folders": [
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Bought"
+  },
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Dune Society"
+  },
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Loose"
+  },
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Music"
+  }
+ ],
+ "reach": {
+  "reachable": 3,
+  "tracks": 4
+ },
+ "rev": 1791789447118,
+ "root": "Music",
+ "total": 4,
+ "tracks": [
+  {
+   "album": null,
+   "artist": "",
+   "decision": {
+    "digital_only": true,
+    "on": false,
+    "sets": {
+     "tier": "sync"
+    },
+    "verb": "sync"
+   },
+   "ext": ".wav",
+   "file": "03 - Juniper Hill - Slow Burn.wav",
+   "key": "|03-juniper-hill-slow-burn",
+   "lossless": true,
+   "path": "/fixture/f/library/Music/Loose/Demos/03 - Juniper Hill - Slow Burn.wav",
+   "play": null,
+   "secs": 2.0,
+   "state": "ready",
+   "sub": "Demos",
+   "title": "03 - Juniper Hill - Slow Burn",
+   "untagged": true
+  },
+  {
+   "album": "Field Notes (Deluxe)",
+   "artist": "Alder Quartet",
+   "decision": {
+    "digital_only": true,
+    "on": false,
+    "sets": {
+     "tier": "sync"
+    },
+    "verb": "sync"
+   },
+   "ext": ".wav",
+   "file": "Alder Quartet - Morning Field.wav",
+   "key": "alder-quartet|morning-field",
+   "lossless": true,
+   "path": "/fixture/f/library/Music/Bought/Alder Quartet - Morning Field.wav",
+   "play": null,
+   "secs": 2.0,
+   "state": "ready",
+   "sub": null,
+   "title": "Morning Field",
+   "untagged": false
+  },
+  {
+   "album": "Shoreline",
+   "artist": "Dune Society",
+   "decision": {
+    "digital_only": true,
+    "on": false,
+    "sets": {
+     "tier": "sync"
+    },
+    "verb": "sync"
+   },
+   "ext": ".wav",
+   "file": "Low Tide.wav",
+   "key": "dune-society|low-tide",
+   "lossless": true,
+   "path": "/fixture/f/library/Music/Dune Society/Low Tide.wav",
+   "play": null,
+   "secs": 2.0,
+   "state": "ready",
+   "sub": null,
+   "title": "Low Tide",
+   "untagged": false
+  },
+  {
+   "album": "Far Room",
+   "artist": "Elm Street Trio",
+   "decision": {
+    "digital_only": true,
+    "on": false,
+    "sets": {
+     "tier": "sync"
+    },
+    "verb": "sync"
+   },
+   "ext": ".flac",
+   "file": "Elm Street Trio - Far Room.flac",
+   "key": "elm-street-trio|far-room",
+   "lossless": true,
+   "path": "/fixture/f/unplugged/Music/Elm Street Trio - Far Room.flac",
+   "play": null,
+   "secs": 300.0,
+   "state": "offline",
+   "sub": null,
+   "title": "Far Room",
+   "untagged": false
+  }
+ ]
+}

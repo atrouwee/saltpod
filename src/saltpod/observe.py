@@ -104,7 +104,11 @@ import traceback
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 LOGS = os.path.join(ROOT, 'data', 'logs')
 EVENTS = os.path.join(LOGS, 'events.jsonl')
 

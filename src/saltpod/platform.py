@@ -60,7 +60,11 @@ _FF_ENV = {**os.environ,
                             or '/Library/Developer/CommandLineTools'}
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.dirname(os.path.dirname(_HERE))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+_ROOT = DATA_ROOT                # data/local/ -- SALTPOD_HOME when set
 _INDEX = os.path.join(_ROOT, 'data', 'local', 'index.json')
 _ART_DIR = os.path.join(_ROOT, 'data', 'local', 'art')
 

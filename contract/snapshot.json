@@ -1,0 +1,2941 @@
+{
+ "_about": "written by bin/contract.py --write from fixtures/seed.json; shapes, never values",
+ "_check": {
+  "observed_enums": {
+   "decision.verb": [
+    "buy",
+    "remove",
+    "sync"
+   ],
+   "event.type": [
+    "data",
+    "job"
+   ],
+   "health.headline.level": [
+    "missed",
+    "ok"
+   ],
+   "health.ipod": [
+    "absent",
+    "ready"
+   ],
+   "health.music": [
+    "closed"
+   ],
+   "job.state": [
+    "done",
+    "gone"
+   ],
+   "lists": [
+    "FLAC to buy",
+    "needs a drive",
+    "on T7",
+    "on iPod",
+    "on vinyl",
+    "owned digitally",
+    "rented only",
+    "synced",
+    "to buy",
+    "to remove",
+    "to sync"
+   ],
+   "tier": [
+    "remove",
+    "sync",
+    "undecided"
+   ],
+   "track.play": [
+    "file",
+    "preview",
+    null
+   ],
+   "track.play_from": [
+    "ipod",
+    "t7",
+    null
+   ],
+   "track.state": [
+    "offline",
+    "ready",
+    "unowned"
+   ]
+  },
+  "stale_hints": []
+ },
+ "enum_sources": {
+  "decision.verb": "curate.decision_of",
+  "event.type": "curate.push callers",
+  "health.headline.level": "curate.headline",
+  "health.ipod": "curate.health",
+  "health.music": "curate.health",
+  "job.state": "curate.Job, Handler /api/job",
+  "job.step.state": "curate.Job.step_line, Job.end_steps",
+  "track.play": "curate.row_play",
+  "track.play_from": "curate.tracks_payload",
+  "track.state": "curate.row_state"
+ },
+ "enums": {
+  "decision.verb": [
+   "buy",
+   "remove",
+   "sync"
+  ],
+  "event.type": [
+   "data",
+   "job",
+   "reload"
+  ],
+  "health.headline.level": [
+   "fault",
+   "missed",
+   "ok",
+   "warn"
+  ],
+  "health.ipod": [
+   "absent",
+   "ejected",
+   "ready",
+   "waking"
+  ],
+  "health.music": [
+   "closed",
+   "ok",
+   "wedged"
+  ],
+  "job.state": [
+   "done",
+   "error",
+   "gone",
+   "running"
+  ],
+  "job.step.state": [
+   "doing",
+   "done",
+   "error",
+   "todo",
+   "waiting"
+  ],
+  "lists": [
+   "to buy",
+   "to sync",
+   "to remove",
+   "needs a drive",
+   "on iPod",
+   "on T7",
+   "on vinyl",
+   "rented only",
+   "owned digitally",
+   "synced",
+   "FLAC to buy",
+   "not looked up",
+   "vinyl to add"
+  ],
+  "tier": [
+   "undecided",
+   "sync",
+   "remove"
+  ],
+  "track.play": [
+   "file",
+   "preview",
+   null
+  ],
+  "track.play_from": [
+   "ipod",
+   "t7",
+   null
+  ],
+  "track.state": [
+   "offline",
+   "ready",
+   "unowned"
+  ]
+ },
+ "events": {
+  "retry_ms": 2000,
+  "shapes": {
+   "data": {
+    "fields": {
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "type": {
+      "type": [
+       "string"
+      ]
+     },
+     "why": {
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "job": {
+    "fields": {
+     "id": {
+      "type": [
+       "string"
+      ]
+     },
+     "name": {
+      "type": [
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "state": {
+      "type": [
+       "string"
+      ]
+     },
+     "type": {
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   }
+  }
+ },
+ "fixtures": {
+  "get_decision--refused.json": "GET /api/decision",
+  "get_decision--selection.json": "GET /api/decision",
+  "get_device--unplugged.json": "GET /api/device",
+  "get_device.json": "GET /api/device",
+  "get_discogs.json": "GET /api/discogs",
+  "get_health--unplugged.json": "GET /api/health",
+  "get_health.json": "GET /api/health",
+  "get_history.json": "GET /api/history",
+  "get_job--finished.json": "GET /api/job",
+  "get_job--gone.json": "GET /api/job",
+  "get_library.json": "GET /api/library",
+  "get_local--all.json": "GET /api/local",
+  "get_local--folder.json": "GET /api/local",
+  "get_local--folders.json": "GET /api/local",
+  "get_looking.json": "GET /api/looking",
+  "get_plan--unplugged.json": "GET /api/plan",
+  "get_plan.json": "GET /api/plan",
+  "get_playlists.json": "GET /api/playlists",
+  "get_track--key.json": "GET /api/track",
+  "get_track--path.json": "GET /api/track",
+  "get_track--refused.json": "GET /api/track",
+  "get_tracks.json": "GET /api/tracks",
+  "get_undo--after-decide.json": "GET /api/undo",
+  "get_undo--after-undo.json": "GET /api/undo",
+  "get_undo--empty.json": "GET /api/undo",
+  "post_action--device-backup.json": "POST /api/action",
+  "post_action--device.json": "POST /api/action",
+  "post_action--index.json": "POST /api/action",
+  "post_action--source-refused.json": "POST /api/action",
+  "post_decide--refused.json": "POST /api/decide",
+  "post_decide--rename.json": "POST /api/decide",
+  "post_decide--reorder.json": "POST /api/decide",
+  "post_decide--tier.json": "POST /api/decide",
+  "post_decision--selection.json": "POST /api/decision",
+  "post_undo--undo.json": "POST /api/undo"
+ },
+ "not_recorded": {
+  "GET /api/music": "osascript into Music.app (the owner's), up to 180 s",
+  "GET /api/peek": "osascript into Music.app (the owner's), up to 180 s",
+  "POST /api/action am_plays": "Apple Music's library file in the owner's home",
+  "POST /api/action export|match|verify|am_index": "Music.app or the network",
+  "POST /api/action lookup": "the iTunes Search API",
+  "POST /api/action source": "a real folder is walked into the index as a job; the refusal is recorded (source-refused)",
+  "POST /api/action sync": "writes a device and ejects it",
+  "POST /api/art": "writes the cover cache from uploaded bytes",
+  "POST /api/discard": "not yet: needs a pending plan to discard",
+  "POST /api/recover": "copies a file off a device",
+  "POST /api/tags": "writes an audio file",
+  "POST /api/track": "not yet: a second spelling of GET /api/track"
+ },
+ "routes": {
+  "BIN /api/art": {
+   "content_type": [
+    "image/jpeg"
+   ],
+   "status": [
+    200
+   ],
+   "variants": [
+    "key",
+    "playlist"
+   ]
+  },
+  "BIN /api/audio": {
+   "content_type": [
+    "audio/wav"
+   ],
+   "status": [
+    200
+   ],
+   "variants": [
+    "key"
+   ]
+  },
+  "GET /api/decision": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "digital_only": {
+      "optional": true,
+      "type": [
+       "bool"
+      ]
+     },
+     "error": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "n": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "on": {
+      "optional": true,
+      "type": [
+       "bool"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "sets": {
+      "fields": {
+       "tier": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "verb": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "selection",
+    "refused"
+   ]
+  },
+  "GET /api/device": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "mounted": {
+      "type": [
+       "bool"
+      ]
+     },
+     "playlists": {
+      "items": {
+       "fields": {
+        "keys": {
+         "items": {
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "n": {
+         "type": [
+          "int"
+         ]
+        },
+        "name": {
+         "type": [
+          "string"
+         ]
+        },
+        "ours": {
+         "type": [
+          "bool"
+         ]
+        },
+        "smart": {
+         "type": [
+          "bool"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "source": {
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "",
+    "unplugged"
+   ]
+  },
+  "GET /api/discogs": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "collection": {
+      "items": {
+       "fields": {
+        "added": {
+         "type": [
+          "string"
+         ]
+        },
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "catno": {
+         "type": [
+          "string"
+         ]
+        },
+        "folder": {
+         "type": [
+          "string"
+         ]
+        },
+        "format": {
+         "type": [
+          "string"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "label": {
+         "type": [
+          "string"
+         ]
+        },
+        "media": {
+         "type": [
+          "string"
+         ]
+        },
+        "notes": {
+         "type": [
+          "string"
+         ]
+        },
+        "rating": {
+         "type": [
+          "string"
+         ]
+        },
+        "release_id": {
+         "type": [
+          "string"
+         ]
+        },
+        "sleeve": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        },
+        "year": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "dir": {
+      "type": [
+       "string"
+      ]
+     },
+     "files": {
+      "fields": {
+       "collection": {
+        "fields": {
+         "modified": {
+          "type": [
+           "string"
+          ]
+         },
+         "path": {
+          "type": [
+           "string"
+          ]
+         },
+         "rows": {
+          "type": [
+           "int"
+          ]
+         }
+        },
+        "type": [
+         "object"
+        ]
+       },
+       "wantlist": {
+        "fields": {
+         "modified": {
+          "type": [
+           "string"
+          ]
+         },
+         "path": {
+          "type": [
+           "string"
+          ]
+         },
+         "rows": {
+          "type": [
+           "int"
+          ]
+         }
+        },
+        "type": [
+         "object"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "wantlist": {
+      "items": {
+       "fields": {
+        "added": {
+         "type": [
+          "string"
+         ]
+        },
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "catno": {
+         "type": [
+          "string"
+         ]
+        },
+        "folder": {
+         "type": [
+          "string"
+         ]
+        },
+        "format": {
+         "type": [
+          "string"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "label": {
+         "type": [
+          "string"
+         ]
+        },
+        "media": {
+         "type": [
+          "string"
+         ]
+        },
+        "notes": {
+         "type": [
+          "string"
+         ]
+        },
+        "rating": {
+         "type": [
+          "string"
+         ]
+        },
+        "release_id": {
+         "type": [
+          "string"
+         ]
+        },
+        "sleeve": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        },
+        "year": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    ""
+   ]
+  },
+  "GET /api/health": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "config": {
+      "hinted": true,
+      "type": [
+       "null",
+       "string"
+      ]
+     },
+     "ejected_at": {
+      "hinted": true,
+      "type": [
+       "null",
+       "string"
+      ]
+     },
+     "free": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "headline": {
+      "fields": {
+       "level": {
+        "type": [
+         "string"
+        ]
+       },
+       "text": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "index": {
+      "fields": {
+       "built": {
+        "type": [
+         "string"
+        ]
+       },
+       "tracks": {
+        "type": [
+         "int"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "ipod": {
+      "type": [
+       "string"
+      ]
+     },
+     "job": {
+      "fields": {
+       "done": {
+        "type": [
+         "int"
+        ]
+       },
+       "id": {
+        "type": [
+         "string"
+        ]
+       },
+       "name": {
+        "type": [
+         "string"
+        ]
+       },
+       "seconds": {
+        "type": [
+         "int"
+        ]
+       },
+       "state": {
+        "type": [
+         "string"
+        ]
+       },
+       "total": {
+        "type": [
+         "int"
+        ]
+       }
+      },
+      "hinted": true,
+      "type": [
+       "null",
+       "object"
+      ]
+     },
+     "music": {
+      "type": [
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "size": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "sources": {
+      "items": {
+       "fields": {
+        "name": {
+         "type": [
+          "string"
+         ]
+        },
+        "online": {
+         "type": [
+          "bool"
+         ]
+        },
+        "path": {
+         "type": [
+          "string"
+         ]
+        },
+        "volume": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "tools": {
+      "fields": {
+       "ffmpeg": {
+        "type": [
+         "bool"
+        ]
+       },
+       "ffprobe": {
+        "type": [
+         "bool"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "volumes": {
+      "items": {
+       "fields": {
+        "name": {
+         "type": [
+          "string"
+         ]
+        },
+        "online": {
+         "type": [
+          "bool"
+         ]
+        },
+        "path": {
+         "type": [
+          "string"
+         ]
+        },
+        "removable": {
+         "type": [
+          "bool"
+         ]
+        },
+        "sources": {
+         "type": [
+          "int"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "wedged_at": {
+      "hinted": true,
+      "type": [
+       "null",
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "",
+    "unplugged"
+   ]
+  },
+  "GET /api/history": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "runs": {
+      "items": {
+       "fields": {
+        "id": {
+         "type": [
+          "string"
+         ]
+        },
+        "log": {
+         "type": [
+          "string"
+         ]
+        },
+        "name": {
+         "type": [
+          "string"
+         ]
+        },
+        "seconds": {
+         "type": [
+          "int"
+         ]
+        },
+        "started": {
+         "type": [
+          "string"
+         ]
+        },
+        "state": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    ""
+   ]
+  },
+  "GET /api/job": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "id": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "log": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "name": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "say": {
+      "hinted": true,
+      "optional": true,
+      "type": [
+       "null",
+       "string"
+      ]
+     },
+     "seconds": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "state": {
+      "type": [
+       "string"
+      ]
+     },
+     "steps": {
+      "items": {
+       "fields": {
+        "error": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "id": {
+         "type": [
+          "string"
+         ]
+        },
+        "state": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "hinted": true,
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "gone",
+    "finished"
+   ]
+  },
+  "GET /api/library": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "tracks": {
+      "items": {
+       "fields": {
+        "album": {
+         "type": [
+          "string"
+         ]
+        },
+        "am_owned": {
+         "type": [
+          "bool"
+         ]
+        },
+        "am_status": {
+         "hinted": true,
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "cloud": {
+         "type": [
+          "string"
+         ]
+        },
+        "decision": {
+         "fields": {
+          "digital_only": {
+           "type": [
+            "bool"
+           ]
+          },
+          "on": {
+           "type": [
+            "bool"
+           ]
+          },
+          "sets": {
+           "fields": {
+            "tier": {
+             "type": [
+              "string"
+             ]
+            }
+           },
+           "type": [
+            "object"
+           ]
+          },
+          "verb": {
+           "type": [
+            "string"
+           ]
+          }
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "play": {
+         "hinted": true,
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "secs": {
+         "type": [
+          "int"
+         ]
+        },
+        "state": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    ""
+   ]
+  },
+  "GET /api/local": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "built": {
+      "type": [
+       "string"
+      ]
+     },
+     "folder": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "folders": {
+      "items": {
+       "fields": {
+        "lossless": {
+         "type": [
+          "int"
+         ]
+        },
+        "n": {
+         "type": [
+          "int"
+         ]
+        },
+        "name": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "reach": {
+      "fields": {
+       "reachable": {
+        "type": [
+         "int"
+        ]
+       },
+       "tracks": {
+        "type": [
+         "int"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "root": {
+      "type": [
+       "string"
+      ]
+     },
+     "total": {
+      "type": [
+       "int"
+      ]
+     },
+     "tracks": {
+      "items": {
+       "fields": {
+        "album": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "decision": {
+         "fields": {
+          "digital_only": {
+           "type": [
+            "bool"
+           ]
+          },
+          "on": {
+           "type": [
+            "bool"
+           ]
+          },
+          "sets": {
+           "fields": {
+            "tier": {
+             "type": [
+              "string"
+             ]
+            }
+           },
+           "type": [
+            "object"
+           ]
+          },
+          "verb": {
+           "type": [
+            "string"
+           ]
+          }
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "ext": {
+         "type": [
+          "string"
+         ]
+        },
+        "file": {
+         "type": [
+          "string"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "lossless": {
+         "type": [
+          "bool"
+         ]
+        },
+        "path": {
+         "type": [
+          "string"
+         ]
+        },
+        "play": {
+         "hinted": true,
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "secs": {
+         "type": [
+          "float"
+         ]
+        },
+        "state": {
+         "type": [
+          "string"
+         ]
+        },
+        "sub": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        },
+        "untagged": {
+         "type": [
+          "bool"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "folders",
+    "folder",
+    "all"
+   ]
+  },
+  "GET /api/looking": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "keys": {
+      "items": {
+       "hinted": true,
+       "type": [
+        "string"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    ""
+   ]
+  },
+  "GET /api/plan": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "add_bytes": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "adds": {
+      "items": {
+       "fields": {
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "bytes": {
+         "type": [
+          "int"
+         ]
+        },
+        "convert": {
+         "type": [
+          "bool"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "delete": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "free_bytes": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "members": {
+      "optional": true,
+      "type": [
+       "map"
+      ],
+      "values": {
+       "items": {
+        "fields": {
+         "artist": {
+          "type": [
+           "string"
+          ]
+         },
+         "key": {
+          "type": [
+           "string"
+          ]
+         },
+         "off": {
+          "type": [
+           "bool"
+          ]
+         },
+         "on": {
+          "type": [
+           "bool"
+          ]
+         },
+         "title": {
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      }
+     },
+     "mount": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "new": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "no_source": {
+      "items": {
+       "fields": {
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "podcasts": {
+      "fields": {
+       "changed": {
+        "type": [
+         "bool"
+        ]
+       },
+       "file": {
+        "type": [
+         "int"
+        ]
+       },
+       "named": {
+        "type": [
+         "bool"
+        ]
+       },
+       "reorder": {
+        "type": [
+         "bool"
+        ]
+       },
+       "unfile": {
+        "type": [
+         "int"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "reason": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "removes": {
+      "items": {
+       "fields": {
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "retags": {
+      "items": {
+       "fields": {
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "fields": {
+         "fields": {
+          "album": {
+           "type": [
+            "string"
+           ]
+          },
+          "artist": {
+           "type": [
+            "string"
+           ]
+          },
+          "title": {
+           "type": [
+            "string"
+           ]
+          }
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        },
+        "winner": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "sizes": {
+      "optional": true,
+      "type": [
+       "map"
+      ],
+      "values": {
+       "type": [
+        "int"
+       ]
+      }
+     },
+     "smart": {
+      "items": {
+       "fields": {
+        "name": {
+         "type": [
+          "string"
+         ]
+        },
+        "now": {
+         "type": [
+          "int"
+         ]
+        },
+        "would": {
+         "type": [
+          "int"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "smart_line": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "soundcheck_line": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "unchanged": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "update": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "",
+    "unplugged"
+   ]
+  },
+  "GET /api/playlists": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "library": {
+      "type": [
+       "int"
+      ]
+     },
+     "playlists": {
+      "items": {
+       "fields": {
+        "art": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "created": {
+         "type": [
+          "string"
+         ]
+        },
+        "imported": {
+         "type": [
+          "bool"
+         ]
+        },
+        "last": {
+         "type": [
+          "string"
+         ]
+        },
+        "name": {
+         "type": [
+          "string"
+         ]
+        },
+        "slug": {
+         "type": [
+          "string"
+         ]
+        },
+        "tracks": {
+         "type": [
+          "int"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "read_at": {
+      "type": [
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    ""
+   ]
+  },
+  "GET /api/track": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "art": {
+      "optional": true,
+      "type": [
+       "null",
+       "string"
+      ]
+     },
+     "artist": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "device": {
+      "fields": {
+       "artist": {
+        "type": [
+         "string"
+        ]
+       },
+       "on": {
+        "type": [
+         "bool"
+        ]
+       },
+       "title": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "error": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "fields": {
+      "fields": {
+       "album": {
+        "type": [
+         "string"
+        ]
+       },
+       "album_artist": {
+        "type": [
+         "string"
+        ]
+       },
+       "artist": {
+        "type": [
+         "string"
+        ]
+       },
+       "genre": {
+        "type": [
+         "string"
+        ]
+       },
+       "title": {
+        "type": [
+         "string"
+        ]
+       },
+       "track": {
+        "type": [
+         "string"
+        ]
+       },
+       "year": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "file": {
+      "fields": {
+       "codec": {
+        "type": [
+         "string"
+        ]
+       },
+       "ext": {
+        "type": [
+         "string"
+        ]
+       },
+       "folder": {
+        "type": [
+         "string"
+        ]
+       },
+       "has_art": {
+        "type": [
+         "bool"
+        ]
+       },
+       "name": {
+        "type": [
+         "string"
+        ]
+       },
+       "on_disk": {
+        "type": [
+         "bool"
+        ]
+       },
+       "path": {
+        "type": [
+         "string"
+        ]
+       },
+       "seconds": {
+        "type": [
+         "float"
+        ]
+       },
+       "size": {
+        "type": [
+         "int"
+        ]
+       },
+       "why": {
+        "type": [
+         "string"
+        ]
+       },
+       "writable": {
+        "type": [
+         "bool"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "guess": {
+      "fields": {
+       "artist": {
+        "type": [
+         "string"
+        ]
+       },
+       "from": {
+        "type": [
+         "string"
+        ]
+       },
+       "title": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "key": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "path": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "title": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "key",
+    "path",
+    "refused"
+   ]
+  },
+  "GET /api/tracks": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "collections": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "on_ipod_order": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "order": {
+      "type": [
+       "map"
+      ],
+      "values": {
+       "items": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      }
+     },
+     "podcasts": {
+      "fields": {
+       "coming": {
+        "type": [
+         "int"
+        ]
+       },
+       "device_read": {
+        "type": [
+         "bool"
+        ]
+       },
+       "filed_out": {
+        "type": [
+         "int"
+        ]
+       },
+       "n": {
+        "type": [
+         "int"
+        ]
+       },
+       "name": {
+        "type": [
+         "string"
+        ]
+       },
+       "pending": {
+        "type": [
+         "int"
+        ]
+       },
+       "unfiled": {
+        "type": [
+         "int"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "slugs": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "synced": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "totals": {
+      "fields": {
+       "flac_to_buy": {
+        "type": [
+         "int"
+        ]
+       },
+       "needs_drive": {
+        "type": [
+         "int"
+        ]
+       },
+       "not_looked_up": {
+        "type": [
+         "int"
+        ]
+       },
+       "on_ipod": {
+        "type": [
+         "int"
+        ]
+       },
+       "sync_off": {
+        "type": [
+         "int"
+        ]
+       },
+       "sync_on": {
+        "type": [
+         "int"
+        ]
+       },
+       "sync_pending": {
+        "type": [
+         "int"
+        ]
+       },
+       "sync_podcasts": {
+        "type": [
+         "int"
+        ]
+       },
+       "sync_waiting": {
+        "type": [
+         "int"
+        ]
+       },
+       "synced": {
+        "type": [
+         "int"
+        ]
+       },
+       "to_buy": {
+        "type": [
+         "int"
+        ]
+       },
+       "to_buy_eur": {
+        "type": [
+         "float"
+        ]
+       },
+       "to_remove": {
+        "type": [
+         "int"
+        ]
+       },
+       "to_sync": {
+        "type": [
+         "int"
+        ]
+       },
+       "vinyl_to_add": {
+        "type": [
+         "int"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "tracks": {
+      "items": {
+       "fields": {
+        "album": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "album_artist": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "album_key": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "am": {
+         "type": [
+          "bool"
+         ]
+        },
+        "am_owned": {
+         "type": [
+          "bool"
+         ]
+        },
+        "am_status": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "art": {
+         "type": [
+          "string"
+         ]
+        },
+        "artist": {
+         "type": [
+          "string"
+         ]
+        },
+        "audio": {
+         "type": [
+          "bool"
+         ]
+        },
+        "bandcamp": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "bc_verdict": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "bought": {
+         "type": [
+          "bool"
+         ]
+        },
+        "collections": {
+         "items": {
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "decision": {
+         "fields": {
+          "digital_only": {
+           "type": [
+            "bool"
+           ]
+          },
+          "on": {
+           "type": [
+            "bool"
+           ]
+          },
+          "sets": {
+           "fields": {
+            "tier": {
+             "type": [
+              "string"
+             ]
+            }
+           },
+           "type": [
+            "object"
+           ]
+          },
+          "verb": {
+           "type": [
+            "string"
+           ]
+          }
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "dev_album": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "dev_seconds": {
+         "type": [
+          "float",
+          "null"
+         ]
+        },
+        "device": {
+         "type": [
+          "bool"
+         ]
+        },
+        "genre": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "ground": {
+         "fields": {
+          "scrim": {
+           "type": [
+            "float"
+           ]
+          },
+          "y": {
+           "type": [
+            "float"
+           ]
+          }
+         },
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "had_device": {
+         "type": [
+          "bool"
+         ]
+        },
+        "held": {
+         "type": [
+          "bool"
+         ]
+        },
+        "it_verdict": {
+         "type": [
+          "string"
+         ]
+        },
+        "key": {
+         "type": [
+          "string"
+         ]
+        },
+        "lists": {
+         "items": {
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "local": {
+         "type": [
+          "bool"
+         ]
+        },
+        "looking": {
+         "type": [
+          "bool"
+         ]
+        },
+        "lossless": {
+         "type": [
+          "bool",
+          "null"
+         ]
+        },
+        "on_ipod": {
+         "type": [
+          "bool"
+         ]
+        },
+        "origin_ext": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "orphan": {
+         "type": [
+          "bool"
+         ]
+        },
+        "play": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "play_from": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "playlists": {
+         "items": {
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "preview": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "price": {
+         "type": [
+          "float",
+          "null"
+         ]
+        },
+        "quality": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "reachable": {
+         "type": [
+          "bool"
+         ]
+        },
+        "release_key": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "release_label": {
+         "type": [
+          "string"
+         ]
+        },
+        "released": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "seconds": {
+         "type": [
+          "float",
+          "null"
+         ]
+        },
+        "state": {
+         "type": [
+          "string"
+         ]
+        },
+        "t7": {
+         "type": [
+          "bool"
+         ]
+        },
+        "tier": {
+         "type": [
+          "string"
+         ]
+        },
+        "title": {
+         "type": [
+          "string"
+         ]
+        },
+        "url": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "vinyl": {
+         "type": [
+          "bool"
+         ]
+        },
+        "vinyl_owned": {
+         "type": [
+          "bool"
+         ]
+        },
+        "vinyl_wanted": {
+         "type": [
+          "bool"
+         ]
+        }
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "updated": {
+      "type": [
+       "string"
+      ]
+     },
+     "vinyl_order": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    ""
+   ]
+  },
+  "GET /api/undo": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "can_redo": {
+      "type": [
+       "int"
+      ]
+     },
+     "can_undo": {
+      "type": [
+       "int"
+      ]
+     },
+     "next": {
+      "type": [
+       "null",
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "empty",
+    "after-decide",
+    "after-undo"
+   ]
+  },
+  "POST /api/action": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "error": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "from": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "job": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "read": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "device-backup",
+    "device",
+    "source-refused",
+    "index"
+   ]
+  },
+  "POST /api/decide": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "error": {
+      "optional": true,
+      "type": [
+       "string"
+      ]
+     },
+     "looking": {
+      "optional": true,
+      "type": [
+       "int"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "order": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     },
+     "renamed": {
+      "fields": {
+       "from": {
+        "type": [
+         "string"
+        ]
+       },
+       "members": {
+        "type": [
+         "int"
+        ]
+       },
+       "to": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "optional": true,
+      "type": [
+       "object"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "touched": {
+      "items": {
+       "type": [
+        "string"
+       ]
+      },
+      "optional": true,
+      "type": [
+       "array"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "tier",
+    "reorder",
+    "rename",
+    "refused"
+   ]
+  },
+  "POST /api/decision": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "digital_only": {
+      "type": [
+       "bool"
+      ]
+     },
+     "n": {
+      "type": [
+       "int"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "on": {
+      "type": [
+       "bool"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "sets": {
+      "fields": {
+       "tier": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "type": [
+       "object"
+      ]
+     },
+     "verb": {
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "selection"
+   ]
+  },
+  "POST /api/undo": {
+   "content_type": [
+    "application/json"
+   ],
+   "shape": {
+    "fields": {
+     "can_redo": {
+      "type": [
+       "int"
+      ]
+     },
+     "can_undo": {
+      "type": [
+       "int"
+      ]
+     },
+     "label": {
+      "type": [
+       "string"
+      ]
+     },
+     "ok": {
+      "type": [
+       "bool"
+      ]
+     },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
+     "undone": {
+      "type": [
+       "bool"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "status": [
+    200
+   ],
+   "variants": [
+    "undo"
+   ]
+  }
+ }
+}

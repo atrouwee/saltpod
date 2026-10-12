@@ -18,7 +18,11 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 INDEX = os.path.join(ROOT, "data", "local", "index.json")
 
 # .movpkg is deliberately absent: it is a DRM'd HLS subscription download, not
@@ -662,6 +666,54 @@ def stats():
     print("needs conversion before the iPod plays it: %d" % convert)
 
 
+def reindex(roots, workers=6):
+    """Re-walk the roots that are mounted; keep what the index knows about
+    the ones that are not. Returns (entries, skipped, absent).
+
+    AN UNPLUGGED ROOT IS NOT A REASON TO INDEX NOTHING. build() refuses a
+    missing root, rightly: walking it would find nothing and write an index
+    that says nearly everything was deleted. But refusing the whole run
+    meant one drive left in a drawer stopped a laptop folder being indexed
+    at all, and the page's job box said only "job failed". So the mounted
+    roots are walked, and every location the old index held under an
+    absent root is carried over as it was -- the same entries, folded back
+    in the roots' order, so `library_roots[0]` still wins `path`.
+
+    Raises MissingRoot only when no root is mounted: then there is nothing
+    to walk and the index is left alone.
+    """
+    absent = [r for r in roots if not os.path.isdir(os.path.expanduser(r))]
+    if not absent:
+        entries, skipped = build(roots, workers=workers)
+        return entries, skipped, []
+    mounted = [r for r in roots if r not in absent]
+    if not mounted:
+        raise MissingRoot('not mounted: %s' % ', '.join(absent))
+    fresh, skipped = build(mounted, workers=workers, _write=False)
+    gone = [os.path.expanduser(r).rstrip(os.sep) for r in absent]
+
+    def under_absent(path):
+        return any(path == g or path.startswith(g + os.sep) for g in gone)
+    kept = []
+    for e in load(resolved=False).get('tracks', []):
+        for loc in [e.get('path')] + list(e.get('copies') or []):
+            if loc and under_absent(loc):
+                kept.append(dict(e, path=loc, copies=[]))
+    order = [os.path.expanduser(r).rstrip(os.sep) for r in roots]
+
+    def rank(e):
+        p = e.get('path') or ''
+        return next((i for i, r in enumerate(order)
+                     if p == r or p.startswith(r + os.sep)), len(order))
+    for e in fresh:
+        e['copies'] = []
+    merged = fold_copies(sorted(kept + fresh, key=rank), roots)
+    os.makedirs(os.path.dirname(INDEX), exist_ok=True)
+    with open(INDEX, "w") as f:
+        json.dump({"roots": list(roots), "count": len(merged), "tracks": merged}, f, indent=1)
+    return merged, skipped, absent
+
+
 def main(argv):
     if not argv:
         print(__doc__)
@@ -669,8 +721,13 @@ def main(argv):
     if argv[0] == "--stats":
         stats()
         return 0
-    entries, skipped = build(argv)
+    entries, skipped, absent = reindex(argv)
     print("")
+    if absent:
+        # ONE SENTENCE, the one the job box shows: what was not walked and
+        # what became of its tracks
+        print("not mounted: %s -- indexed the others; its tracks are kept "
+              "as the last index found them" % ", ".join(absent))
     print("indexed %d files (%d unreadable)" % (len(entries), skipped))
     print("index: %s" % INDEX)
     stats()

@@ -29,6 +29,10 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'src'))
+# The code is under ROOT; the data (backups/, data/) is under DATA, which is
+# SALTPOD_HOME when it is set -- so a run against a fixture home tests the
+# fixture, not whatever sits in the source tree.
+from saltpod.paths import DATA_ROOT as DATA  # noqa: E402
 
 PASS, FAIL, SKIP = [], [], []
 _t0 = time.time()
@@ -454,6 +458,203 @@ def t_ground_payload():
     return '%d rows, %d measured' % (len(rows), len(measured))
 
 
+def t_layer_answers():
+    """The answers the page used to work out, worked out here once.
+
+    NATIVE-PLAN 3.4 lists the rules the page still computed (debt D1-D12).
+    Each one paid moves into curate as a function the payload calls, and is
+    pinned here on synthetic rows -- no data directory, no device -- so the
+    rule has a test on the side that owns it, and the page's own test only
+    checks that it shows what it is handed.
+    """
+    from saltpod import curate as C
+    done = []
+    # D1: the Sync button's count is collection membership, not tier
+    rows = [
+        {'device': True, 'tier': 'remove', 'collections': []},              # off
+        {'device': True, 'tier': 'sync', 'collections': ['A']},             # already there
+        {'device': False, 'reachable': True, 'local': True, 'tier': 'sync',
+         'collections': ['A']},                                            # on
+        {'device': False, 'reachable': True, 'local': True, 'tier': 'sync',
+         'collections': []},                                               # in no collection
+        {'device': False, 'reachable': False, 'local': True, 'tier': 'sync',
+         'collections': ['A']},                                            # waiting
+        {'device': False, 'reachable': False, 'local': False, 'tier': 'sync',
+         'collections': ['A']},                                            # unowned
+    ]
+    got = C.sync_counts(rows)
+    want = {'sync_off': 1, 'sync_on': 1, 'sync_pending': 2, 'sync_waiting': 1}
+    assert got == want, 'sync_counts %r, want %r' % (got, want)
+    done.append('D1')
+    # D3: law 3's three positions
+    for t, want in (({'device': True}, 'ready'),
+                    ({'local': True, 'reachable': True}, 'ready'),
+                    ({'local': True, 'reachable': False}, 'offline'),
+                    ({}, 'unowned')):
+        assert C.row_state(t) == want, 'row_state(%r) = %r' % (t, C.row_state(t))
+    done.append('D3')
+    # D4: what a click plays
+    for t, want in (({'audio': True, 'preview': 'u'}, 'file'),
+                    ({'audio': False, 'preview': 'u'}, 'preview'), ({}, None)):
+        assert C.row_play(t) == want, 'row_play(%r) = %r' % (t, C.row_play(t))
+    done.append('D4')
+    # D5: an Apple Music row's cloud status, read once
+    for cloud, owned, status in (('purchased', True, None), ('matched', True, None),
+                                 ('uploaded', True, None), ('subscription', False, None),
+                                 ('no longer available', False, 'no longer available'),
+                                 ('', False, None)):
+        a = C.am_row_answers(cloud)
+        assert (a['am_owned'], a['am_status']) == (owned, status), '%r -> %r' % (cloud, a)
+    done.append('D5')
+    # D2: the decision row, for one track and for a selection
+    def d(*rows):
+        x = C.decision_of(rows)
+        return (x['verb'], x['on'], x['sets']['tier'], x['digital_only'])
+    pod = {'device': True, 'held': True, 'tier': 'sync', 'collections': ['A']}
+    gone = {'device': True, 'held': True, 'tier': 'remove', 'collections': []}
+    mine = {'device': False, 'held': True, 'tier': 'undecided', 'collections': []}
+    mine_on = dict(mine, tier='sync')
+    wish = {'device': False, 'held': False, 'tier': 'undecided', 'collections': []}
+    wish_in = {'device': False, 'held': False, 'tier': 'sync', 'collections': ['A']}
+    for got, want in ((d(pod), ('remove', False, 'remove', False)),
+                      (d(gone), ('remove', True, 'undecided', False)),
+                      (d(mine), ('sync', False, 'sync', True)),
+                      (d(mine_on), ('sync', True, 'undecided', True)),
+                      (d(wish), ('buy', False, 'sync', False)),
+                      # in a collection, undoing sync cannot land on undecided
+                      (d(wish_in), ('buy', True, 'sync', False)),
+                      # a selection: any on the device makes it a removal
+                      (d(mine, pod), ('remove', False, 'remove', False)),
+                      # every one held, or it is a purchase
+                      (d(mine, wish), ('buy', False, 'sync', False)),
+                      (d(mine_on, dict(mine_on)), ('sync', True, 'undecided', True))):
+        assert got == want, 'decision_of: %r, want %r' % (got, want)
+    assert C.decision_for({})['ok'] is False
+    done.append('D2')
+    # D6: "All on iPod" in one collation, sent as keys
+    rows = [{'key': k, 'artist': a, 'title': t, 'device': dv} for k, a, t, dv in (
+        ('3', 'beta', 'x', True), ('1', 'Ásgeir', 'b', True), ('2', 'asgeir', 'a', True),
+        ('4', 'Aaa', 'z', False))]
+    got = C.on_ipod_order(rows)
+    assert got == ['2', '1', '3'], 'on_ipod_order %r' % got
+    done.append('D6')
+    # D7: the room is re-checked behind the button, for both callers
+    from saltpod import apply as A
+    tmp = tempfile.mkdtemp()
+    try:
+        src = os.path.join(tmp, 'a.flac')
+        open(src, 'wb').write(b'x' * 1000)
+        p = {'adds': [('k', {}, src)]}
+        f = A.fit(p, tmp)
+        assert f['fits'] is True and f['bytes'] == 1050, 'fit %r' % f
+        real = A.estimated_bytes
+        A.estimated_bytes = lambda _s: 10 ** 18
+        try:
+            assert A.fit(p, tmp)['fits'] is False
+        finally:
+            A.estimated_bytes = real
+    finally:
+        shutil.rmtree(tmp)
+    real_fits, n_jobs = C.sync_fits, len(C.JOBS)
+    C.sync_fits = lambda ex=None, mount=None: {'fits': False, 'bytes': 9, 'free_bytes': 1}
+    try:
+        out = C.Handler._action(None, {'action': 'sync', 'exclude': {'tracks': ['x']}})
+    finally:
+        C.sync_fits = real_fits
+    assert out.get('ok') is False and out.get('error') == 'will not fit', out
+    assert len(C.JOBS) == n_jobs, 'a refused sync still started a job'
+    done.append('D7')
+    # D8, D9: the buy pane's stages and the vinyl pane's to-do are lists
+    base = {'artist': 'zz nobody', 'title': 't', 'album': 'zz none', 'collections': []}
+    L = lambda **kw: C._answers(dict(base, **kw))['lists']
+    assert 'synced' in L(tier='sync', device=True)
+    assert 'synced' not in L(tier='remove', device=True)
+    assert 'FLAC to buy' in L(tier='sync', bc_verdict='confirmed')
+    assert 'FLAC to buy' not in L(tier='sync', bc_verdict='confirmed', local=True)
+    assert 'not looked up' in L(tier='sync')
+    assert 'not looked up' not in L(tier='sync', url='u')
+    assert 'not looked up' not in L(tier='sync', looking=True)
+    assert 'vinyl to add' in L(vinyl=True)
+    a = C._answers(dict(base, album=None))
+    assert a['release_label'] == 'zz nobody \u2014 (unknown release)', a['release_label']
+    done.append('D8 D9')
+    # D10: the job's step list is complete and settled, never a window.
+    # A Job is built without __init__, which would open a log file.
+    plan = {'adds': [('x|a', {}, '/n')], 'removes': [('y|b', {}, 1)], 'retags': [],
+            'delete_playlists': ['Old One'], 'collections': {'Gym Mix': [], 'Same': []},
+            'unchanged': ['Same']}
+    ids = A.planned_steps(plan)
+    assert ids == ['backup', 'a:x|a', 'r:y|b', 'p:Old One', 'p:Gym Mix',
+                   'write', 'verify', 'eject'], ids
+    j = C.Job.__new__(C.Job)
+    j.log, j.steps, j.fp, j.state = [], {}, None, 'running'
+    j.id, j.name, j.started = 'test', 'test', time.time()
+    j.line('@@ steps %s\n' % json.dumps(ids))
+    for ln in ('@@ backup doing', '@@ backup done', '@@ a:x|a error unsupported file type',
+               '@@ p:Gym Mix doing', '@@ p:Gym Mix done', 'prose line'):
+        j.line(ln)
+    j.log = j.log[-1:]                       # a window would lose all of it
+    got = {x['id']: x['state'] for x in j.as_dict()['steps']}
+    assert got['backup'] == 'done' and got['a:x|a'] == 'error' and got['p:Gym Mix'] == 'done', got
+    assert got['r:y|b'] == 'waiting' and len(got) == len(ids), got
+    assert j.steps['a:x|a']['error'] == 'unsupported file type'
+    j.state = 'error'; j.end_steps()
+    assert j.steps['r:y|b']['state'] == 'todo' and j.steps['eject']['state'] == 'todo'
+    done.append('D10')
+    # D11: every event carries a rev that moves on data and job events, and
+    # a decision pushes one. apply_decision runs on an in-memory state: the
+    # loader, the saver and the lookup queue are stood in for, so nothing
+    # under data/ is read for writing or written.
+    import queue as _q
+    q = _q.Queue()
+    C.CLIENTS.append(q)
+    saved = (C.S.load, C.S.save, C.want_lookup, C.local_keys, list(C.UNDO), list(C.REDO))
+    try:
+        r0 = C.rev()
+        C.push({'type': 'reload', 'why': 'x'})
+        ev = json.loads(q.get_nowait()[len('data: '):])
+        assert ev['rev'] == r0, 'a reload event moved the rev'
+        mem = {'tracks': {'a|b': dict(C.S.blank('a', 'b'))}, 'collections': []}
+        C.S.load, C.S.save = (lambda: mem), (lambda st: None)
+        C.want_lookup, C.local_keys = (lambda keys: None), (lambda reachable_only=False: set())
+        out = C.apply_decision({'keys': ['a|b'], 'tier': 'sync'})
+        ev = json.loads(q.get_nowait()[len('data: '):])
+        assert ev['type'] == 'data' and ev['rev'] == r0 + 1 == out['rev'], (ev, out)
+        assert mem['tracks']['a|b']['tier'] == 'sync'
+    finally:
+        C.CLIENTS.remove(q)
+        C.S.load, C.S.save, C.want_lookup, C.local_keys = saved[:4]
+        C.UNDO[:], C.REDO[:] = saved[4], saved[5]
+    done.append('D11')
+    # D12: the headline, the running job, and one sync at a time
+    for h, want in (({'config': 'x'}, ('fault', 'No device configured')),
+                    ({'ipod': 'waking'}, ('warn', 'iPod waking')),
+                    ({'ipod': 'ejected', 'ejected_at': '14:32'},
+                     ('ok', 'Ejected 14:32 \u00b7 safe to unplug')),
+                    ({'ipod': 'ready', 'free': 150e9}, ('ok', 'iPod ready \u00b7 150 GB free')),
+                    ({'ipod': 'absent'}, ('missed', 'iPod not connected'))):
+        got = C.headline(h)
+        assert (got['level'], got['text']) == want, (h, got)
+    assert C.job_summary() is None or C.JOBS, 'a job summary with no job'
+    j = C.Job.__new__(C.Job)
+    j.log, j.fp, j.state, j.id, j.name, j.started = [], None, 'running', 'sync-test', C.SYNC_JOB, time.time()
+    j.steps = {'backup': {'id': 'backup', 'state': 'done', 'error': None},
+               'write': {'id': 'write', 'state': 'waiting', 'error': None}}
+    C.JOBS[j.id] = j
+    try:
+        js = C.job_summary()
+        assert js['id'] == 'sync-test' and (js['done'], js['total']) == (1, 2), js
+        try:
+            C.Handler._action(None, {'action': 'sync'})
+            raise AssertionError('a second sync was not refused')
+        except C.Busy as b:
+            assert b.job == 'sync-test'
+    finally:
+        C.JOBS.pop(j.id, None)
+    done.append('D12')
+    return 'paid: ' + ' '.join(done)
+
+
 def t_mosaic_tiles():
     """Four, three, two and one covers tile into a 300x300 JPEG whose
     quadrants are the covers they should be.
@@ -626,7 +827,10 @@ def t_published_tree_imports():
     been run.
     """
     import re as _re
-    src = open(os.path.join(ROOT, 'scripts', 'publish_public.py')).read()
+    pp = os.path.join(ROOT, 'scripts', 'publish_public.py')
+    if not os.path.exists(pp):
+        return None   # the public tree: it IS the export, and imports above
+    src = open(pp).read()
     block = src[src.index('MANIFEST = ['):src.index(']', src.index('MANIFEST = ['))]
     shipped = set(_re.findall(r"'(src/saltpod/[a-z_]+)\.py'", block))
     names = {p.rsplit('/', 1)[-1] for p in shipped}
@@ -784,6 +988,9 @@ def t_target_config():
         finally:
             if saved is not None:
                 open(C.PATH, 'w').write(saved)
+            elif os.path.exists(C.PATH):
+                # there was none: leave none, not one naming a deleted tmp dir
+                os.remove(C.PATH)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return 'apple needs a guid, rockbox does not, both detected by looking'
@@ -831,7 +1038,7 @@ def t_playcounts():
     import glob as _glob
     from saltpod import playcounts as PC, state as S
     pairs = [(f, os.path.join(os.path.dirname(f), 'iTunesDB'))
-             for f in sorted(_glob.glob(os.path.join(ROOT, 'backups', '*', 'Play Counts')))]
+             for f in sorted(_glob.glob(os.path.join(DATA, 'backups', '*', 'Play Counts')))]
     pairs = [(a, b) for a, b in pairs if os.path.exists(b)]
     if not pairs:
         return None
@@ -1028,7 +1235,7 @@ def _a_database():
     if _device() and os.path.exists(live):
         return live
     import glob
-    b = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-*', 'iTunesDB')))
+    b = sorted(glob.glob(os.path.join(DATA, 'backups', 'ipod-*', 'iTunesDB')))
     return b[-1] if b else None
 
 
@@ -1043,7 +1250,7 @@ _IDX = None
 def _index():
     global _IDX
     if _IDX is None:
-        p = os.path.join(ROOT, 'data', 'local', 'index.json')
+        p = os.path.join(DATA, 'data', 'local', 'index.json')
         _IDX = json.load(open(p))['tracks'] if os.path.exists(p) else []
     return _IDX
 
@@ -1238,7 +1445,7 @@ def t_otg():
     """
     import glob, shutil, struct, tempfile
     from saltpod import otg as O, itunesdb as I
-    src = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-*', 'iTunesDB')))
+    src = sorted(glob.glob(os.path.join(DATA, 'backups', 'ipod-*', 'iTunesDB')))
     if not src:
         return ('skip', 'no backup to build a fake mount from')
     m = tempfile.mkdtemp(prefix='fakepod-')
@@ -1289,7 +1496,7 @@ def t_track_add_identity():
     """
     import glob
     from saltpod import itunesdb_write as W, ipod_edit as E, config as CFG
-    src = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-2026-10-0*', 'iTunesDB')))
+    src = sorted(glob.glob(os.path.join(DATA, 'backups', 'ipod-2026-10-0*', 'iTunesDB')))
     if not src:
         return ('skip', 'no backup to build on')
     root = W.parse(open(src[-1], 'rb').read())
@@ -1339,6 +1546,191 @@ def t_sync_merges_plays_first():
     assert merge < replace, 'the merge must come before the database is replaced'
     assert merge < remove, 'the merge must come before the sidecar is removed'
     return 'merge, then replace, then remove'
+
+
+def t_cover_into_file():
+    """A dropped cover goes INTO the file, and nothing else in it moves.
+
+    fr-covers, decided 12 October: m4a through write_art, MP3 / AIFF / WAV
+    through an APIC frame (tags.embed_art). Each case is built here, tiny,
+    never from the library: an MP3 with a v2.3 tag (in place), one with v2.4
+    (stays v2.4), one with no tag; a WAV with an id3 chunk among INFO and cue
+    labels, and one without; an AIFF; an m4a when ffmpeg is there to make one.
+    The bar each time: every frame / atom / chunk that is not a picture keeps
+    its bytes, the audio keeps its digest, and the file reads back the cover.
+    """
+    import struct, tempfile
+    from saltpod import tags as T
+
+    old = b'\xff\xd8\xff\xe0' + b'old-cover' * 40 + b'\xff\xd9'
+    new = b'\x89PNG\r\n\x1a\n' + bytes(range(256)) * 3
+    audio = (b'\xff\xfb\x90\x64' + bytes(413)) * 12
+
+    def fr(fid, payload, v4=False):
+        n = len(payload)
+        size = bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F]) \
+            if v4 else struct.pack('>I', n)
+        return fid + size + b'\x00\x00' + payload
+
+    def tag(frames, major=3, pad=2048):
+        body = b''.join(frames) + bytes(pad)
+        n = len(body)
+        return b'ID3' + bytes((major, 0, 0)) + bytes(
+            [(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F]) + body
+
+    def others(frames):
+        return [(f, p) for f, p in frames if f != 'APIC']
+
+    tmp = tempfile.mkdtemp(prefix='saltpod-cover-')
+    done = []
+    try:
+        # MP3, v2.3 and v2.4, each with an old cover, a comment, a private frame
+        for major in (3, 4):
+            v4 = major == 4
+            frames = [fr(b'TIT2', b'\x00Field', v4), fr(b'TPE1', b'\x00Alder', v4),
+                      fr(b'TBPM', b'\x00124', v4), fr(b'COMM', b'\x00eng\x00note', v4),
+                      fr(b'PRIV', b'dj.app\x00\x01\x02', v4),
+                      fr(b'APIC', b'\x00image/jpeg\x00\x03\x00' + old, v4)]
+            p = os.path.join(tmp, 'v2%d.mp3' % major)
+            open(p, 'wb').write(tag(frames, major) + audio)
+            span0 = T._id3_span(p)
+            before = T._id3_read_tag(open(p, 'rb').read()[:span0])[0]
+            text0 = T.read(p)
+            assert T.art_why_not(p) == '', T.art_why_not(p)
+            assert T.embed_art(p, new) is True, 'the audio moved: the tag had room'
+            raw = open(p, 'rb').read()
+            span = T._id3_span(p)
+            after = T._id3_read_tag(raw[:span])[0]
+            assert raw[3] == major, 'the tag changed version: v2.%d -> v2.%d' % (major, raw[3])
+            assert others(after) == others(before), 'a frame other than the picture changed'
+            assert [f for f, _p in after].count('APIC') == 1, 'more than one picture left'
+            assert raw[span:] == audio and span == span0, 'the audio moved or changed'
+            assert T.art_bytes(p) == ('image/png', new), 'the new cover does not read back'
+            assert T.read(p) == text0 and T.has_art(p)
+        done.append('mp3 v2.3+v2.4 in place')
+
+        p = os.path.join(tmp, 'bare.mp3')
+        open(p, 'wb').write(audio)
+        T.embed_art(p, new)
+        raw = open(p, 'rb').read()
+        assert raw[T._id3_span(p):] == audio and T.art_bytes(p)[1] == new
+        done.append('untagged mp3')
+
+        # WAV: id3 chunk between INFO and a cue-label LIST; and one with none
+        def chunk(cid, body):
+            return cid + struct.pack('<I', len(body)) + body + (b'\x00' if len(body) & 1 else b'')
+        pcm = bytes(range(256)) * 32
+        id3 = tag([fr(b'TIT2', b'\x00Old'), fr(b'TBPM', b'\x00124'),
+                   fr(b'APIC', b'\x00image/jpeg\x00\x03\x00' + old)], 3, 64)
+        fmt = chunk(b'fmt ', struct.pack('<HHIIHH', 1, 1, 8000, 16000, 2, 16))
+        info = chunk(b'LIST', b'INFO' + chunk(b'INAM', b'Old\x00') + chunk(b'NITR', b'dj\x00'))
+        cue = chunk(b'LIST', b'adtl' + chunk(b'labl', struct.pack('<I', 1) + b'Drop\x00'))
+        for name, chunks in (('with.wav', [fmt, chunk(b'data', pcm), info, chunk(b'id3 ', id3), cue]),
+                             ('without.wav', [fmt, chunk(b'data', pcm), info, cue])):
+            body = b''.join(chunks)
+            p = os.path.join(tmp, name)
+            open(p, 'wb').write(b'RIFF' + struct.pack('<I', 4 + len(body)) + b'WAVE' + body)
+            probe = T.audio_probe(p)
+            assert T.art_why_not(p) == '', T.art_why_not(p)
+            T.embed_art(p, new)
+            T.verify(p, probe, in_place=True)
+            b = open(p, 'rb').read()
+            ch = T._riff_chunks(b)
+            assert struct.unpack('<I', b[4:8])[0] == len(b) - 8, 'RIFF size wrong'
+            kept = [b[h:h + 8 + sz + (sz & 1)] for c, h, d, sz in ch if c not in T._ID3_CHUNKS]
+            assert kept == [c for c in chunks if c[:4] not in T._ID3_CHUNKS], \
+                'a chunk other than the id3 one changed, moved or went'
+            if name == 'with.wav':
+                assert [c for c, *_r in ch] == [b'fmt ', b'data', b'LIST', b'id3 ', b'LIST'], \
+                    'the id3 chunk was not rewritten where it stood'
+                f = T._id3_read_tag([b[d:d + sz] for c, h, d, sz in ch if c == b'id3 '][0])[0]
+                assert others(f) == others(T._id3_read_tag(id3)[0]), 'an id3 frame changed'
+            assert T.art_bytes(p)[1] == new and T.has_art(p)
+        done.append('wav, with and without an id3 chunk')
+
+        # AIFF: COMM, SSND, then the ID3 chunk
+        def fchunk(cid, body):
+            return cid + struct.pack('>I', len(body)) + body + (b'\x00' if len(body) & 1 else b'')
+        comm = fchunk(b'COMM', struct.pack('>hIh', 1, len(pcm) // 2, 16) + b'\x40\x0b\xfa' + bytes(7))
+        ssnd = fchunk(b'SSND', bytes(8) + pcm)
+        body = b'AIFF' + comm + ssnd + fchunk(b'ID3 ', tag([fr(b'TIT2', b'\x00Old', True),
+                                                           fr(b'TKEY', b'\x008A', True)], 4, 64))
+        p = os.path.join(tmp, 'a.aif')
+        open(p, 'wb').write(b'FORM' + struct.pack('>I', len(body)) + body)
+        probe, text0 = T.audio_probe(p), T.read(p)
+        T.embed_art(p, new)
+        T.verify(p, probe, in_place=True)
+        fr4, major, _c, _cl = T._aiff_tag(p)
+        assert major == 4 and others(fr4) == [('TIT2', b'\x00Old'), ('TKEY', b'\x008A')]
+        assert T.read(p) == text0 and T.art_bytes(p)[1] == new
+        done.append('aiff')
+
+        # m4a, made by ffmpeg when it is installed
+        if shutil.which('ffmpeg'):
+            p = os.path.join(tmp, 'a.m4a')
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i',
+                            'anullsrc=r=8000:cl=mono', '-t', '1', '-metadata', 'title=Field',
+                            '-metadata', 'artist=Alder', '-c:a', 'alac', p], check=True)
+
+            def ilst_items(path):
+                _mo, moov, chain = T._mp4_ilst(path)
+                off, size = chain[-1]
+                return [(t, moov[o:o + sz]) for t, o, sz in T._mp4_children(moov, off + 8, off + size)
+                        if t != b'covr']
+            items0, text0, probe = ilst_items(p), T.read(p), T.audio_probe(p)
+            jpg = b'\xff\xd8\xff\xe0' + bytes(range(256)) * 2 + b'\xff\xd9'
+            in_place = T.embed_art(p, jpg)
+            T.verify(p, probe, in_place=in_place)
+            assert ilst_items(p) == items0, 'an ilst item other than covr changed'
+            assert T.read(p) == text0 and T.art_bytes(p) == ('image/jpeg', jpg)
+            done.append('m4a')
+
+        # refusals: a tag we could not read cleanly, and a container with no picture writer
+        p = os.path.join(tmp, 'bad.mp3')
+        broken = tag([fr(b'TIT2', b'\x00x'), b'TPE1' + struct.pack('>I', 9999) + b'\x00\x00ab'], 3, 0)
+        open(p, 'wb').write(broken + audio)
+        snap = open(p, 'rb').read()
+        assert 'cannot parse' in T.art_why_not(p), T.art_why_not(p)
+        try:
+            T.embed_art(p, new)
+            raise AssertionError('a tag we could not read cleanly was written')
+        except T.TagError:
+            pass
+        assert open(p, 'rb').read() == snap, 'a refusal touched the file'
+        assert T.art_why_not('x.flac') == 'no artwork writer for flac yet'
+        return ', '.join(done) + '; refusals untouched'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_wav_refusal_named():
+    """A WAV the tag writer turns down says WHY, not "needs the ID3v2 writer".
+
+    fr-defaults item 5. The writer for a WAV's id3 chunk has existed since
+    30 September; what is still refused is a chunk we could not read cleanly
+    (or an ID3v2.2 one with a frame that has no v2.3 name), and the panel
+    and the terminal now name that.
+    """
+    import struct, tempfile
+    from saltpod import tags as T
+    bad = b'TIT2' + struct.pack('>I', 9999) + b'\x00\x00ab'
+    n = len(bad)
+    id3 = b'ID3\x03\x00\x00' + bytes([0, 0, (n >> 7) & 0x7F, n & 0x7F]) + bad
+
+    def chunk(cid, body):
+        return cid + struct.pack('<I', len(body)) + body + (b'\x00' if len(body) & 1 else b'')
+    body = (chunk(b'fmt ', struct.pack('<HHIIHH', 1, 1, 8000, 16000, 2, 16))
+            + chunk(b'data', bytes(64)) + chunk(b'id3 ', id3))
+    fd, p = tempfile.mkstemp(suffix='.wav')
+    try:
+        os.write(fd, b'RIFF' + struct.pack('<I', 4 + len(body)) + b'WAVE' + body); os.close(fd)
+        assert not T.supported(p)
+        why = T.why_not(p)
+        assert why.startswith('its id3 chunk') and 'cannot parse' in why, why
+        assert 'ID3v2 writer' not in why
+        return why[:40]
+    finally:
+        os.remove(p)
 
 
 def t_id3v22_converts():
@@ -1540,7 +1932,7 @@ def t_guarded_write():
         guid = CFG.load().get('firewire_guid')
     except SystemExit:
         return ('skip', 'no device configured')
-    src = sorted(glob.glob(os.path.join(ROOT, 'backups', 'ipod-*', 'iTunesDB')))
+    src = sorted(glob.glob(os.path.join(DATA, 'backups', 'ipod-*', 'iTunesDB')))
     if not guid or not src:
         return ('skip', 'no backup to build a fake mount from')
     orig = open(src[-1], 'rb').read()
@@ -1587,6 +1979,665 @@ def t_guarded_write():
     finally:
         A.backup, E.write_db = keep_backup, keep_write
         shutil.rmtree(m, ignore_errors=True)
+
+
+def _fixture_lib():
+    """A fresh fixture library in a temp directory: (tmpdir, manifest), or
+    None where fixtures/ is not in the tree (the public export)."""
+    if not os.path.exists(os.path.join(ROOT, 'fixtures', 'build.py')):
+        return None
+    sys.path.insert(0, os.path.join(ROOT, 'fixtures'))
+    import build as FX
+    tmp = tempfile.mkdtemp(prefix='saltpod-fx-')
+    return tmp, FX.build(os.path.join(tmp, 'f'))
+
+
+def _in_home(home, code, timeout=120):
+    """Run `code` in a fresh interpreter with SALTPOD_HOME=home, the way a
+    job step runs: the code root as cwd, its src/ importable. Every module
+    reads SALTPOD_HOME once, at import, so a fixture home has to be a new
+    process -- this one already imported the source tree's."""
+    r = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "src")\n' + code],
+                       cwd=ROOT, env=dict(os.environ, SALTPOD_HOME=home),
+                       capture_output=True, text=True, timeout=timeout)
+    return r.returncode, r.stdout + r.stderr
+
+
+# The sync these tests run: the fixture's plan without its one add (an add
+# needs ffprobe and an .m4a on the device to clone from, neither of which a
+# fixture has), so a removal, a retag, three playlists and a smart list.
+_SYNC = ('''
+import json, os, sys
+from saltpod import ipod_edit as E
+ex = os.path.join(os.environ["SALTPOD_HOME"], "ex.json")
+json.dump({"tracks": ["dune-society|low-tide"]}, open(ex, "w"))
+%s
+from saltpod.cli import main
+sys.exit(main(["sync", "--no-eject", "--exclude", ex]))
+''')
+
+
+def t_sync_restores():
+    """A sync whose write fails its check puts the backup back by itself.
+
+    Decided 12 October ("Restore by itself"). On the fixture's FAKE mount,
+    never a device: the write is corrupted after it lands, the way the
+    2 October partial write was, and the sync must restore the backup's
+    database byte for byte, keep the removed track's file (deleted only
+    after a verified write), leave state unsaved, exit non-zero and say
+    "the iPod is as it was" -- in the CLI receipt and in the `@@ say` line
+    the page toasts.
+    """
+    fx = _fixture_lib()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        dbp = os.path.join(m['mount'], 'iPod_Control', 'iTunes', 'iTunesDB')
+        before = open(dbp, 'rb').read()
+        state = os.path.join(m['home'], 'data', 'state.json')
+        st_before = open(state, 'rb').read()
+        music = sorted(os.path.join(d, f) for d, _x, fs in
+                       os.walk(os.path.join(m['mount'], 'iPod_Control', 'Music')) for f in fs)
+        inject = ('''
+keep = E.write_db
+def corrupting(path, blob):
+    keep(path, blob)
+    if path.endswith(".saltgate.tmp"):
+        with open(path, "r+b") as f:
+            f.seek(len(blob) // 2); f.write(b"\\0" * 64)
+E.write_db = corrupting''')
+        rc, out = _in_home(m['home'], _SYNC % inject)
+        assert rc == 1, 'exit %d, expected 1: %s' % (rc, out[-300:])
+        assert open(dbp, 'rb').read() == before, 'the database is not the backup\'s'
+        assert '@@ restore done' in out, 'no restore step: %s' % out[-300:]
+        assert '@@ say the iPod is as it was' in out, 'the page would get no sentence'
+        assert 'restored   the iPod is as it was' in out, 'no CLI receipt'
+        now = sorted(os.path.join(d, f) for d, _x, fs in
+                     os.walk(os.path.join(m['mount'], 'iPod_Control', 'Music')) for f in fs)
+        assert now == music, 'audio files moved: %s' % sorted(set(music) ^ set(now))
+        assert open(state, 'rb').read() == st_before, 'state was saved for a sync that did not land'
+        # and the page's job reads the sentence out of the log
+        from saltpod import curate as C
+        j = C.Job.__new__(C.Job)              # no __init__: it would open a log file
+        j.log, j.steps, j.fp, j.state = [], {}, None, 'error'
+        j.id, j.name, j.started = 'test', 'test', time.time()
+        for ln in out.splitlines():
+            j.line(ln)
+        d = j.as_dict()
+        steps = {x['id']: x['state'] for x in d['steps']}
+        assert d['say'].startswith('the iPod is as it was'), d['say']
+        assert steps.get('restore') == 'done' and steps.get('s:Since 2000') == 'done', steps
+        return 'corrupted write restored byte for byte'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_sync_smart_phase():
+    """Sync refreshes the smart playlists from their rules, as a phase with
+    rows: the plan names each list, /api/plan carries the rows and the
+    plan's summary and Sound Check lines, and after the sync the list holds
+    what its rule says. Fake mount, fixture home.
+    """
+    fx = _fixture_lib()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        rc, out = _in_home(m['home'], '''
+import json
+from saltpod import curate as C
+p = C.plan_summary()
+print(json.dumps({k: p.get(k) for k in ("ok", "smart", "smart_line", "soundcheck_line")}))
+''')
+        assert rc == 0, out[-300:]
+        p = json.loads(out.strip().splitlines()[-1])
+        assert p['ok'], p
+        assert p['smart'] == [{'name': 'Since 2000', 'now': 0, 'would': 2}], p['smart']
+        assert p['smart_line'].startswith('smart playlists: 1 ours, 1 would change'), p
+        assert p['soundcheck_line'].startswith('sound check: '), p
+        rc, out = _in_home(m['home'], _SYNC % '')
+        assert rc == 0, 'sync failed: %s' % out[-300:]
+        assert '## smart playlists' in out and '@@ s:Since 2000 done' in out, out[-400:]
+        assert out.index('## playlists') < out.index('## smart playlists') < out.index('## write')
+        from saltpod import itunesdb as I
+        dbp = os.path.join(m['mount'], 'iPod_Control', 'iTunes', 'iTunesDB')
+        sm = [pl for pl in I.read(dbp)['playlists'] if pl['name'] == 'Since 2000']
+        assert sm and len(sm[0]['items']) == 2, 'the smart list was not refreshed: %s' % sm
+        rc, out = _in_home(m['home'], 'from saltpod.cli import main; main(["plan"])')
+        assert '0 would change' in out, out
+        return 'Since 2000: 0 -> 2, between playlists and write'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _sidecar(path, entries):
+    """A Play Counts file: entries of (plays, last played mac, bookmark,
+    rating x20, unknown, skips, last skipped mac), in database order."""
+    b = bytearray(b'mhdp' + struct.pack('<III', 0x60, 0x1C, len(entries)))
+    b += bytes(0x60 - len(b))
+    for e in entries:
+        b += struct.pack('<IIIIIII', *e)
+    open(path, 'wb').write(b)
+
+
+def t_plays_write():
+    """`saltpod plays write`: a rehearsal changes nothing; --write merges the
+    sidecar first, puts plays, last played, skips and ratings into the
+    tracks' own fields, re-signs and verifies; a corrupted write restores.
+
+    Decided 12 October ("First release"), research/TAXONOMY.md ranked fix 2.
+    Fixture home, fake mount: the device's three tracks carry 3 plays and
+    four stars; state says 7 plays for one, and the sidecar adds 2 plays, a
+    skip and five stars on another.
+    """
+    fx = _fixture_lib()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        it = os.path.join(m['mount'], 'iPod_Control', 'iTunes')
+        dbp, side = os.path.join(it, 'iTunesDB'), os.path.join(it, 'Play Counts')
+        state = os.path.join(m['home'], 'data', 'state.json')
+        cli = 'from saltpod.cli import main; sys.exit(main(%r))'
+        rc, out = _in_home(m['home'], cli % (['plays', 'adopt'],))
+        assert rc == 0, out[-300:]
+        mac = 3700000000
+        _sidecar(side, [(0,) * 7, (2, mac, 0, 100, 0, 1, mac + 60), (0,) * 7])
+        before = {f: open(f, 'rb').read() for f in (dbp, state, side)}
+        rc, out = _in_home(m['home'], cli % (['plays', 'write'],))
+        assert rc == 0, out[-300:]
+        assert 'plays 3 -> 7' in out and 'plays 3 -> 5' in out and 'rating **** -> *****' in out, out
+        assert all(open(f, 'rb').read() == b for f, b in before.items()), 'a rehearsal changed a file'
+        # a write that fails its check puts the backup back
+        rc, out = _in_home(m['home'], '''
+from saltpod import ipod_edit as E
+keep = E.write_db
+def corrupting(path, blob):
+    keep(path, blob)
+    if blob != E.__dict__.get("_orig"):
+        with open(path, "r+b") as f:
+            f.seek(len(blob) // 2); f.write(b"\\0" * 64)
+E._orig = open(%r, "rb").read()
+E.write_db = corrupting
+''' % dbp + cli % (['plays', 'write', '--write'],))
+        assert rc == 1 and 'restored   the iPod is as it was' in out, out[-300:]
+        assert open(dbp, 'rb').read() == before[dbp], 'the failed write was not restored'
+        assert os.path.exists(side), 'the sidecar went with a write that did not land'
+        rc, out = _in_home(m['home'], cli % (['plays', 'write', '--write'],))
+        assert rc == 0 and 're-signed and verified' in out, out[-300:]
+        from saltpod import itunesdb as I, hash58 as H
+        blob = open(dbp, 'rb').read()
+        assert H.verify(blob, '0000000000000000'), 'not re-signed'
+        got = {t['title']: t for t in I.read(dbp)['tracks']}
+        assert got['Morning Field']['play_count'] == 7, got['Morning Field']
+        b = got['Second Light']
+        assert b['play_count'] == 5 and b['rating'] == 100, b
+        assert b['last_played'] == mac - I.MAC_EPOCH, b['last_played']
+        assert not os.path.exists(side), 'the sidecar was left to be counted twice'
+        rc, out = _in_home(m['home'], cli % (['plays', 'write'],))
+        assert 'tracks to change 0' in out.replace('\u25c6', '').replace('  ', ' '), out
+        return 'rehearse 0 bytes; write 2 tracks; restore 1'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_plays_applemusic():
+    """`saltpod plays applemusic` reads Apple Music's plays from a library
+    FILE, refusing while the iPod is mounted or Music is open (asked of the
+    process list, never of Music). Uses fixtures/music-library.xml, an
+    invented Music XML library, and a saved read in the columnar form.
+    """
+    fx = _fixture_lib()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        xml = os.path.join(ROOT, 'fixtures', 'music-library.xml')
+        away = os.path.join(tmp, 'no-ipod-here')
+        run = ('''
+from saltpod import listening as LS
+LS.music_running = lambda: %s
+from saltpod.cli import main
+sys.exit(main(%r))''')
+        rc, out = _in_home(m['home'], run % (False, ['plays', 'applemusic', xml]))
+        assert rc != 0 and 'iPod is mounted' in out, 'read with the iPod mounted: ' + out[-200:]
+        rc, out = _in_home(m['home'], run % (True, ['plays', 'applemusic', xml, '--mount', away]))
+        assert rc != 0 and 'Music is open' in out, 'read with Music open: ' + out[-200:]
+        rc, out = _in_home(m['home'], run % (False, ['plays', 'applemusic', xml, '--mount', away]))
+        assert rc == 0, out[-300:]
+        st = json.load(open(os.path.join(m['home'], 'data', 'state.json')))['tracks']
+        a, g = st['alder-quartet|morning-field'], st['grove|paper-moon']
+        assert (a['am_plays'], a['am_skips']) == (12, 2), 'the larger copy should win: %s' % a
+        assert g['am_plays'] == 5 and g['am_last_played'] > 0, g
+        saved = os.path.join(tmp, 'read.json')
+        json.dump({'name': ['Paper Moon'], 'artist': ['Grove'], 'played': [9],
+                   'last': ['2026-01-01T10:00:00Z'], 'skipped': [1], 'read_at': 'x'}, open(saved, 'w'))
+        rc, out = _in_home(m['home'], run % (False, ['plays', 'applemusic', saved, '--mount', away]))
+        assert rc == 0, out[-300:]
+        st = json.load(open(os.path.join(m['home'], 'data', 'state.json')))['tracks']
+        assert st['grove|paper-moon']['am_plays'] == 9, st['grove|paper-moon']
+        from saltpod import curate as C
+        import inspect
+        assert '"plays", "applemusic"' in inspect.getsource(C), 'no Data-sheet job runs it'
+        return 'refuses 2; XML and saved read both import'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_contract():
+    """Gate 0: every reply's shape matches contract/snapshot.json.
+
+    bin/contract.py builds the fixture library in a temporary directory,
+    starts the server on it under SALTPOD_HOME and compares what comes back
+    with the record; the Swift models decode the same replies. A rename on
+    either side fails here first.
+    """
+    tool = os.path.join(ROOT, 'bin', 'contract.py')
+    if not os.path.exists(tool):
+        return ('skip', 'no bin/contract.py in this tree (not in the public export)')
+    r = subprocess.run([sys.executable, tool, '--check'],
+                       capture_output=True, text=True, timeout=300)
+    if r.returncode != 0:
+        lines = [l.strip() for l in r.stdout.splitlines() if l.startswith('  ')]
+        raise AssertionError('; '.join(lines[:3]) or r.stdout[-200:] or r.stderr[-200:])
+    return r.stdout.strip().splitlines()[-1].replace('contract holds: ', '')
+
+
+def t_home_isolated():
+    """A job step under a temporary SALTPOD_HOME writes nothing in the source tree.
+
+    The step is the one run_job starts for "index the music drive" -- the
+    same argv, the same cwd (the code root), the environment inherited --
+    pointed at the fixture library's drive. It must rewrite the fixture
+    home's index and leave data/, backups/ and reports/ under the source
+    tree exactly as they were, file for file.
+    """
+    if not os.path.exists(os.path.join(ROOT, 'fixtures', 'build.py')):
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    sys.path.insert(0, os.path.join(ROOT, 'fixtures'))
+    import build as FX
+
+    def listing():
+        out = {}
+        for top in ('data', 'backups', 'reports'):
+            for d, _dirs, files in os.walk(os.path.join(ROOT, top)):
+                for f in files:
+                    p = os.path.join(d, f)
+                    st = os.stat(p)
+                    out[p] = (st.st_size, st.st_mtime_ns)
+        return out
+    tmp = tempfile.mkdtemp(prefix='saltpod-home-')
+    try:
+        m = FX.build(os.path.join(tmp, 'f'))
+        idx = os.path.join(m['home'], 'data', 'local', 'index.json')
+        before_idx = os.stat(idx).st_mtime_ns
+        before = listing()
+        step = [sys.executable, '-u', '-c',
+                'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
+                'sys.exit(main(%r))' % (['index', m['library']],)]
+        r = subprocess.run(step, cwd=ROOT, env=dict(os.environ, SALTPOD_HOME=m['home']),
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, 'the step failed: %s' % (r.stdout + r.stderr)[-200:]
+        assert os.stat(idx).st_mtime_ns != before_idx, 'the fixture index was not rewritten'
+        after = listing()
+        moved = sorted(set(before.items()) ^ set(after.items()))
+        assert not moved, 'written under the source tree: %s' % os.path.relpath(moved[0][0], ROOT)
+        n = len(json.load(open(idx))['tracks'])
+        return 'index of %d files under the fixture home; %d source files unmoved' % (n, len(after))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+_FIXTURE_COVER_PODCASTS = r"""
+import io, json, os, sys, contextlib, time
+sys.path.insert(0, 'src'); sys.path.insert(0, 'fixtures')
+import build as FX
+from saltpod import curate as C, tags as T, apply as A, state as S, cli
+from saltpod import itunesdb_write as W, ipod_edit as E, podcasts as P
+m = json.load(open(sys.argv[1]))
+mount, home = m['mount'], m['home']
+IDX = os.path.join(home, 'data', 'local', 'index.json')
+key, birch = 'alder-quartet|morning-field', 'birch-ensemble|second-light'
+
+def run(argv):
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = cli.main(argv)
+    except SystemExit as e:
+        code = e.code
+    return code or 0, buf.getvalue()
+
+def sync():
+    time.sleep(1.05)        # a backup folder is named to the second
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        pl = A.plan(mount)
+        # the fixture iPod holds only WAVs, so an m4a add has nothing to be
+        # cloned from; the adds stay out and everything else runs for real
+        A.sync(mount, eject=False, exclude={'tracks': [a[0] for a in pl['adds']]})
+    return buf.getvalue()
+
+def filed():
+    root = W.parse(open(os.path.join(mount, A.DB_REL), 'rb').read())
+    return sorted(P._mhod(t, 1) for t in E.tracks(root) if t.get32(P.MEDIATYPE) == P.PODCAST)
+
+# --- a cover dropped in the panel: file, index, row, `art status`
+f = next(e['path'] for e in json.load(open(IDX))['tracks'] if e.get('title') == 'Morning Field')
+assert not T.has_art(f)
+ix = json.load(open(IDX))
+for e in ix['tracks']:
+    if e['path'] == f:
+        e['has_art'] = False             # the seed says so; the file says not
+json.dump(ix, open(IDX, 'w'))
+C._LOCBYKEY['built'] = None
+_c, before = run(['art', 'status', '--mount', mount])
+assert 'covers we could add 0' in before, before
+text0, probe = T.read(f), T.audio_probe(f)
+r = C.OPS['/api/cover']({'key': key, 'image': FX.COVER})
+assert r['ok'] and r['in_file'], r
+assert T.has_art(f) and T.art_bytes(f)[1] == FX.COVER, 'not in the file'
+assert T.read(f) == text0, 'the other tags changed'
+T.verify(f, probe, in_place=True)
+e = next(e for e in json.load(open(IDX))['tracks'] if e['path'] == f)
+assert e['has_art'] is True, 'the index did not follow'
+assert C.row_art(key, S.load()['tracks'][key]).startswith('/api/art?key='), 'the row'
+_c, after = run(['art', 'status', '--mount', mount])
+assert 'covers we could add 1' in after and 'Morning Field' in after, after
+assert C.OPS['/api/cover']({'key': key, 'image': 'x'})['ok'] is False
+
+# --- the Podcasts collection: a drop files it, taking it out unfiles it
+assert C.apply_decision({'rename_collection': 'Podcasts', 'to': ''})['ok'] is False
+assert 'Podcasts' in C.tracks_payload()['collections'], 'the drop target is always there'
+assert filed() == []
+pc = C.OPS['/api/podcasts']({'action': 'add', 'keys': [birch]})['podcasts']
+assert pc['n'] == 1 and pc['pending'] == 1, pc
+assert C.plan_summary(mount)['podcasts']['file'] == 1
+log = sync()
+assert '## podcasts' in log and '@@ podcasts done' in log, log[-400:]
+assert filed() == ['Second Light'], filed()
+root = W.parse(open(os.path.join(mount, A.DB_REL), 'rb').read())
+assert P._flagged_playlists(root) == ['Podcasts']
+assert 'Keepers' in [E.pl_name(p) for p in E.playlists(root, E.playlist_sections(root)[0])], \
+    'an ordinary playlist went missing'
+assert C.podcasts_summary()['pending'] == 0
+code, out = run(['podcasts', 'remove', birch])
+assert code == 0 and C.podcasts_summary()['filed_out'] == 1, out
+sync()
+assert filed() == [], 'taken out, still filed as a podcast'
+
+# --- `saltpod podcasts write` refuses without a rehearsal of this database
+C.OPS['/api/podcasts']({'action': 'add', 'keys': [birch]})
+code, out = run(['podcasts', 'write', '--mount', mount])
+assert code != 0 and 'rehearse first' in out, out
+assert filed() == [], 'a refused write wrote'
+code, out = run(['podcasts', 'rehearse', '--mount', mount])
+assert code == 0, out
+time.sleep(1.05)
+code, out = run(['podcasts', 'write', '--mount', mount])
+assert code == 0 and filed() == ['Second Light'], out
+print('OK')
+"""
+
+
+def t_fixture_cover_and_podcasts():
+    """On the fixture library and its fake iPod: a dropped cover reaches the
+    file, the index, the row and `saltpod art status`; the Podcasts
+    collection files a track as a podcast at sync and unfiles it when taken
+    out; `saltpod podcasts write` refuses until a rehearsal.
+
+    Runs in a child process with SALTPOD_HOME on a fresh fixture build, so
+    nothing here reads or writes the source tree's data/ or a real device.
+    """
+    if not os.path.exists(os.path.join(ROOT, 'fixtures', 'build.py')):
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    if not shutil.which('ffmpeg'):
+        return ('skip', 'ffmpeg not installed (the cover is normalised with it off macOS)')
+    sys.path.insert(0, os.path.join(ROOT, 'fixtures'))
+    import build as FX
+    tmp = tempfile.mkdtemp(prefix='saltpod-fixture-')
+    try:
+        FX.build(os.path.join(tmp, 'f'))
+        script = os.path.join(tmp, 'run.py')
+        open(script, 'w').write(_FIXTURE_COVER_PODCASTS)
+        r = subprocess.run([sys.executable, script, os.path.join(tmp, 'f', 'fixture.json')],
+                           cwd=ROOT, env=dict(os.environ, SALTPOD_HOME=os.path.join(tmp, 'f', 'home')),
+                           capture_output=True, text=True, timeout=180)
+        if r.returncode != 0 or 'OK' not in r.stdout:
+            raise AssertionError((r.stderr or r.stdout).strip().splitlines()[-1][:200])
+        return 'cover in file+index+row+status; podcasts filed, unfiled, rehearsed'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _fixture_home():
+    """A fresh fixture library in a temp dir: (tmp, manifest), or None."""
+    if not os.path.exists(os.path.join(ROOT, 'fixtures', 'build.py')):
+        return None
+    sys.path.insert(0, os.path.join(ROOT, 'fixtures'))
+    import build as FX
+    tmp = tempfile.mkdtemp(prefix='saltpod-fr-')
+    return tmp, FX.build(os.path.join(tmp, 'f'))
+
+
+def _saltpod(m, *argv):
+    """`saltpod ARGV` under the fixture home: (returncode, stdout+stderr)."""
+    r = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, "src"); '
+                        'from saltpod.cli import main; sys.exit(main(sys.argv[1:]))'] + list(argv),
+                       cwd=ROOT, env=dict(os.environ, SALTPOD_HOME=m['home']),
+                       capture_output=True, text=True, timeout=120)
+    return r.returncode, r.stdout + r.stderr
+
+
+def _server_call(m, expr):
+    """Evaluate `expr` with curate imported as C, under the fixture home; JSON back."""
+    r = subprocess.run([sys.executable, '-c', 'import sys, json; sys.path.insert(0, "src"); '
+                        'from saltpod import curate as C; print(json.dumps(%s))' % expr],
+                       cwd=ROOT, env=dict(os.environ, SALTPOD_HOME=m['home']),
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr[-300:]
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+def t_data_jobs_resolve():
+    """The Data sheet's match and verify jobs start their modules.
+
+    They pointed at src/itunes_match.py and src/verify_bandcamp.py after the
+    package move, so both ended "job failed" every time. The argv each job
+    runs is built by curate.job_module_argv; run with no playlist, each
+    module must answer with its own usage, not "No module named" or "can't
+    open file". No network, no data touched.
+    """
+    from saltpod import curate as C
+    src = open(os.path.join(ROOT, 'src', 'saltpod', 'curate.py')).read()
+    assert "'src/itunes_match.py'" not in src and "'src/verify_bandcamp.py'" not in src, \
+        'a job still names a path the package move left behind'
+    for mod in C.JOB_MODULES:
+        r = subprocess.run(C.job_module_argv(mod, []), cwd=C.CODE_ROOT,
+                           capture_output=True, text=True, timeout=60)
+        out = r.stdout + r.stderr
+        assert 'No module named' not in out and "can't open file" not in out, \
+            '%s did not resolve: %s' % (mod, out[-200:])
+        assert 'Traceback' not in out, '%s crashed: %s' % (mod, out[-200:])
+        assert ('usage' in out.lower()) or (mod.replace('_', '') in out.replace('_', '')), \
+            '%s answered something else: %s' % (mod, out[-200:])
+    return 'both start: ' + ', '.join(C.JOB_MODULES)
+
+
+def t_honest_fails():
+    """No iPod, no backup, a root unplugged, a backup file: one sentence each.
+
+    `saltpod read` with no iPod printed a FileNotFoundError traceback;
+    `index` with a root unplugged died with MissingRoot and indexed nothing;
+    "Re-read the device" with neither iPod nor backup let a SystemExit kill
+    the request thread; `smartlists write --mount FILE` claimed it wrote
+    both sections. Each now says what happened, on the fixture library.
+    """
+    fx = _fixture_home()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        idx = os.path.join(m['home'], 'data', 'local', 'index.json')
+        kept = [e['path'] for e in json.load(open(idx))['tracks']
+                if e['path'].startswith(m['unplugged'])]
+        assert kept, 'the fixture has no track under its unplugged root'
+        rc, out = _saltpod(m, 'index')
+        assert rc == 0 and 'not mounted: ' in out and 'Traceback' not in out, \
+            'index with a root unplugged: %s' % out[-200:]
+        after = [e['path'] for e in json.load(open(idx))['tracks']]
+        assert set(kept) <= set(after), 'the unplugged root\'s tracks were dropped'
+        assert any(p.startswith(m['library']) for p in after), 'the mounted root was not indexed'
+
+        db = os.path.join(m['mount'], 'iPod_Control', 'iTunes', 'iTunesDB')
+        before = open(db, 'rb').read()
+        rc, out = _saltpod(m, 'smartlists', 'write', '--mount', db)
+        assert 'refreshed in memory only' in out and 'written to both' not in out, out[-200:]
+        assert open(db, 'rb').read() == before, 'a database file was written'
+
+        os.rename(m['mount'], m['mount'] + '.away')
+        rc, out = _saltpod(m, 'read')
+        assert rc == 1 and 'no iPod database' in out and 'Traceback' not in out, out[-200:]
+        r = _server_call(m, 'C.reread_device()')
+        assert r['ok'] and r['read'] == 'backup' and r['from'].startswith('ipod-'), r
+        shutil.move(os.path.join(m['home'], 'backups'), os.path.join(tmp, 'backups.away'))
+        r = _server_call(m, 'C.reread_device()')
+        assert r['ok'] is False and 'no iPod and no backup' in r['error'], r
+        os.rename(m['mount'] + '.away', m['mount'])
+        r = _server_call(m, 'C.reread_device()')
+        assert r == {'ok': True, 'read': 'device'}, r
+
+        os.rename(m['library'], m['library'] + '.away')
+        os.rename(idx, idx + '.was')
+        rc, out = _saltpod(m, 'index')
+        assert rc == 1 and 'not mounted' in out and 'Traceback' not in out, out[-200:]
+        assert not os.path.exists(idx), 'an index was written with nothing mounted'
+        return 'index, read, re-read, smartlists write: sentences, no tracebacks'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_decide_d13():
+    """`saltpod decide` orders, renames and deletes a collection, and takes paths (D13).
+
+    The page could sequence and rename a collection through /api/decide and
+    the terminal could not. Run on the fixture: --reorder answers with the
+    whole sequence, --rename and --delete with the member count, an unknown
+    collection and an unindexed path are refused, and an untagged file named
+    by path lands on the record the page would give it (file_identity).
+    """
+    fx = _fixture_home()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        st_path = os.path.join(m['home'], 'data', 'state.json')
+        st = json.load(open(st_path))
+        col = sorted(st['collection_order'], key=lambda c: -len(st['collection_order'][c]))[0]
+        seq = st['collection_order'][col]
+        assert len(seq) >= 2, 'the fixture has no collection of two'
+        want = list(reversed(seq))
+        rc, out = _saltpod(m, 'decide', '--reorder', col, *want[:2], '--json')
+        r = json.loads(out)
+        assert rc == 0 and r['order'][:2] == want[:2] and sorted(r['order']) == sorted(seq), r
+        assert json.load(open(st_path))['collection_order'][col][:2] == want[:2]
+        rc, out = _saltpod(m, 'decide', '--rename', col, '--to', 'Renamed Here', '--json')
+        r = json.loads(out)
+        assert rc == 0 and r['renamed'] == {'from': col, 'to': 'Renamed Here', 'members': len(seq)}, r
+        rc, out = _saltpod(m, 'decide', '--reorder', 'No Such Collection', seq[0])
+        assert rc == 1 and 'no collection called' in out, out[-200:]
+        rc, out = _saltpod(m, 'decide', '--delete', 'Renamed Here', '--json')
+        assert rc == 0 and json.loads(out)['renamed']['to'] is None
+        assert 'Renamed Here' not in json.load(open(st_path))['collections']
+        rc, out = _saltpod(m, 'decide', m['untagged_path'], '--vinyl', 'yes', '--json')
+        r = json.loads(out)
+        k = os.path.splitext(os.path.basename(m['untagged_path']))[0]
+        ident = _server_call(m, 'C.path_identity(%r)' % m['untagged_path'])
+        assert rc == 0 and r['touched'] == [ident['key']], (r, ident)
+        assert json.load(open(st_path))['tracks'][ident['key']]['vinyl'] is True
+        from saltpod.state import key_for
+        assert ident['key'] == key_for('', k), 'an untagged file is not keyed by its name: %s' % ident
+        rc, out = _saltpod(m, 'decide', os.path.join(m['library'], 'nope.wav'), '--tier', 'sync')
+        assert rc == 1 and 'not in the drive index' in out, out[-200:]
+        rc, out = _saltpod(m, 'decide', seq[0], '--bought', 'yes')
+        assert rc != 0, '--bought is still accepted'
+        return 'reorder, rename, delete, a path; two refusals'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_one_buy_list():
+    """`saltpod state buylist` and the Buy pane read one list: the file is the proof.
+
+    The card's button set a `bought` flag that only the terminal read, so
+    after an index the two lists disagreed. Now both are the server's
+    'to buy' list; a stale flag on a track with no file changes nothing.
+    """
+    fx = _fixture_home()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        pay = _server_call(m, 'C.tracks_payload()')
+        to_buy = sorted(t['key'] for t in pay['tracks'] if 'to buy' in t['lists'])
+        assert to_buy, 'the fixture has nothing to buy'
+        # an old flag, left by the removed button, on a track still to buy
+        st_path = os.path.join(m['home'], 'data', 'state.json')
+        st = json.load(open(st_path))
+        st['tracks'][to_buy[0]]['bought'] = True
+        json.dump(st, open(st_path, 'w'))
+        pay = _server_call(m, 'C.tracks_payload()')
+        again = sorted(t['key'] for t in pay['tracks'] if 'to buy' in t['lists'])
+        assert again == to_buy, 'the stale bought flag moved a card: %s' % again
+        rc, out = _saltpod(m, 'state', 'buylist')
+        assert rc == 0 and out.startswith('%d tracks' % len(to_buy)), out[-200:]
+        rep = open(os.path.join(m['home'], 'reports', 'buylist.md')).read()
+        names = {(t['artist'], t['title']) for t in pay['tracks'] if t['key'] in to_buy}
+        for a, ti in names:
+            assert '### %s - %s' % (a, ti) in rep, 'the report lacks %s - %s' % (a, ti)
+        assert rep.count('### ') == len(to_buy), 'the report has rows the pane does not'
+        page = open(os.path.join(ROOT, 'src', 'saltpod', 'curate.html')).read()
+        assert 'data-bought' not in page, 'the card still has its bought button'
+        return '%d to buy, the same in the pane and the report' % len(to_buy)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_source_from_page():
+    """A fresh install names its music folder and indexes it (the Data sheet's field).
+
+    /api/action source checks the folder with config.check_root -- the check
+    `saltpod sources add` makes -- and runs that verb. Here, on a home with
+    no device.json at all: a bad path is refused with a sentence, a real one
+    is walked into the index, and health names it as a source even though
+    there is no iPod configured yet.
+    """
+    fx = _fixture_home()
+    if not fx:
+        return ('skip', 'no fixtures/ in this tree (not in the public export)')
+    tmp, m = fx
+    try:
+        os.remove(os.path.join(m['home'], 'data', 'device.json'))
+        os.remove(os.path.join(m['home'], 'data', 'local', 'index.json'))
+        r = _server_call(m, '__import__("saltpod.config").config.check_root("%s")'
+                         % os.path.join(tmp, 'no-such'))
+        assert r[1] and r[1].startswith('no such folder'), r
+        rc, out = _saltpod(m, 'index')
+        assert rc == 1 and 'no music folder named yet' in out, out[-200:]
+        rc, out = _saltpod(m, 'sources', 'add', m['library'])
+        assert rc == 0 and 'files found' in out, out[-300:]
+        h = _server_call(m, 'C.health()')
+        assert [x['path'] for x in h['sources']] == [m['library']], h['sources']
+        idx = json.load(open(os.path.join(m['home'], 'data', 'local', 'index.json')))
+        assert idx['count'] >= 1 and idx['roots'] == [m['library']], idx['roots']
+        r = _server_call(m, '__import__("saltpod.config").config.check_root("%s")' % m['library'])
+        assert r[1] and r[1].startswith('already a source'), r
+        rc, out = _saltpod(m, 'index')
+        assert rc == 0, 'index after naming a folder on a fresh install: %s' % out[-200:]
+        return 'no device.json: named, walked, reported, re-indexed'
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def t_pagetest():
@@ -1645,9 +2696,15 @@ def main():
     check('a stale Spotlight record is refused', t_stale_index_gate)
     check('two roots, one track; one root, two files', t_fold_copies_respects_roots)
     check('an unsupervised write refuses and restores', t_guarded_write)
+    check('a sync that fails its check restores itself', t_sync_restores)
+    check('sync refreshes smart lists, as rows', t_sync_smart_phase)
+    check('plays write: rehearse, write, restore', t_plays_write)
+    check("Apple Music's plays, from a file, guarded", t_plays_applemusic)
     check('key, tempo, ISRC, label, iTunNORM are read', t_read_extra)
     check('a WAV with an id3 chunk retags, losing nothing', t_wav_id3_write)
     check('ID3v2.2 converts, every frame or none', t_id3v22_converts)
+    check('a dropped cover goes into the file, nothing else moves', t_cover_into_file)
+    check('a refused WAV names its reason', t_wav_refusal_named)
     check('sync merges plays before it replaces the database', t_sync_merges_plays_first)
     check('an added track gets its own identity', t_track_add_identity)
     check('on-the-go lists are kept, by position', t_otg)
@@ -1666,10 +2723,21 @@ def main():
     check('a playlist mosaic tiles its covers', t_mosaic_tiles)
     check('every playlist row carries its art', t_playlists_payload_art)
     check('front end does not decide', t_layer_census)
+    check('the answers the page stopped working out', t_layer_answers)
     check('the page behaves (pagetest.py)', t_pagetest, slow=True)
 
     section('http — the contract both clients use')
+    check('a job under SALTPOD_HOME stays out of the tree', t_home_isolated)
+    check('fixture: cover into the file, Podcasts at sync', t_fixture_cover_and_podcasts)
+    check('the contract holds (contract.py --check)', t_contract)
     check('the API answers questions', t_api)
+
+    section('first release, web and CLI -- one sentence, one list (fr-web)')
+    check('the Data sheet jobs start their modules', t_data_jobs_resolve)
+    check('no iPod, no backup, a root away: sentences', t_honest_fails)
+    check('decide orders, renames, deletes, takes paths', t_decide_d13)
+    check('one buy list: the file is the proof', t_one_buy_list)
+    check('a fresh install names its music folder', t_source_from_page)
 
     print('\n%d passed, %d failed, %d skipped   (%.1fs)'
           % (len(PASS), len(FAIL), len(SKIP), time.time() - _t0))

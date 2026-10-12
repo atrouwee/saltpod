@@ -756,7 +756,7 @@ def why_not(parsed, track, now=None):
             if not _eval_rule(r, track, now)]
 
 
-def refresh_membership(root):
+def refresh_membership(root, skip=()):
     """Rewrite each understood smart playlist's members from its own rules.
 
     THE IPOD DOES NOT EVALUATE THESE. iTunes did it on the desktop and wrote
@@ -779,6 +779,9 @@ def refresh_membership(root):
     Type 5 is skipped on purpose: those are the firmware's own media lists,
     shipped with rules and zero members by design.
 
+    `skip` names lists to leave exactly as they are -- the ones a sync's
+    Review panel unticked.
+
     Returns [(section, name, before, after), ...] for the lists that moved.
     """
     tracks = load_tracks(root)
@@ -792,6 +795,8 @@ def refresh_membership(root):
             if not E.is_smart(pl):
                 continue
             name = E.pl_name(pl)
+            if name not in result and name in skip:
+                result[name] = None
             if name not in result:
                 try:
                     parsed = parse_rules(pl)

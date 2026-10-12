@@ -1,0 +1,25 @@
+{
+ "library": 4,
+ "playlists": [
+  {
+   "art": "/api/art?playlist=2026-january",
+   "created": "2026-01-01T10:00:00Z",
+   "imported": true,
+   "last": "2026-01-02T08:00:00Z",
+   "name": "2026-january",
+   "slug": "2026-january",
+   "tracks": 3
+  },
+  {
+   "art": null,
+   "created": "2025-07-01T10:00:00Z",
+   "imported": false,
+   "last": "2025-08-01T10:00:00Z",
+   "name": "Garden Party",
+   "slug": "garden-party",
+   "tracks": 2
+  }
+ ],
+ "read_at": "2026-01-02 09:00",
+ "rev": 1791789447118
+}

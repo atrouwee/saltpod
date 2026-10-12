@@ -42,15 +42,48 @@ RULES = [
     ('price or size arithmetic',
      r"reduce\(\(a,\s*t\)\s*=>\s*a\s*\+",
      "a total computed from rows; the server knows the total"),
+    # Debt D3 and D4 (NATIVE-PLAN 3.4): a row's law-3 state and what it
+    # plays were worked out from `device || local`, `device || reachable`
+    # and `if(t.audio)`. They are `t.state` and `t.play` now.
+    ('row state or playback worked out',
+     r"t\.device\s*\|\|\s*t\.(?:local|reachable)|if\s*\(\s*t\.(?:audio|preview)\s*\)",
+     "read t.state / t.play (curate.row_state, curate.row_play)"),
+    # Debt D2: the track menu's decision row -- which verb, whether it is
+    # already made, and the tier it sets -- was a nested ternary over
+    # device/held/tier and a `tier: onPod && !anyCol ? ...` literal.
+    ('decision worked out',
+     r"\?\s*\(\s*offPod|\?\s*'undecided'\s*:\s*'sync'|\bheld\s*\?\s*\(",
+     "read the row's decision (curate.decision_of) or ask /api/decision"),
+    # Debt D6: the order of "All on iPod" -- a sort by the client's own
+    # collation, which no other client shares. It is `on_ipod_order` now.
+    ('device list sorted here',
+     r"filter\(\s*t\s*=>\s*t\.device\s*\)\.sort\(",
+     "read on_ipod_order (curate.on_ipod_order)"),
+    # Debt D8, D9: the buy pane's stages and the vinyl pane's to-do were
+    # filtered and matched in the page (bc_verdict, OWN/WANT, vkey).
+    ('pane stage worked out',
+     r"filter\(\s*t\s*=>\s*t\.bc_verdict|(?:OWN|WANT)\.has\(|\bvkey\(",
+     "read the 'synced', 'FLAC to buy', 'not looked up', 'vinyl to add' lists"),
+    # Debt D10: sync progress parsed out of the log's last 60 lines.
+    ('job log parsed',
+     r"match\(\s*/\^@@",
+     "read job.steps (curate.Job.step_line), complete and settled"),
+    # Debt D5: which Apple Music cloud statuses mean owned.
+    ('cloud status list',
+     r"'purchased'|AM_OWNED",
+     "read am_owned / am_status off the row (curate.am_row_answers)"),
 ]
 
 # What is already there and accepted, with a reason. A number that only ever
 # goes down.
 # Each number is a promise, with a reason, and only ever goes down.
 BUDGET = {
-    # row rendering: "is there a file for this" decides full ink vs dim, and
-    # that is a presentation choice about two facts, not a business rule
-    'multi-field verdict': 6,
+    # Was 6, labelled "row rendering" -- but five of the six were the Sync
+    # button's count (offs, ons, waiting, and the off count again in the
+    # data panel), which is a rule, not rendering. Those are the server's
+    # now (curate.sync_counts, debt D1), and the sixth, the buy pane's "not
+    # looked up yet" count, is the 'not looked up' list (D8).
+    'multi-field verdict': 0,
     # `all` and `vinyl` are lookups; the pattern below already lets those by
     'filter predicate': 0,
     # "everything marked sync that is not already in THIS collection" --
@@ -60,6 +93,12 @@ BUDGET = {
     # minutes of whatever the centre pane is currently showing: a sum over
     # the CLIENT's view, which the server has no opinion about
     'price or size arithmetic': 1,
+    'row state or playback worked out': 0,
+    'cloud status list': 0,
+    'decision worked out': 0,
+    'device list sorted here': 0,
+    'pane stage worked out': 0,
+    'job log parsed': 0,
 }
 
 
@@ -120,6 +159,44 @@ def main(argv):
     else:
         print('  every operation has a verb — both adapters reach the same code')
 
+    # ---- D13: every key /api/decide reads has a `decide` option
+    #
+    # The check above matched operation names against verb names, so it
+    # said "every operation has a verb" while `decide` could not reorder or
+    # rename a collection, which /api/decide could. The question is per
+    # key: each body key apply_decision (and _resolve_paths) reads must map
+    # to a `decide` argument in cli.py, or be named here with the reason
+    # the terminal has no twin for it.
+    DECIDE_OPTION = {'keys': '"keys"', 'paths': '"keys"', 'tier': '"--tier"',
+                     'collection': '"--collection"', 'mode': '"--mode"',
+                     'vinyl': '"--vinyl"', 'reorder': '"--reorder"',
+                     'rename_collection': '"--rename"', 'to': '"--to"'}
+    DECIDE_EXEMPT = {
+        'key': 'the one-key spelling of keys',
+        'adopt': 'the page naming a row it holds no record for; the terminal '
+                 'reaches the same files by path (paths)',
+    }
+    try:
+        import inspect
+        src_dec = inspect.getsource(_C.apply_decision) + inspect.getsource(_C._resolve_paths)
+        body_keys = set(re.findall(r"body\.get\('(\w+)'|body\['(\w+)'\]|'(\w+)' in body", src_dec))
+        body_keys = {k for t in body_keys for k in t if k}
+    except Exception as e:
+        body_keys = set()
+        print('\n  (could not read apply_decision: %s)' % e)
+    m = re.search(r'add_parser\("decide".*?(?=sub\.add_parser\()', cli, re.S)
+    decide_src = m.group(0) if m else ''
+    missing = sorted(k for k in body_keys - set(DECIDE_EXEMPT)
+                     if DECIDE_OPTION.get(k) is None or DECIDE_OPTION[k] not in decide_src)
+    print('\n  /api/decide keys: %s' % ' '.join(sorted(body_keys)))
+    if missing:
+        print('  ** decide keys the terminal cannot send: %s' % ' '.join(missing))
+        print('     give `saltpod decide` an option for each, or name it in DECIDE_EXEMPT')
+        over.append(('decide keys without a cli option', len(missing), 0))
+    else:
+        print('  every /api/decide key has a decide option (%d exempt, with reasons)'
+              % len(body_keys & set(DECIDE_EXEMPT)))
+
     # ---- the blind spot this census had for a month
     #
     # The check above compares curate.OPS against cli.py's verbs, and it
@@ -151,8 +228,11 @@ def main(argv):
                 found |= {al.name for al in n.names}
         return found & mods
 
-    # Everything reachable from either adapter, transitively.
-    reach, stack = set(), ['cli', 'curate']
+    # Everything reachable from either adapter, transitively. A module a
+    # Data-sheet job runs (curate.JOB_MODULES) is started by name with runpy,
+    # not imported, so it is named as a root of the walk rather than missed.
+    job_mods = list(getattr(_C, 'JOB_MODULES', ())) if ops else []
+    reach, stack = set(), ['cli', 'curate'] + job_mods
     while stack:
         m = stack.pop()
         if m in reach or m not in mods:
@@ -161,15 +241,17 @@ def main(argv):
         stack.extend(imports_of(m))
 
     # A module whose only caller is itself is dead however good it is.
-    # The five below are named, not zeroed. Each is a research one-off that
-    # ships in the manifest and has no verb: buy_lossless and verify_bandcamp
-    # (one-shot purchase research), spectrum and verify_quality (the lossless
+    # The four below are named, not zeroed. Each is a research one-off that
+    # ships in the manifest and has no verb: buy_lossless (one-shot purchase
+    # research), spectrum and verify_quality (the lossless
     # audit), and itunesdb_patch -- which is the odd one out, a write path
     # described as "the safest way to write" that nothing writes through.
     # That last one is a real question to settle, not a one-off to accept.
     # The number only ever goes down.
+    # verify_bandcamp came off the list on 12 October: the Data sheet's
+    # "Verify Bandcamp durations" job runs it (curate.JOB_MODULES).
     KNOWN_UNREACHABLE = {'buy_lossless', 'itunesdb_patch', 'spectrum',
-                         'verify_bandcamp', 'verify_quality'}
+                         'verify_quality'}
     dead = sorted(mods - reach - {'__main__'} - KNOWN_UNREACHABLE)
     stale = sorted(KNOWN_UNREACHABLE & reach)
     print('\n  modules shipped: %d   reachable from cli or curate: %d'

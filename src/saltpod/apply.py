@@ -32,7 +32,8 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+from .paths import DATA_ROOT  # noqa: E402  the two roots: see paths.py
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 from . import observe as O
 from . import platform as P
 from . import state as S            # noqa: E402
@@ -252,6 +253,24 @@ def _plan(mount=None):
         if r.get('device') and r['tier'] == 'remove' and k in dev_by_key:
             removes.append((k, r, dev_by_key[k]))
 
+    # THE PODCASTS COLLECTION IS NOT A PLAYLIST. Its members were add
+    # candidates above like any collection's; from here it leaves `cols`,
+    # so the playlist rows never see it, and its effect -- the podcast
+    # media type, in the one flagged list -- is planned on its own
+    # (podcasts.collection_plan). Only when state names it: a device whose
+    # podcasts saltpod was never asked about is left exactly as it is.
+    from . import podcasts as _P
+    pod = None
+    if _P.COLLECTION in cols:
+        members = cols.pop(_P.COLLECTION)
+        dbid_of = {E.track_id(t): E.track_dbid(t) for t in E.tracks(root)}
+        want = [dbid_of[dev_by_key[k]] for k, r in members
+                if k in dev_by_key and r.get('tier') != 'remove']
+        pod = dict(_P.collection_plan(root, want), members=members,
+                   coming=[k for k, r in members
+                           if k not in dev_by_key and r.get('tier') != 'remove'])
+        pod['changed'] = bool(pod['changed'] or pod['coming'])
+
     existing = {E.pl_name(p) for p in E.playlists(root, E.playlist_sections(root)[0])}
     # What each playlist on the device holds right now, in order, so a
     # collection that already matches is reported as such and not rewritten.
@@ -304,10 +323,12 @@ def _plan(mount=None):
             # has something authoritative to revert TO
             'dev_seq': dev_seq, 'origin_of': origin_of,
             'smart': _smart_plan(root),
+            'podcasts': pod,
             'soundcheck': _soundcheck_plan(root),
             'new_playlists': [c for c in cols if c not in existing],
             'update_playlists': [c for c in cols if c in existing and c not in unchanged],
-            'delete_playlists': sorted(n for n in ours if n in existing and n not in cols)}
+            'delete_playlists': sorted(n for n in ours if n in existing and n not in cols
+                                       and not (pod is not None and n == _P.COLLECTION))}
 
 
 # WHAT COUNTS AS DRIFT. Genre is deliberately not in here. It is the field
@@ -535,6 +556,36 @@ def _soundcheck_plan(root):
     return {'have': have, 'missing': miss}
 
 
+def smart_rows(p):
+    """The smart playlists this sync refreshes: one row per understood list
+    whose rules now give a different membership from the one on the device.
+
+    ONE ANSWER FOR BOTH CLIENTS. `saltpod plan` prints these and the page's
+    Review sync draws them from /api/plan, so the rule for "this list will
+    change" is written once, here. A refused list (a rule the evaluator does
+    not understand) is never a row: it is left exactly as it is.
+    """
+    return [{'name': r['name'], 'now': r['now'], 'would': r['would']}
+            for r in (p.get('smart') or [])
+            if not r.get('firmware') and not r.get('refused') and not r.get('excluded')
+            and 'would' in r and r['would'] != r['now']]
+
+
+def smart_line(p):
+    """The one-line summary of the smart playlists, as plan prints it."""
+    mine = [r for r in (p.get('smart') or []) if not r.get('firmware')]
+    return ('smart playlists: %d ours, %d would change, %d refused'
+            % (len(mine), len(smart_rows(p)), sum(1 for r in mine if r.get('refused'))))
+
+
+def soundcheck_line(p):
+    """The Sound Check line plan prints, or None when every track has one."""
+    sc = p.get('soundcheck') or {}
+    if not sc.get('missing'):
+        return None
+    return 'sound check: %d tracks have a value, %d do not' % (sc.get('have', 0), sc['missing'])
+
+
 def print_plan(p):
     print('collections -> playlists: %d new, %d updated, %d unchanged'
           % (len(p['new_playlists']), len(p['update_playlists']), len(p.get('unchanged', []))))
@@ -546,24 +597,25 @@ def print_plan(p):
     sm = p.get('smart') or []
     if sm:
         mine = [r for r in sm if not r.get('firmware')]
-        stale = [r for r in mine if 'would' in r and r['would'] != r['now']]
-        print('smart playlists: %d ours, %d would change, %d refused'
-              % (len(mine), len(stale), sum(1 for r in mine if r.get('refused'))))
+        print(smart_line(p))
         fw = [r for r in sm if r.get('firmware')]
         if fw:
             print('   (%d media-type lists left alone: %s)'
                   % (len(fw), ', '.join(r['name'] for r in fw if r['name'])))
-        for r in sm:
-            if r.get('firmware'):
-                continue
+        for r in mine:
             if r.get('refused'):
                 print('   refused  %-28s %s' % (r['name'][:28], r['refused']))
-            elif r['would'] != r['now']:
-                print('   %-8s %-28s %d -> %d' % ('update', r['name'][:28], r['now'], r['would']))
-    sc = p.get('soundcheck') or {}
-    if sc.get('missing'):
-        print('sound check: %d tracks have a value, %d do not'
-              % (sc.get('have', 0), sc['missing']))
+        for r in smart_rows(p):
+            print('   %-8s %-28s %d -> %d' % ('refresh', r['name'][:28], r['now'], r['would']))
+    pod = p.get('podcasts')
+    if pod and pod.get('changed'):
+        print('podcasts: %d to file, %d back to music%s%s'
+              % (len(pod['file']) + len(pod['coming']), len(pod['unfile']),
+                 ' (%d still to copy)' % len(pod['coming']) if pod['coming'] else '',
+                 ', reordered' if pod['reorder'] else ''))
+    sc = soundcheck_line(p)
+    if sc:
+        print(sc)
     if p['delete_playlists']:
         print('playlists to DELETE (collection removed from state): %s' % ', '.join(p['delete_playlists']))
     print('tracks to ADD: %d' % len(p['adds']))
@@ -600,7 +652,13 @@ def backup(mount):
     are left out: artworkdb.snapshot records their lengths, which is enough
     to undo an add by truncating.
     """
-    d = os.path.join(ROOT, 'backups', 'ipod-%s' % time.strftime('%Y-%m-%d-%H%M%S'))
+    d = base = os.path.join(ROOT, 'backups', 'ipod-%s' % time.strftime('%Y-%m-%d-%H%M%S'))
+    # Two writes in one second (a refused write and its retry) must not
+    # collide: the second one's backup is the one that matters.
+    n = 1
+    while os.path.exists(d):
+        d = '%s-%d' % (base, n)
+        n += 1
     shutil.copytree(os.path.join(mount, 'iPod_Control', 'iTunes'), d)
     adb = os.path.join(mount, 'iPod_Control', 'Artwork', 'ArtworkDB')
     if os.path.exists(adb):
@@ -621,6 +679,12 @@ def drop_excluded(p, exclude):
         return p
     xt = set(exclude.get('tracks') or ())
     xp = set(exclude.get('playlists') or ())
+    xs = set(exclude.get('smart') or ())
+    if xs:
+        # An unticked smart list keeps the members it has on the device; the
+        # smart phase leaves it alone (see refresh_smart).
+        p['smart'] = [dict(r, excluded=True) if r.get('name') in xs else r
+                      for r in (p.get('smart') or [])]
     if xt:
         p['adds'] = [a for a in p['adds'] if a[0] not in xt]
         p['removes'] = [r for r in p['removes'] if r[0] not in xt]
@@ -633,7 +697,150 @@ def drop_excluded(p, exclude):
         p['new_playlists'] = [c for c in p['new_playlists'] if c not in xp]
         p['update_playlists'] = [c for c in p['update_playlists'] if c not in xp]
         p['delete_playlists'] = [c for c in p['delete_playlists'] if c not in xp]
+        if p.get('podcasts') is not None and 'Podcasts' in xp:
+            p['podcasts'] = None
     return p
+
+
+# Estimated on the converted size, not the source: FLAC to ALAC is about the
+# same, WAV and AIFF roughly halve, lossy files are copied as they are.
+# Estimates -- the real number is only known after ffmpeg has run.
+SIZE_FACTOR = {'.flac': 1.05, '.alac': 1.0, '.wav': 0.55, '.aiff': 0.55, '.aif': 0.55}
+
+
+def estimated_bytes(src):
+    """What one source file will take on the device, as best known now."""
+    try:
+        sz = os.path.getsize(src)
+    except OSError:
+        sz = 0
+    return int(sz * SIZE_FACTOR.get(os.path.splitext(src)[1].lower(), 1.0))
+
+
+def fit(p, mount):
+    """Does this plan's copying fit in the device's free space (debt D7)?
+
+    The page used to be the only thing asking: it disabled Confirm when its
+    own sum of the ticked rows passed `free_bytes`, and nothing behind the
+    button checked again -- so a second client, or the terminal, could start
+    a sync that would fill the disk halfway through. Additions only, the
+    same conservative sum the panel shows; removals are not credited.
+    `fits` is None when the free space cannot be read.
+    """
+    need = sum(estimated_bytes(src) for _k, _r, src in p['adds'])
+    try:
+        sv = os.statvfs(mount)
+        free = sv.f_bavail * sv.f_frsize
+    except OSError:
+        free = None
+    return {'fits': None if free is None else need <= free,
+            'bytes': need, 'free_bytes': free}
+
+
+def planned_steps(p, eject=True):
+    """The `@@` ids a sync of plan `p` reports, in the order it runs them."""
+    ids = ['backup']
+    ids += ['a:%s' % a[0] for a in p['adds']]
+    ids += ['r:%s' % r[0] for r in p['removes']]
+    ids += ['m:%s' % r[0] for r in p.get('retags', ())]
+    ids += ['p:%s' % c for c in p['delete_playlists']]
+    ids += ['p:%s' % c for c in p['collections'] if c not in p.get('unchanged', ())]
+    if (p.get('podcasts') or {}).get('changed'):
+        ids += ['podcasts']
+    ids += ['s:%s' % r['name'] for r in smart_rows(p)]
+    ids += ['write', 'verify'] + (['eject'] if eject else [])
+    return ids
+
+
+class Restored(SystemExit):
+    """A sync whose write failed its check, after the backup's database was
+    put back. `ok` says whether the restore itself verified. A SystemExit,
+    so a caller that does not know it still stops with the message."""
+    def __init__(self, msg, ok, bdir):
+        super().__init__(msg)
+        self.ok, self.bdir = ok, bdir
+
+
+AS_IT_WAS = 'the iPod is as it was'
+
+
+def restore(mount, bdir):
+    """Put a backup's database back on the device and check it.
+
+    The same move `ipod_edit.guarded_write` makes for the unsupervised
+    writers: the backup's bytes, written durably, read back from disk and
+    compared. Returns True only when the device now holds exactly them.
+    """
+    dbp = os.path.join(mount, DB_REL)
+    saved = open(os.path.join(bdir, 'iTunesDB'), 'rb').read()
+    E.write_db(dbp, saved)
+    tmp = dbp + '.saltgate.tmp'
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    return open(dbp, 'rb').read() == saved
+
+
+def _restore_after_failed_write(mount, bdir, copied, why):
+    """Undo a sync from its write onwards, say so, and stop."""
+    print('@@ verify error %s' % why)
+    print('@@ restore doing')
+    print('## restore')
+    print('  the database did not verify after writing (%s); putting the backup back' % why)
+    try:
+        ok = restore(mount, bdir)
+    except Exception as e:
+        ok = False
+        print('  !! the restore itself failed: %s' % e)
+    if ok:
+        # The files this run copied in are named by nothing now; take them
+        # off so the device holds exactly what it held before.
+        for f in copied:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        print('@@ restore done')
+        print('@@ say %s: the write failed its check, and the backup was put back and checked'
+              % AS_IT_WAS)
+        raise Restored('the write failed its check (%s); the backup was put back and '
+                       'checked -- %s' % (why, AS_IT_WAS), True, bdir)
+    print('@@ restore error the restore did not verify')
+    print('@@ say the write failed and so did the restore -- restore by hand from %s'
+          % os.path.relpath(bdir, ROOT))
+    raise Restored('!! the write failed (%s) AND THE RESTORE DID NOT VERIFY -- restore by '
+                   'hand from %s' % (why, bdir), False, bdir)
+
+
+def refresh_smart(root, p, rows=None):
+    """The sync's smart-playlist phase: every understood list rewritten from
+    its rules, in both playlist sections (smartlists.refresh_membership),
+    the lists the page unticked left alone. One `@@ s:<name>` per list the
+    plan named, plus any the sync's own adds moved since."""
+    from . import smartlists as SL
+    rows = smart_rows(p) if rows is None else rows
+    skip = {r['name'] for r in (p.get('smart') or []) if r.get('excluded')}
+    for r in rows:
+        print('@@ s:%s doing' % r['name'])
+    try:
+        moved = SL.refresh_membership(root, skip=skip)
+    except Exception as e:
+        for r in rows:
+            print('@@ s:%s error %s' % (r['name'], e))
+        print('  !! smart playlists not refreshed (%s); they are left as they were' % e)
+        return []
+    seen = {}
+    for _typ, name, before, after in moved:
+        seen.setdefault(name, (before, after))
+    for name, (before, after) in seen.items():
+        if not any(r['name'] == name for r in rows):
+            print('@@ s:%s doing' % name)
+        print('  smart    %-30s %d -> %d' % (name[:30], before, after))
+        print('@@ s:%s done' % name)
+    for r in rows:
+        if r['name'] not in seen:
+            print('  smart    %-30s already matches its rules' % r['name'][:30])
+            print('@@ s:%s done' % r['name'])
+    return moved
 
 
 def sync(mount=None, eject=True, exclude=None):
@@ -653,8 +860,19 @@ def _sync(mount=None, eject=True, exclude=None):
     p = drop_excluded(plan(mount), exclude)
     print_plan(p)
     if not (p['adds'] or p['removes'] or p.get('retags') or p['new_playlists']
-            or p['update_playlists'] or p['delete_playlists']):
+            or p['update_playlists'] or p['delete_playlists'] or smart_rows(p)
+            or (p.get('podcasts') or {}).get('changed')):
         print('\nnothing to do'); return
+    f = fit(p, mount)
+    if f['fits'] is False:
+        # refused before the backup, before anything is written
+        raise SystemExit('will not fit: %d MB to copy, %d MB free on the device'
+                         % (f['bytes'] // 10**6, f['free_bytes'] // 10**6))
+    # EVERY STEP THIS RUN WILL REPORT, named before the first one starts
+    # (debt D10), so a reader of the log -- the server's Job, for any client
+    # -- knows the whole list and never has to assume about one it did not
+    # see. The ids are the `@@ <id> <state>` grammar's, in run order.
+    print('@@ steps %s' % json.dumps(planned_steps(p, eject), ensure_ascii=False))
     root, st = p['root'], p['state']
     # '## <phase> [i/n]' lines are for the page's progress panel; the prose
     # after each is for a person reading the log.
@@ -663,6 +881,12 @@ def _sync(mount=None, eject=True, exclude=None):
     print('@@ backup done')
     print('\nbackup: %s' % os.path.relpath(bdir, ROOT))
     changed_tracks = False
+    # NOTHING BELOW THE COMMIT LINE MAY BE UNDONE BY HAND. Files copied in
+    # are remembered so a failed write can take them off again, and files
+    # of removed tracks are only deleted once the new database has verified
+    # -- otherwise restoring the backup's database would bring back entries
+    # pointing at audio that is gone, and "as it was" would be a lie.
+    copied, doomed = [], []
 
     # 1. files + database entries for additions
     n_add = len(p['adds'])
@@ -685,6 +909,7 @@ def _sync(mount=None, eject=True, exclude=None):
         dst = os.path.join(mount, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copyfile(staged, dst)
+        copied.append(dst)
         tid = E.track_add(root, meta, loc)
         p['dev_by_key'][k] = tid
         st['tracks'][k]['on_ipod'] = True
@@ -701,7 +926,7 @@ def _sync(mount=None, eject=True, exclude=None):
         loc = E.track_remove(root, tid)
         f = os.path.join(mount, loc.lstrip(':').replace(':', os.sep))
         if os.path.exists(f):
-            os.remove(f)
+            doomed.append(f)           # deleted after verify; see `copied, doomed`
         st['tracks'][k]['on_ipod'] = False
         # THE MAP IS NOW STALE FOR THIS TRACK and the playlist writer reads
         # it. A track can be in a collection AND marked to come off -- the
@@ -760,6 +985,40 @@ def _sync(mount=None, eject=True, exclude=None):
         print('  playlist %-30s %d tracks' % (c[:30], len(ids)))
         print('@@ p:%s done' % c)
 
+    # 3b. the Podcasts collection: a media type, not a playlist
+    pod = p.get('podcasts')
+    if pod and pod.get('changed'):
+        from . import podcasts as _P
+        print('## podcasts')
+        print('@@ podcasts doing')
+        dbid_of = {E.track_id(t): E.track_dbid(t) for t in E.tracks(root)}
+        want = [dbid_of[p['dev_by_key'][k]] for k, r in pod['members']
+                if k in p['dev_by_key'] and r.get('tier') != 'remove']
+        try:
+            res = _P.sync_collection(root, want)
+        except _P.PodcastError as e:
+            # before the point of no return: the rest of the sync goes on,
+            # the podcasts stay as the device had them, and the log says why
+            print('  !! podcasts left as they were: %s' % e)
+            print('@@ podcasts error %s' % e)
+        else:
+            # not changed_tracks: a media type moves no track, so the
+            # positional sidecars still describe the database
+            st['synced_playlists'] = sorted(set(st.get('synced_playlists', [])) | {_P.COLLECTION})
+            print('  podcasts  %d episodes, %d newly filed, %d back to music'
+                  % (res['members'], res['filed'], res['unfiled']))
+            print('@@ podcasts done')
+
+    # 3c. smart playlists, refreshed from their own rules. AFTER the tracks
+    # and the playlists, because a rule like "added in the last two weeks"
+    # must see the tracks this sync just added. The plan decided every sync
+    # does this (publish/PLAN-PARITY.md Phase 2): the iPod never evaluates a
+    # smart list itself, so without this phase one goes stale and stays so.
+    rows = smart_rows(p)
+    if rows or any(not r.get('firmware') for r in (p.get('smart') or [])):
+        print('## smart playlists')
+        refresh_smart(root, p, rows)
+
     # 4. write, verify, bookkeeping
     # THE POINT OF NO RETURN. Everything above this line is recoverable by
     # doing nothing: copied files the database does not mention are orphans
@@ -806,16 +1065,35 @@ def _sync(mount=None, eject=True, exclude=None):
     # Durable, then renamed. os.replace is atomic but says nothing about
     # whether the bytes reached the disk -- see ipod_edit.write_db for the
     # night that distinction cost a library.
-    E.write_db(tmp, out)
-    os.replace(tmp, dbp)
-    _d = os.open(os.path.dirname(dbp) or '.', os.O_RDONLY)
+    # A WRITE THAT FAILS ITS CHECK PUTS THE BACKUP BACK BY ITSELF (decided
+    # 12 October, "Restore by itself"). It used to stop here with the
+    # written bytes on the device and the restore left to a person -- the
+    # one writer that did, while the guarded write already undid itself for
+    # smart lists and podcasts. Anything that goes wrong from the first
+    # byte written to the end of the check lands in the same place.
     try:
-        os.fsync(_d)
-    finally:
-        os.close(_d)
-    back = open(dbp, 'rb').read()
-    if back != out or not hash58.verify(back, GUID):
-        raise SystemExit('!! database on device does not verify after write - restore from %s' % bdir)
+        E.write_db(tmp, out)
+        os.replace(tmp, dbp)
+        _d = os.open(os.path.dirname(dbp) or '.', os.O_RDONLY)
+        try:
+            os.fsync(_d)
+        finally:
+            os.close(_d)
+        back = open(dbp, 'rb').read()
+        if back != out:
+            raise IOError('the database read back from the device differs from the one written '
+                          '(%d bytes of %d)' % (len(back), len(out)))
+        if not hash58.verify(back, GUID):
+            raise IOError('hash58 does not verify')
+    except Exception as e:
+        print('@@ write error %s' % e)
+        _restore_after_failed_write(mount, bdir, copied, str(e))
+    for f in doomed:
+        # the new database verified and no longer names these files
+        try:
+            os.remove(f)
+        except OSError as e:
+            print('  !! could not delete %s (%s); the next sync tidies it' % (os.path.basename(f), e))
     if changed_tracks and os.path.exists(pc):
         # Safe now: its plays were merged above (or it was already counted),
         # and the file itself is in the backup. It is removed because it is

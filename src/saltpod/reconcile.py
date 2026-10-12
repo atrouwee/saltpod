@@ -26,7 +26,8 @@ import unicodedata
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+from .paths import DATA_ROOT  # noqa: E402  the two roots: see paths.py
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 from . import itunesdb as I  # noqa: E402
 
 INDEX = os.path.join(ROOT, 'data', 'local', 'index.json')

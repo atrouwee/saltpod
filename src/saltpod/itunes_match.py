@@ -19,7 +19,11 @@ import urllib.parse
 import urllib.request
 from difflib import SequenceMatcher
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 EXPORTS = os.path.join(ROOT, "data", "exports")
 RAW = os.path.join(ROOT, "data", "itunes")
 REPORTS = os.path.join(ROOT, "reports")
@@ -452,6 +456,11 @@ def main(argv):
         country = argv[argv.index("--country") + 1]
     refresh = "--refresh" in argv
 
+    if not os.path.exists(os.path.join(EXPORTS, slug + ".json")):
+        # one sentence for the job box, not a traceback
+        print("no export for %s - import the playlist first (Data sheet, or "
+              "saltpod applemusic read)" % slug)
+        return 1
     print("matching %s against the %s store..." % (slug, country))
     data, rows = match_playlist(slug, country, refresh)
     clusters = cluster_albums(rows)

@@ -1,0 +1,124 @@
+{
+ "_about": "The fixture library: synthetic, every name invented. fixtures/build.py turns this into a data home (SALTPOD_HOME), a fake iPod mount and a music drive. Each track is here to put one state on screen; `why` says which.",
+
+ "collections": ["Evening", "Keepers", "Night Drive"],
+ "collection_order": {"Evening": ["Alder Quartet|Morning Field", "Birch Ensemble|Second Light", "Dune Society|Low Tide"],
+                      "Keepers": ["Birch Ensemble|Second Light"],
+                      "Night Drive": ["Elm Street Trio|Far Room"]},
+ "synced_playlists": ["Evening", "Keepers", "Old Mix"],
+ "apple_music_read_at": "2026-01-02 09:00",
+
+ "tracks": [
+  {"why": "on the iPod, in a collection, its original on the drive with a local cover; the file's album has moved on since the last sync, so plan() reports a retag",
+   "artist": "Alder Quartet", "title": "Morning Field", "tier": "sync", "collections": ["Evening"],
+   "playlists": ["2026-january"], "bought": true, "plays": 7, "last_played": "2026-01-01T20:15:00",
+   "file": {"root": "library", "path": "Bought/Alder Quartet - Morning Field.wav", "album": "Field Notes (Deluxe)",
+            "album_artist": "Alder Quartet",
+            "genre": "Jazz", "year": "2024", "has_art": true},
+   "device": {"id": 101, "file": "F00/SPAA.wav", "origin": true, "album": "Field Notes", "genre": "Jazz",
+              "year": 2024, "synced": {"tags": {"title": "Morning Field", "artist": "Alder Quartet", "album": "Field Notes"}}},
+   "itunes": {"track_id": 9000001, "album_id": 9100001, "album": "Field Notes", "genre": "Jazz",
+              "released": "2024-03-01", "price": 1.29, "url": "https://example.invalid/track/9000001",
+              "preview": "https://example.invalid/preview/9000001.m4a", "seconds": 2.0, "verdict": "exact"},
+   "art": "local",
+   "am": {"owned": true, "status": "purchased", "plays": 4, "skips": 1, "last_played": "2026-01-01T19:00:00"}},
+
+  {"why": "on the iPod with no original anywhere; its cover is an iTunes URL already in the art cache, so nothing is downloaded; the one member of Keepers, which the device already holds as it is (unchanged in plan())",
+   "artist": "Birch Ensemble", "title": "Second Light", "tier": "sync", "collections": ["Evening", "Keepers"],
+   "playlists": ["2026-january"], "bought": true,
+   "device": {"id": 102, "file": "F00/SPAB.wav", "origin": false, "album": "Light Studies", "genre": "Ambient", "year": 2023},
+   "itunes": {"track_id": 9000002, "album_id": 9100002, "album": "Light Studies", "genre": "Ambient",
+              "released": "2023-06-09", "price": 0.99, "url": "https://example.invalid/track/9000002",
+              "preview": "https://example.invalid/preview/9000002.m4a",
+              "art": "https://example.invalid/art/9000002/100x100bb.jpg", "seconds": 2.0, "verdict": "exact"},
+   "art": "remote"},
+
+  {"why": "wanted and not owned: on the buy list, with a confirmed Bandcamp page",
+   "artist": "Cedar Lines", "title": "Open Water", "tier": "sync", "collections": [],
+   "playlists": ["2026-january"],
+   "itunes": {"track_id": 9000003, "album_id": 9100003, "album": "Open Water", "genre": "Electronic",
+              "released": "2025-11-14", "price": 0.99, "url": "https://example.invalid/track/9000003",
+              "preview": "https://example.invalid/preview/9000003.m4a", "seconds": 241.0, "verdict": "exact"},
+   "bandcamp": {"url": "https://example.invalid/bandcamp/open-water", "verdict": "confirmed", "seconds": 241.0}},
+
+  {"why": "owned, reachable, not on the iPod yet: to sync, and the one add in plan()",
+   "artist": "Dune Society", "title": "Low Tide", "tier": "sync", "collections": ["Evening"],
+   "playlists": [],
+   "file": {"root": "library", "path": "Dune Society/Low Tide.wav", "album": "Shoreline", "genre": "House", "year": "2022"},
+   "itunes": {"verdict": "not_found"}},
+
+  {"why": "owned on a drive that is not plugged in: needs a drive, and an offline no_source in plan()",
+   "artist": "Elm Street Trio", "title": "Far Room", "tier": "sync", "collections": ["Night Drive"],
+   "playlists": [],
+   "file": {"root": "unplugged", "path": "Elm Street Trio - Far Room.flac", "album": "Far Room", "genre": "Jazz", "year": "2021"},
+   "itunes": {"track_id": 9000005, "album_id": 9100005, "album": "Far Room", "genre": "Jazz",
+              "released": "2021-02-02", "price": 1.29, "url": "https://example.invalid/track/9000005",
+              "preview": null, "seconds": 300.0, "verdict": "variant"}},
+
+  {"why": "marked to come off and still on the iPod: to remove, and in a device playlist state no longer has",
+   "artist": "Fern Collective", "title": "Last Call", "tier": "remove", "collections": [],
+   "playlists": [], "bought": true,
+   "device": {"id": 103, "file": "F01/SPAC.wav", "origin": false, "album": "Closing Time", "genre": "Soul", "year": 1999},
+   "itunes": {"verdict": "not_found"}},
+
+  {"why": "the record is in the Discogs collection: on vinyl",
+   "artist": "Grove", "title": "Paper Moon", "tier": "undecided", "collections": [], "vinyl": true,
+   "playlists": ["2026-january"],
+   "itunes": {"track_id": 9000007, "album_id": 9100007, "album": "Paper Moon", "genre": "Folk",
+              "released": "2019-09-20", "price": 1.29, "url": "https://example.invalid/track/9000007",
+              "preview": "https://example.invalid/preview/9000007.m4a", "seconds": 200.0, "verdict": "exact"},
+   "am": {"owned": false, "plays": 2, "skips": 0, "last_played": "2025-12-30T08:00:00"}},
+
+  {"why": "on the Discogs wantlist, and only rented from Apple Music",
+   "artist": "Hazel Unit", "title": "Wanted Thing", "tier": "undecided", "collections": [], "vinyl": true,
+   "playlists": ["garden-party"],
+   "itunes": {"track_id": 9000008, "album_id": 9100008, "album": "Wanted Things", "genre": "Pop",
+              "released": "2020-04-04", "price": 1.29, "url": "https://example.invalid/track/9000008",
+              "preview": "https://example.invalid/preview/9000008.m4a", "seconds": 180.0, "verdict": "variant"},
+   "am": {"owned": false}},
+
+  {"why": "an orphan: no export names it any more; the Apple Music copy is gone",
+   "artist": "Iris Park", "title": "Untitled Sketch", "tier": "undecided", "collections": [],
+   "playlists": [], "orphan": true,
+   "itunes": {"verdict": "not_found"},
+   "am": {"owned": false, "status": "no longer available"}}
+ ],
+
+ "untagged": [
+  {"why": "a file with no tags: no key, reachable only by path; its name guesses an artist and title",
+   "root": "library", "path": "Loose/Demos/03 - Juniper Hill - Slow Burn.wav"}
+ ],
+
+ "apple_music": {
+  "playlists": [
+   {"name": "2026-january", "members": ["Alder Quartet|Morning Field", "Birch Ensemble|Second Light", "Grove|Paper Moon"],
+    "created": "2026-01-01T10:00:00Z", "last": "2026-01-02T08:00:00Z", "imported": true},
+   {"name": "Garden Party", "members": ["Hazel Unit|Wanted Thing", "Kestrel|Night Bus"],
+    "created": "2025-07-01T10:00:00Z", "last": "2025-08-01T10:00:00Z", "imported": false}
+  ],
+  "library": [
+   {"artist": "Alder Quartet", "title": "Morning Field", "album": "Field Notes", "cloud": "purchased", "secs": 2},
+   {"artist": "Grove", "title": "Paper Moon", "album": "Paper Moon", "cloud": "subscription", "secs": 200},
+   {"artist": "Hazel Unit", "title": "Wanted Thing", "album": "Wanted Things", "cloud": "subscription", "secs": 180},
+   {"artist": "Kestrel", "title": "Night Bus", "album": "Routes", "cloud": "matched", "secs": 222}
+  ]
+ },
+
+ "discogs": {
+  "collection": [
+   {"Catalog#": "FX-001", "Artist": "Grove", "Title": "Paper Moon", "Label": "Fixture Records", "Format": "LP, Album",
+    "Rating": "4", "Released": "2019", "release_id": "1000001", "CollectionFolder": "Uncategorized",
+    "Date Added": "2025-05-05 12:00:00", "Collection Media Condition": "Near Mint (NM or M-)",
+    "Collection Sleeve Condition": "Very Good Plus (VG+)", "Collection Notes": ""},
+   {"Catalog#": "FX-009", "Artist": "Lumen (2)", "Title": "Shelf Copy", "Label": "Fixture Records", "Format": "12\"",
+    "Rating": "", "Released": "2015", "release_id": "1000009", "CollectionFolder": "Uncategorized",
+    "Date Added": "2024-01-01 12:00:00", "Collection Media Condition": "", "Collection Sleeve Condition": "",
+    "Collection Notes": "no track in state"}
+  ],
+  "wantlist": [
+   {"Catalog#": "FX-002", "Artist": "Hazel Unit", "Title": "Wanted Things", "Label": "Fixture Records",
+    "Format": "LP", "Rating": "", "Released": "2020", "release_id": "1000002", "Notes": "",
+    "Date Added": "2025-06-06 12:00:00"}
+  ]
+ }
+}

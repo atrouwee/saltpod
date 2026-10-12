@@ -1,0 +1,44 @@
+{
+ "config": null,
+ "ejected_at": null,
+ "headline": {
+  "level": "missed",
+  "text": "iPod not connected"
+ },
+ "index": {
+  "built": "2026-01-02 09:00",
+  "tracks": 4
+ },
+ "ipod": "absent",
+ "job": null,
+ "music": "closed",
+ "rev": 1791789447118,
+ "sources": [
+  {
+   "name": "Music",
+   "online": true,
+   "path": "/fixture/f/library/Music",
+   "volume": "/"
+  },
+  {
+   "name": "Music",
+   "online": false,
+   "path": "/fixture/f/unplugged/Music",
+   "volume": "/"
+  }
+ ],
+ "tools": {
+  "ffmpeg": true,
+  "ffprobe": true
+ },
+ "volumes": [
+  {
+   "name": "this Mac",
+   "online": true,
+   "path": "/",
+   "removable": false,
+   "sources": 2
+  }
+ ],
+ "wedged_at": null
+}

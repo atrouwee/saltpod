@@ -38,7 +38,8 @@ from urllib.parse import urlparse, parse_qs
 
 from . import glassband as B
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from .paths import DATA_ROOT  # noqa: E402  the two roots: see paths.py
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 CACHE = os.path.join(ROOT, 'data', 'local', 'ground.json')
 ART_DIR = os.path.join(ROOT, 'data', 'local', 'art')
 USER_AGENT = 'saltpod (cover measurement)'

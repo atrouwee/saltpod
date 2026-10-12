@@ -201,12 +201,14 @@ def merge(st, rows, fp, when=None, entries=None):
         # summed -- adding two ratings together would be nonsense.
         if r['rating']:
             rec['rating'] = r['rating'] // 20
-        if r['last_played'] and r['last_played'] > (rec.get('last_played') or 0):
+        if r['last_played'] and r['last_played'] > _unix(rec.get('last_played')):
             rec['last_played'] = r['last_played']
         if r['bookmark_ms']:
             rec['bookmark_ms'] = r['bookmark_ms']
         if r['skips']:
             rec['skips'] = (rec.get('skips') or 0) + r['skips']
+        if r.get('last_skipped') and r['last_skipped'] > (rec.get('last_skipped') or 0):
+            rec['last_skipped'] = r['last_skipped']
     seen.append(fp)
     del seen[:-200]                    # a ledger, not an archive
     st[LAST] = {'fp': fp, 'entries': entries,
@@ -239,8 +241,89 @@ def adopt_db_counts(st, db_path):
         if (t.get('play_count') or 0) > (rec.get('plays') or 0):
             rec['plays'] = t['play_count']
             taken += 1
-        if (t.get('last_played') or 0) > (rec.get('last_played') or 0):
+        # _unix: a record's date may be an ISO string (the fixture's form)
+        if (t.get('last_played') or 0) > _unix(rec.get('last_played')):
             rec['last_played'] = t['last_played']
         if t.get('rating') and not rec.get('rating'):
             rec['rating'] = t['rating'] // 20
     return taken
+
+
+# ------------------------------------------------------------- writing back
+#
+# THE OTHER HALF OF WHAT ITUNES DID. iTunes added the sidecar into each
+# track's own fields and wrote the database back, so the device's Most
+# Played, Recently Played and every smart list reading a play count saw the
+# whole history. saltpod merged into state only -- 324 plays on 168 tracks
+# existed nowhere on the device (research/TAXONOMY.md, ranked fix 2). This
+# puts them back, into the fields libgpod writes (itdb_itunesdb.c
+# :2730-2752; offsets in research/itunesdb-format.md):
+#
+#     0x50 play count     0x58 last played (Mac time)
+#     0x9C skip count     0xA0 last skipped (Mac time)
+#     0x1F rating (stars x 20)
+#
+# NEVER LOWER. A count or a date on the device that is already higher than
+# state's stays: state's `plays` is the adopted floor plus every merged
+# sidecar, so it is never below an honest device value, and if it is, the
+# device knows something state does not. A rating is a state, not a count:
+# state's replaces the device's when state has one (a rating made on the
+# click wheel arrives through the sidecar and is in state already).
+#
+# What is NOT written: 0x54 ("play count 2", whose meaning the format notes
+# do not settle) and 0xB2 (the unplayed mark), both left as they are; and
+# Apple Music's counts, which are `plays overall`, not the iPod's own.
+
+WRITEBACK = (('plays', 0x50, False), ('last_played', 0x58, True),
+             ('skips', 0x9C, False), ('last_skipped', 0xA0, True))
+RATING = 0x1F
+
+
+def _unix(v):
+    """A state value as unix seconds: an int, or an ISO date (the fixture's
+    and some early records' form), or nothing."""
+    from . import listening as _L
+    return _L._epoch(v)
+
+
+def writeback_rows(st, root):
+    """What `saltpod plays write` would change, track by track. Pure: reads
+    the tree, changes nothing. Each row: {mhit, id, artist, title, was, now},
+    `was` and `now` keyed plays, last_played, skips, last_skipped (unix) and
+    rating (stars)."""
+    from . import ipod_edit as E, state as S
+    out = []
+    for t in E.tracks(root):
+        if len(t.hdr) < 0xA4:
+            continue                   # a header too short to hold the fields
+        artist, title = E._mhod_str(t, 4), E._mhod_str(t, 1)
+        rec = st['tracks'].get(S.key_for(artist, title))
+        if not rec:
+            continue
+        was = {}
+        for f, off, is_date in WRITEBACK:
+            v = t.get32(off)
+            was[f] = (I._mactime(v) or 0) if is_date else v
+        was['rating'] = t.hdr[RATING] // 20
+        now = dict(was)
+        for f, _off, _d in WRITEBACK:
+            v = _unix(rec.get(f)) if _d else int(rec.get(f) or 0)
+            if v > now[f]:
+                now[f] = v
+        r = rec.get('rating')
+        if r and 0 < int(r) <= 5:
+            now['rating'] = int(r)
+        if now != was:
+            out.append({'mhit': t, 'id': E.track_id(t), 'artist': artist, 'title': title,
+                        'was': was, 'now': now})
+    return out
+
+
+def writeback_apply(rows):
+    """Put each row's `now` into its mhit. Returns the rows."""
+    for r in rows:
+        t, n = r['mhit'], r['now']
+        for f, off, is_date in WRITEBACK:
+            t.set32(off, (n[f] + I.MAC_EPOCH) if (is_date and n[f]) else n[f])
+        t.hdr[RATING] = n['rating'] * 20
+    return rows

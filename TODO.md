@@ -10,14 +10,18 @@ Three patterns are worth naming, because each one has cost something:
    (The original reason this file exists.)
 2. **A module gets built and verified, and then nothing can call it.**
    `bin/layer_census.py` now walks the import graph from both adapters and
-   names any shipped module neither can reach. Five remain, below.
+   names any shipped module neither can reach. Four remain, below.
 3. **A write is not verified by reading it back.** On 2 October two writes
    verified from the page cache, the iPod was unplugged without an eject,
    and the device showed an empty library — Sound Check had reached 619 of
    653 tracks. Every device write now goes through `ipod_edit.write_db`
    (fsync the file *and* the directory, re-read from a fresh descriptor),
    and unsupervised ones through `guarded_write`, which restores the
-   original bytes itself if any invariant fails.
+   original bytes itself if any invariant fails. Since 12 October sync does
+   the same: a write that fails its check puts the backup's database back,
+   reads it back, and says "the iPod is as it was" (`apply.restore`; the
+   files of removed tracks are deleted only after the new database
+   verifies). `saltpod plays write` goes through `guarded_write`.
 
 ---
 
@@ -127,6 +131,8 @@ ids and restamps records (it did at 12:31).
 | `pagetest.py` | inside `selftest.py`; 25 passing |
 | Glass ground (server) | saltglass vendored by `scripts/vendor_glass.py`; every row carries `ground: {y, scrim}` (or null), measured in the background from the cover the row shows and kept in `data/local/ground.json`; `saltpod ground show/scan/check` — see DESIGN-GLASS.md |
 | Glass chrome (page) | Sync is accent-tinted glass (`.gl-action`) and no gradient is left; every other button a clear capsule, every field an icy wash; the footer shows the keys for the current context, `?` lists them all; Review sync and Data rebuilt from the system's parts (plan rows with marks, a gauge, steps, a floating action bar; facts, two columns, the job as a log) — see DESIGN-GLASS.md 3.1 |
+| Covers into the file | a cover dropped in the panel is written into the file (m4a `covr`, MP3/AIFF/WAV APIC, `tags.embed_art`), `has_art` follows, `art status` counts it; `saltpod cover`. Open: re-covering a track the device already shows art for; undo for a cover write; FLAC pictures |
+| Podcasts collection | always in the iPod pane; sync's `## podcasts` phase files members as mediatype 4 and unfiles the rest; `saltpod podcasts add/remove/seed`; `podcasts write` needs a rehearsal first. Open: a Review sync row for it (the numbers are in /api/plan) and a page affordance for `seed` |
 | Playlist mosaics (server) | an imported Apple Music playlist's first four covers tiled 2x2 by ffmpeg, cached in the art cache; `/api/playlists` rows carry `art`; a worker makes missing ones and pushes a `mosaics` data event; `saltpod mosaic show/make/check`. Open: the sync plan does not name a file's source format, so Review sync says "→ ALAC", not "FLAC → ALAC" |
 
 ---
@@ -159,9 +165,15 @@ written as ordinary playlists.
 
 - **Podcasts** — §0, waiting on the sweep
 - **Zero hash72 and the signature flags** — waiting on the sweep
-- **Smart playlist membership write** — the gate passed (Top 25 matches
-  what iTunes wrote, 0 misses); the write path is not built
-- **Ratings to the device** — `mhit+0x1F`; 0 of 653 carry one
+- **Smart playlist membership write** — built (`saltpod smartlists write`),
+  and since 12 October a phase of every sync ("## smart playlists", between
+  playlists and write; a row per refreshed list in Review sync). Proven on
+  the fixture's fake mount only; first hardware run still to do
+- **Plays and ratings to the device** — built 12 October as `saltpod plays
+  write` (rehearsal by default, `--write` to do it): merges the sidecar
+  first, then plays, last played, skips, last skipped and ratings into
+  `0x50/0x58/0x9C/0xA0/0x1F`, never lowering a device value. Proven on the
+  fake mount only; first hardware run still to do
 - **On-The-Go playlists** — made on the device, silently dropped by a sync
 - **Bitrate** — wrong on 390 tracks (224 MP3s at the constant 60928; 166
   ALAC files at 160 and labelled "AAC"). Display-only: the fourcc routing
@@ -186,9 +198,10 @@ written as ordinary playlists.
   `research/BROWSE-INDEXES.md`: Apple writes ten sort types (libgpod
   five); all ten are now identified and reproduce to within 1–17
   out-of-order pairs of 480. Not to ship until all ten match exactly.
-- **Five unreachable shipped modules** — four research one-offs, and
+- **Four unreachable shipped modules** — three research one-offs, and
   `itunesdb_patch`, which calls itself "the safest way to write" and
-  nothing writes through
+  nothing writes through. (`verify_bandcamp` came off on 12 October: the
+  Data sheet's job runs it by module name, `curate.JOB_MODULES`.)
 - **Accessibility**: no screen reader has ever been run; no roving tabindex
   on the left, source and right panes; the gear's busy dot and the folded
   filter dot are colour-only
@@ -209,6 +222,14 @@ happened, so this is the shape:
 | iPod sidecar | plays since saltpod took over | Play Counts, growth-aware merge | none -- Music.app never saw them |
 | rekordbox | DJ play history | `~/Library/Pioneer/rekordbox/master.db` (encrypted; format widely documented) | none known |
 | Spotify | streamed plays | the owner's data export -- every play, timestamped | none |
+
+**Apple Music: a command since 12 October** -- `saltpod plays applemusic
+[FILE]`, and the Data sheet's "Read its play counts" job. It reads a FILE
+(Music's shared XML library by default, or an Export Library file, or a
+saved read in the columnar form), refuses while the iPod is mounted or
+Music is open (the process list, never Music itself), and nothing scripts
+Music. The shared XML is off on this Mac today (below), so the first run
+needs Music > Settings > Advanced > Share Library XML, or an export.
 
 **Apple Music: BUILT 3 October** (`src/saltpod/listening.py`, `saltpod plays
 overall`). Read from Music.app with the iPod ejected -- it answered in 5.2 s,

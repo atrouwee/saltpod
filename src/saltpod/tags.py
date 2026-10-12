@@ -741,14 +741,46 @@ def write_id3(path, tags, _audio_from=None):
     # is computed for one encoding and written in another. They have always
     # used the default (v2.3) here; that is unchanged, and a converted v2.2
     # tag lands as v2.3 too.
-    bare = len(_id3_build(new_frames, 0))
+    return _id3_commit(path, new_frames, old_span)
+
+
+def _id3_frames_at_head(path):
+    """(frames, major, old_span) of an MP3's leading tag, ready to rewrite.
+
+    The same refusals write_id3 makes, in the same order: an unclean walk
+    is refused, a v2.2 tag is converted every frame or none.
+    """
+    was_v22 = _id3_major(path) == 2
+    with open(path, 'rb') as fh:
+        head = fh.read(10)
+        old_span = 10 + _unsynchsafe(head[6:10]) if head[:3] == b'ID3' else 0
+        fh.seek(0)
+        prefix = fh.read(old_span) if old_span else b''
+    frames, _n, clean = _id3_read_tag(prefix) if old_span else ([], 0, True)
+    frames = frames or []
+    if not clean:
+        raise TagError('this tag has a frame header we cannot parse, so '
+                       'writing it would drop whatever follows; refusing')
+    major = _id3_major(path) or 3
+    if was_v22:
+        frames, major = v22_to_v23(frames), 3
+    return frames, major, old_span
+
+
+def _id3_commit(path, new_frames, old_span, major=3):
+    """Put a tag at the head of an MP3: in place when it fits, else grow.
+
+    The two writers that use it -- the text fields and the cover -- differ
+    only in the frame list they hand over.
+    """
+    bare = len(_id3_build(new_frames, 0, major))
     if old_span and bare <= old_span:
-        blob = _id3_build(new_frames, old_span - bare)      # exact fit, no move
+        blob = _id3_build(new_frames, old_span - bare, major)  # exact fit, no move
         with open(path, 'r+b') as fh:
             fh.write(blob)
         return old_span
     # grow: rebuild with room to spare so the next edit lands in place
-    blob = _id3_build(new_frames, 2048)
+    blob = _id3_build(new_frames, 2048, major)
     with open(path, 'rb') as fh:
         fh.seek(old_span)
         audio = fh.read()
@@ -846,6 +878,15 @@ def write_aiff(path, tags):
                                                  append. Audio untouched.
       no tag chunk                            -> append one.
     """
+    return _aiff_put(path, lambda frames, major: _id3_frames_for(tags, frames, major))
+
+
+def _aiff_put(path, make_frames):
+    """write_aiff's body, for any new frame list: `make_frames(frames, major)`.
+
+    Shared with the cover writer, which hands over the same frames with the
+    pictures replaced -- so both land by the same three cases.
+    """
     chunks = _form_chunks(path)
     ssnd = next((c for c in chunks if c[0] == b'SSND'), None)
     if ssnd is None:
@@ -858,8 +899,10 @@ def write_aiff(path, tags):
         raise TagError('tag chunk precedes the audio; refusing to move it')
     if major == 2:
         frames, major = v22_to_v23(frames), 3      # every frame, or Unconvertible
+    if major not in (3, 4):
+        major = 3                                  # no tag yet: a fresh v2.3 one
 
-    new_frames = _id3_frames_for(tags, frames, major)
+    new_frames = make_frames(frames or [], major)
     bare = len(_id3_build(new_frames, 0, major))
 
     last = chunks[-1]
@@ -1489,6 +1532,210 @@ def write_art(path, image_bytes, mime=None):
         if os.path.exists(tmp):
             os.remove(tmp)
     return len(image_bytes)
+
+
+# ------------------------------------------------- a cover into any file
+#
+# THE COVER YOU DROP IN THE TRACK PANEL GOES INTO THE FILE, so the page, the
+# row and the iPod's Cover Flow read one picture rather than three. m4a had
+# a writer (write_art, above) and nothing called it; the ID3 containers --
+# MP3 at byte 0, AIFF and WAV in a chunk -- get theirs here, built from the
+# parts the text writers already proved: the same frame walk, the same
+# refusal of a tag we could not read cleanly, the same in-place-when-it-fits
+# bargain. No library: an APIC frame is five header bytes and the image.
+#
+# WHAT IS REPLACED: every APIC frame, as write_art replaces every `covr`.
+# A file with a front and a back cover keeps neither -- you dropped one
+# picture and asked for it to be THE picture, and art_bytes (what the device
+# write sends) takes the largest, so a back cover left behind could win.
+# Every other frame is carried through as (id, payload) unchanged, in its
+# order; the picture goes last.
+
+_APIC_FRONT = 3                    # picture type: cover (front)
+
+
+def _apic(image_bytes, mime):
+    """An APIC payload: latin-1, the MIME type, front cover, no description."""
+    return (b'\x00' + mime.encode('latin-1') + b'\x00' + bytes((_APIC_FRONT,))
+            + b'\x00' + image_bytes)
+
+
+def _with_art(frames, payload):
+    return [(f, p) for f, p in (frames or []) if f != 'APIC'] + [('APIC', payload)]
+
+
+def _wav_put_art(path, payload):
+    """Replace the pictures in a WAV's id3 chunk, or add an `id3 ` chunk.
+
+    The chunk is rewritten AT ITS OWN POSITION -- every chunk before and
+    after it keeps its bytes and its order -- and only ever after `data`,
+    so the audio does not move. A WAV with no id3 chunk gets one appended,
+    the chunk ffmpeg (and so the ALAC conversion) and our own has_art read.
+    """
+    with open(path, 'rb') as fh:
+        b = fh.read()
+    chunks = _riff_chunks(b)
+    data = next((c for c in chunks if c[0] == b'data'), None)
+    if data is None:
+        raise TagError('no data chunk')
+    tagc = next((c for c in chunks if c[0] in _ID3_CHUNKS), None)
+    if tagc is None:
+        cid, frames, major = b'id3 ', [], 3
+    else:
+        cid, h, d, size = tagc
+        if h < data[1]:
+            raise TagError('tag chunk precedes the audio; refusing to move it')
+        tag = b[d:d + size]
+        if tag[:3] != b'ID3':
+            raise TagError('this id3 chunk does not hold an ID3v2 tag; refusing')
+        frames, _n, clean = _id3_read_tag(tag)
+        if not clean:
+            raise TagError('this id3 chunk has a frame header we cannot parse, so '
+                           'writing it would drop whatever follows; refusing')
+        major = tag[3]
+        if major == 2:
+            frames, major = v22_to_v23(frames), 3
+        if major not in (3, 4):
+            raise TagError('id3 chunk is not an ID3v2.3/2.4 tag; refusing')
+    blob = _id3_build(_with_art(frames, payload), 1024, major)
+    if len(blob) & 1:
+        blob += b'\x00'
+    chunk = cid + struct.pack('<I', len(blob)) + blob
+    if tagc is None:
+        out = bytearray(b) + chunk
+    else:
+        _c, h, _d, size = tagc
+        out = bytearray(b[:h]) + chunk + b[h + 8 + size + (size & 1):]
+    struct.pack_into('<I', out, 4, len(out) - 8)          # RIFF size field
+    _replace(path, bytes(out))
+    return len(chunk)
+
+
+def embed_art(path, image_bytes, mime=None):
+    """Put a cover into the file on disk, whatever its container.
+
+    Returns True when the audio did not move. Raises TagError when the file
+    cannot take one safely; the message is the reason, said to a person.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if not image_bytes:
+        raise TagError('no image')
+    mime = (mime or _sniff_mime(image_bytes)).lower()
+    if mime not in ('image/jpeg', 'image/png'):
+        raise TagError('a cover in a file must be a jpeg or a png')
+    why = art_why_not(path)
+    if why:
+        raise TagError(why)
+    at0 = None
+    try:
+        at0, _n = audio_span(path)
+    except TagError:
+        pass
+    if ext in ('.m4a', '.m4b', '.mp4'):
+        write_art(path, image_bytes, mime)
+    elif ext == '.mp3':
+        frames, major, old_span = _id3_frames_at_head(path)
+        _id3_commit(path, _with_art(frames, _apic(image_bytes, mime)), old_span, major)
+    elif ext in ('.aif', '.aiff', '.aifc'):
+        payload = _apic(image_bytes, mime)
+        _aiff_put(path, lambda frames, major: _with_art(frames, payload))
+    elif ext == '.wav':
+        _wav_put_art(path, _apic(image_bytes, mime))
+    else:
+        raise TagError('no artwork writer for %s yet' % (ext.lstrip('.') or '?'))
+    try:
+        at1, _n = audio_span(path)
+        return at0 is None or at1 == at0
+    except TagError:
+        return True
+
+
+def art_why_not(path):
+    """'' when embed_art can write a cover into this file, else the reason.
+
+    The tag bar is the one the text writers set (supported()), because the
+    cover rides in the same tag: a tag we could not read cleanly would lose
+    whatever we skipped. FLAC is the one container with a text writer and
+    no picture writer yet.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.flac':
+        return 'no artwork writer for flac yet'
+    if ext not in _WRITERS:
+        return 'no artwork writer for %s yet' % (ext.lstrip('.') or '?')
+    if ext == '.wav':
+        try:
+            ids = _riff_walk(path)
+        except Exception:
+            return 'not a WAV this tool can read'
+        if not any(c in _ID3_CHUNKS for c in ids):
+            return '' if b'data' in ids else 'no data chunk'
+    return why_not(path)
+
+
+def why_not(path):
+    """'' when write() can retag this file safely, else the reason in words.
+
+    The panel and the terminal used to say "an id3 chunk needs the ID3v2
+    writer" for every WAV supported() turned down. That writer has existed
+    since 30 September and write_wav rewrites the chunk; what is still
+    refused is narrower, and now it is named.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in _WRITERS:
+        return 'no %s writer yet' % (ext.lstrip('.') or '?')
+    if supported(path):
+        return ''
+    try:
+        if ext == '.wav':
+            for cid, h, d, size in _riff_chunks_seek(path):
+                if cid in _ID3_CHUNKS:
+                    with open(path, 'rb') as fh:
+                        fh.seek(d)
+                        tag = fh.read(size)
+                    return _id3_reason(tag, 'its id3 chunk')
+        if ext == '.mp3':
+            with open(path, 'rb') as fh:
+                tag = fh.read(_id3_span(path))
+            return _id3_reason(tag, 'its ID3 tag')
+        if ext in ('.aif', '.aiff', '.aifc'):
+            chunks = _form_chunks(path)
+            if not any(c[0] == b'SSND' for c in chunks):
+                return 'no SSND chunk; this is not audio we can tag'
+            frames, major, old, clean = _aiff_tag(path, chunks)
+            if old is not None and old is not chunks[-1]:
+                return 'its ID3 chunk is not the last chunk, a layout with no tested path'
+            return 'its ID3 chunk: ' + (_id3_reason_parts(frames, major, clean)
+                                        or 'not writable')
+        if ext == '.flac':
+            return 'no padding block to absorb a new comment, so the audio would move'
+        if ext in ('.m4a', '.m4b', '.mp4'):
+            if not _mp4_ilst(path)[2]:
+                return 'no moov/udta/meta/ilst to put a tag in'
+            return 'no free atom after the movie header to absorb a new tag'
+    except Exception as e:
+        return 'could not read it (%s)' % e
+    return 'not safe to write'
+
+
+def _id3_reason(tag, what):
+    if tag[:3] != b'ID3':
+        return '%s does not hold an ID3v2 tag' % what
+    frames, _n, clean = _id3_read_tag(tag)
+    return '%s: %s' % (what, _id3_reason_parts(frames, tag[3], clean) or 'not writable')
+
+
+def _id3_reason_parts(frames, major, clean):
+    if not clean:
+        return 'a frame header we cannot parse, so writing would drop what follows'
+    if major == 2:
+        try:
+            v22_to_v23(frames)
+        except TagError as e:
+            return 'ID3v2.2 with a frame that has no v2.3 equivalent (%s)' % e
+    if major not in (2, 3, 4):
+        return 'ID3v2.%s, a version this tool does not write' % major
+    return ''
 
 
 # --------------------------------------------------------------- dispatch

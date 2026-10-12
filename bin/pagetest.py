@@ -382,25 +382,31 @@ const document_ = {
 const TRACKS = [
   { key:'t1', artist:'Aphex Twin', title:'Flim', album:'Come to Daddy',
     device:true, held:true, tier:'sync', vinyl:false, bought:true, t7:false, am:true, local:false,
-    collections:['DayClub'], playlists:['DayClub'], on_ipod:true, lists:['on iPod'],
-    seconds:220, vinyl_owned:false, vinyl_wanted:false,
+    collections:['DayClub'], playlists:['DayClub'], on_ipod:true, lists:['on iPod','synced'],
+    seconds:220, vinyl_owned:false, vinyl_wanted:false, state:'ready', play:null,
+    decision:{verb:'remove', on:false, sets:{tier:'remove'}, digital_only:false},
     art:'/api/art/aphex-twin-come-to-daddy.jpg', ground:{ y:0.05, scrim:0.45 } },
   { key:'t2', artist:'Burial', title:'Archangel', album:'Untrue',
     device:false, held:true, tier:'undecided', vinyl:true, bought:true, t7:true, am:false, local:true,
-    collections:[], playlists:[], on_ipod:false, lists:['on T7','owned digitally'],
-    seconds:245, vinyl_owned:false, vinyl_wanted:false,
+    collections:[], playlists:[], on_ipod:false, lists:['on T7','owned digitally','vinyl to add'], release_label:'Burial \u2014 Untrue',
+    seconds:245, vinyl_owned:false, vinyl_wanted:false, state:'offline', play:null,
+    decision:{verb:'sync', on:false, sets:{tier:'sync'}, digital_only:true},
     art:'/api/art/burial-untrue.jpg', ground:null },
   { key:'t3', artist:'SAULT', title:'Wildfires', album:'Untitled',
     device:false, held:false, tier:'sync', vinyl:false, bought:false, t7:false, am:true, local:false,
-    collections:['WARA - Listening'], playlists:['WARA - Listening'], on_ipod:false, lists:['to buy','rented only'],
-    seconds:200, price:1.29, vinyl_owned:false, vinyl_wanted:false },
+    collections:['WARA - Listening'], playlists:['WARA - Listening'], on_ipod:false, lists:['to buy','rented only','not looked up'],
+    seconds:200, price:1.29, vinyl_owned:false, vinyl_wanted:false, state:'unowned', play:null,
+    decision:{verb:'buy', on:true, sets:{tier:'sync'}, digital_only:false} },
   { key:'t4', artist:'Objekt', title:'Ganzfeld', album:'Objekt #1',
     device:false, held:false, tier:'undecided', vinyl:false, bought:false, t7:false, am:false, local:false,
-    collections:[], playlists:[], on_ipod:false, lists:[], seconds:300, vinyl_owned:false, vinyl_wanted:false },
+    collections:[], playlists:[], on_ipod:false, lists:[], seconds:300, vinyl_owned:false, vinyl_wanted:false,
+    state:'unowned', play:null, decision:{verb:'buy', on:false, sets:{tier:'sync'}, digital_only:false} },
 ];
 const COLLECTIONS = ['DayClub', 'WARA - Listening'];
 const ORDER = { 'DayClub': ['t1'], 'WARA - Listening': ['t3'] };
-const TOTALS = { to_buy: 1, to_buy_eur: 1.29, to_sync: 0, to_remove: 0, on_ipod: 1 };
+const TOTALS = { to_buy: 1, to_buy_eur: 1.29, to_sync: 0, to_remove: 0, on_ipod: 1,
+  sync_off: 0, sync_on: 0, sync_pending: 0, sync_waiting: 0,
+  synced: 0, flac_to_buy: 0, not_looked_up: 1, vinyl_to_add: 1 };
 const SYNCED = ['DayClub'];
 const AMP = [
   // `art` is the server's tiled mosaic for the playlist (one picture); the
@@ -428,7 +434,7 @@ const HEALTH = { ipod:'absent', music:'ok', sources:[], tools:{ffmpeg:true, ffpr
 function fetchStub(url){
   const p = String(url).split('?')[0];
   const body = ({
-    '/api/tracks': { tracks: TRACKS, collections: COLLECTIONS, order: ORDER, totals: TOTALS, synced: SYNCED, slugs: ['dayclub', 'wara-listening'], updated: null },
+    '/api/tracks': { tracks: TRACKS, collections: COLLECTIONS, order: ORDER, totals: TOTALS, on_ipod_order: ['t1'], vinyl_order: ['Burial \u2014 Untrue'], synced: SYNCED, slugs: ['dayclub', 'wara-listening'], updated: null },
     '/api/discogs': { wantlist: [], collection: [], files: {}, dir: 'data/discogs' },
     '/api/playlists': { playlists: AMP, read_at: '2026-01-01', library: 500 },
     '/api/device': DEV,
@@ -436,6 +442,7 @@ function fetchStub(url){
     '/api/plan': PLAN,
     '/api/health': HEALTH,
     '/api/undo': { can_undo: 0, can_redo: 0, next: null },
+    '/api/decision': { ok: true, n: 2, verb: 'sync', on: false, sets: { tier: 'sync' }, digital_only: true },
   })[p];
   return Promise.resolve({ ok: body !== undefined, json: () => Promise.resolve(body === undefined ? {} : body) });
 }
@@ -645,26 +652,93 @@ _TESTS_JS = r'''
       [...document.querySelectorAll('#menub .dn')].forEach(dn =>
         assert(dn.textContent !== 'Undecided', 'a third "Undecided" row exists -- law 8 forbids a separate undo affordance'));
     };
-    const onIpod = { key: 'x1', artist: 'A', title: 'B', collections: [], device: true, held: true, tier: 'sync', vinyl: false, vinyl_owned: false };
-    openMenu(anchor, 'track', onIpod);
-    assert(label() === 'Remove from iPod', `expected "Remove from iPod", got "${label()}"`); noUndecided();
-    onIpod.tier = 'remove';
-    openMenu(anchor, 'track', onIpod);
-    assert(label() === "Don't remove", `expected "Don't remove", got "${label()}"`); noUndecided();
-    const owned = { key: 'x2', artist: 'A', title: 'B', collections: [], device: false, held: true, tier: 'undecided', vinyl: false, vinyl_owned: false };
-    openMenu(anchor, 'track', owned);
-    assert(label() === 'Sync to iPod', `expected "Sync to iPod", got "${label()}"`);
-    owned.tier = 'sync';
-    openMenu(anchor, 'track', owned);
-    assert(label() === "Don't sync", `expected "Don't sync", got "${label()}"`);
-    const buyT = { key: 'x3', artist: 'A', title: 'B', collections: [], device: false, held: false, tier: 'undecided', vinyl: false, vinyl_owned: false };
-    openMenu(anchor, 'track', buyT);
-    assert(label() === 'Buy', `expected "Buy", got "${label()}"`);
-    buyT.tier = 'sync';
-    openMenu(anchor, 'track', buyT);
-    assert(label() === "Don't buy", `expected "Don't buy", got "${label()}"`);
+    // Which row and which way round is the server's `decision`
+    // (curate.decision_of, debt D2, pinned in selftest); the page owns only
+    // the words. So each case hands it a decision and checks the label --
+    // and that the click posts the tier the server said, not one of its own.
+    const dec = (verb, on, tier) => ({ verb, on, sets: { tier }, digital_only: verb === 'sync' });
+    const row = (k, d) => ({ key: k, artist: 'A', title: 'B', collections: [], vinyl: false, vinyl_owned: false, decision: d });
+    const cases = [
+      [row('x1', dec('remove', false, 'remove')), 'Remove from iPod'],
+      [row('x1', dec('remove', true, 'undecided')), "Don't remove"],
+      [row('x2', dec('sync', false, 'sync')), 'Sync to iPod'],
+      [row('x2', dec('sync', true, 'undecided')), "Don't sync"],
+      [row('x3', dec('buy', false, 'sync')), 'Buy'],
+      [row('x3', dec('buy', true, 'sync')), "Don't buy"],
+    ];
+    for (const [t, want] of cases) {
+      openMenu(anchor, 'track', t);
+      assert(label() === want, `expected "${want}", got "${label()}"`); noUndecided();
+    }
+    const realDecide = decide; let sent = null;
+    decide = (patch, keys) => { sent = { patch, keys }; return Promise.resolve(); };
+    try {
+      openMenu(anchor, 'track', cases[3][0]);
+      document.querySelector('#menub .m-want').onclick();
+      assert(sent && sent.patch.tier === 'undecided' && sent.keys.join() === 'x2',
+        `Don't sync posted ${JSON.stringify(sent)}, not the server's sets`);
+      sent = null;
+      openMenu(anchor, 'track', cases[5][0]);
+      document.querySelector('#menub .m-want').onclick();
+      assert(sent && sent.patch.tier === 'sync', `Don't buy in a collection posted ${JSON.stringify(sent)}`);
+    } finally { decide = realDecide; }
     closeMenu();
     return "Remove from iPod <-> Don't remove, Sync to iPod <-> Don't sync, Buy <-> Don't buy -- one row each, never two";
+  });
+
+  // Debt D10: sync progress is the job's `steps`, not the page's parse of
+  // a 60-line log window.
+  record('sync rows take their state from job.steps', () => {
+    SP.plan = { ok: true, adds: [{ key: 't3', artist: 'SAULT', title: 'Wildfires', bytes: 5000000, convert: false }],
+      removes: [{ key: 't5', artist: 'Old', title: 'Track' }], retags: [], new: [], update: [], delete: [],
+      members: {}, sizes: {}, free_bytes: 5e9, unchanged: [] };
+    SP.off = new Set(); SP.state = 'running'; SP.log = [];
+    buildSyncRows();
+    readSyncLog({ state: 'running', steps: [{ id: 'a:t3', state: 'done', error: null },
+                                            { id: 'r:t5', state: 'error', error: 'gone' },
+                                            { id: 'write', state: 'waiting', error: null }],
+                  log: ['@@ a:t3 done', '## copy 1/1', 'copied one'] });
+    const r = id => SP.rows.find(x => x.id === id);
+    assert(r('a:t3').state === 'done', `a:t3 is ${r('a:t3').state}`);
+    assert(r('r:t5').state === 'error' && r('r:t5').err === 'gone', 'the error step lost its state or message');
+    assert(!r('write').state, 'a waiting step was given a state');
+    assert(SP.log.length === 1 && SP.log[0] === 'copied one', `prose kept ${JSON.stringify(SP.log)}`);
+    SP.state = 'review';
+    return 'done / error / waiting from steps; only prose in the log';
+  });
+
+  // A selection's decision is asked of the server (/api/decision), never
+  // combined from the rows here: the row shows a placeholder until it lands.
+  await recordAsync('law 8: a selection asks the server for its decision', async () => {
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    const anchor = document.createElement('span');
+    setMark(['t1', 't2']);
+    openMenu(anchor, 'track', BYKEY.get('t1'));
+    const first = document.querySelector('#menub .drow .dn').textContent;
+    await tick(); await tick(); await tick();
+    const row = document.querySelector('#menub .m-want');
+    assert(row, `no decision row after /api/decision answered (first paint said "${first}")`);
+    const got = row.querySelector('.dn').textContent;
+    assert(got === 'Sync to iPod', `expected the server's "Sync to iPod", got "${got}"`);
+    closeMenu(); clearMark(); draw();
+    return `"${first}" until the answer, then "${got}"`;
+  });
+
+  // Debt D8/D9: the buy pane's stages and the vinyl pane's to-do are
+  // server lists and totals; the panes count nothing themselves.
+  record('the buy and vinyl panes read the server lists', () => {
+    const was = rtab;
+    rtab = 'buy'; drawRight();
+    const buy = document.getElementById('rstat').innerHTML;
+    assert(/<s>1<\/s> synced/.test(buy), `buy pane did not count the 'synced' list: ${buy}`);
+    const la = document.getElementById('lookall');
+    assert(la && /Look up the 1 /.test(la.textContent), `"Look up" did not read TOTALS.not_looked_up: ${la && la.textContent}`);
+    rtab = 'vinyl'; drawRight();
+    const vin = document.getElementById('rstat').innerHTML;
+    assert(/<s>1<\/s> to add/.test(vin), `vinyl pane did not read 'vinyl to add': ${vin}`);
+    assert(document.getElementById('rbody').innerHTML.includes('Burial \u2014 Untrue'), 'the release card lost its server label');
+    rtab = was; drawRight();
+    return 'synced, not looked up, vinyl to add: all looked up';
   });
 
   // --------------------------------------------------------- law 7: no drag-only
@@ -849,9 +923,11 @@ _TESTS_JS = r'''
     // full ink and the Sync button counted it as ready to write.
     const mk = (k, o) => Object.assign({key:k, artist:'A', title:k, tier:'sync',
       collections:['C'], lists:[], playlists:[], seconds:100}, o);
-    const ready   = mk('ready',   {local:true,  reachable:true,  device:false});
-    const offline = mk('offline', {local:true,  reachable:false, device:false, t7:true});
-    const unowned = mk('unowned', {local:false, reachable:false, device:false});
+    // `state` is the server's answer (curate.row_state, debt D3, pinned in
+    // selftest); the page must render each one, never re-derive it
+    const ready   = mk('ready',   {local:true,  reachable:true,  device:false, state:'ready'});
+    const offline = mk('offline', {local:true,  reachable:false, device:false, t7:true, state:'offline'});
+    const unowned = mk('unowned', {local:false, reachable:false, device:false, state:'unowned'});
 
     const hR = rowHTML(ready,0,0), hO = rowHTML(offline,1,0), hU = rowHTML(unowned,2,0);
     assert(!/class="row[^"]*unowned/.test(hR) && !/class="row[^"]*offline/.test(hR),
@@ -868,15 +944,19 @@ _TESTS_JS = r'''
     assert(/class="away"[^>]*>T7</.test(hO), 'the drive badge lost its away marker');
     assert(!/class="gone"[^>]*>T7</.test(hO), 'the drive badge is still struck through');
 
-    // and the Sync button must not promise what it cannot write
-    const keep = ALL;
+    // and the Sync button must not promise what it cannot write. The count
+    // is the server's (curate.sync_counts, debt D1, tested in selftest);
+    // the page shows TOTALS and adds nothing up -- so it is handed the
+    // answer for these three rows and must print exactly that.
+    const keep = ALL, keepT = TOTALS;
     ALL = [ready, offline, unowned];
+    TOTALS = Object.assign({}, keepT, {sync_off:0, sync_on:1, sync_pending:1, sync_waiting:1});
     counts();
     const sb = document.getElementById('dosync');
     assert(sb.textContent === 'Sync · 1',
-      `Sync counted tracks it cannot reach: ${sb.textContent}`);
+      `Sync did not show the server's count: ${sb.textContent}`);
     assert(/not mounted/.test(sb.title), 'the button does not mention the ones waiting on a drive');
-    ALL = keep; 
+    ALL = keep; TOTALS = keepT; counts();
     return 'ready / offline / unowned told apart, Sync counts 1';
   });
 
@@ -1095,6 +1175,96 @@ _TESTS_JS = r'''
     assert(document.getElementById('slug').classList.contains('gl-field'), 'the select is not a field');
     closeSettings();
     return 'Review sync: strip, 4 marked rows, gauge, 4 steps, floating bar with the one action; Data: strip, two columns, facts, capsules, the job as a log';
+  });
+
+  // ---------------------------------------- first release, web (fr-web)
+  // Esc on the "Unsaved changes" prompt is its Cancel: the prompt goes, the
+  // edits and the panel stay. Its field is hidden, so nothing focused could
+  // catch the key; dlgKey is what the document's keydown handler calls.
+  record('Esc closes the Unsaved changes prompt, as Cancel', () => {
+    const tp = document.getElementById('tp');
+    TP.edits = { title: 'edited' }; tp.classList.add('on');
+    askDropEdits();
+    assert(dlg.classList.contains('on'), 'the prompt did not open');
+    let prevented = false;
+    const handled = dlgKey({ key: 'Escape', preventDefault() { prevented = true; } });
+    assert(handled && prevented, 'Esc was not handled while the prompt was up');
+    assert(!dlg.classList.contains('on'), 'Esc left the prompt open');
+    assert(TP.edits.title === 'edited' && tp.classList.contains('on'), 'Esc discarded the edits or closed the panel');
+    assert(dlgKey({ key: 'Escape', preventDefault() {} }) === false, 'with no prompt up, Esc is not the prompt\'s');
+    TP.edits = {}; tp.classList.remove('on');
+    return 'prompt closed; edits and panel kept';
+  });
+
+  // The blocked Review sync re-plans in place when the poll sees the iPod;
+  // with the panel shut, the ordinary pre-sync read runs instead.
+  record('the blocked Review sync re-plans when the iPod appears', () => {
+    const real = { openSync, preSync, load };
+    const calls = [];
+    openSync = () => { calls.push('openSync'); };
+    preSync = () => { calls.push('preSync'); };
+    load = () => { calls.push('load'); return Promise.resolve(); };
+    const sp = document.getElementById('sp');
+    try {
+      SP.state = 'blocked'; sp.classList.add('on'); lastPod = 'absent';
+      podChanged('ready');
+      assert(calls.includes('openSync') && !calls.includes('preSync'), `blocked panel: ${calls.join()}`);
+      calls.length = 0; podChanged('ready');
+      assert(!calls.length, `ready twice re-planned again: ${calls.join()}`);
+      sp.classList.remove('on'); SP.state = 'review'; lastPod = 'absent';
+      podChanged('ready');
+      assert(calls.join() === 'preSync', `panel shut: ${calls.join()}`);
+    } finally {
+      openSync = real.openSync; preSync = real.preSync; load = real.load;
+      sp.classList.remove('on'); SP.state = 'review';
+    }
+    return 'blocked: re-plans; shut: pre-sync; once per arrival';
+  });
+
+  // "Re-read the device" toasts what the server read, or why it read nothing.
+  await recordAsync('Re-read the device says what it read', async () => {
+    const realPost = post, realLoad = load;
+    load = () => Promise.resolve();
+    const said = () => document.getElementById('toast').textContent;
+    try {
+      post = () => Promise.resolve({ ok: true, read: 'backup', from: 'ipod-2026-01-02' });
+      await rereadDevice();
+      assert(/backup/.test(said()) && /ipod-2026-01-02/.test(said()), `backup read toasted as: ${said()}`);
+      post = () => Promise.resolve({ ok: true, read: 'device' });
+      await rereadDevice();
+      assert(said() === 'device re-read', `device read toasted as: ${said()}`);
+      post = () => Promise.resolve({ ok: false, error: 'no iPod and no backup to read' });
+      await rereadDevice();
+      assert(said() === 'no iPod and no backup to read', `refusal toasted as: ${said()}`);
+    } finally { post = realPost; load = realLoad; }
+    return 'device, backup (named), and the refusal';
+  });
+
+  // The file is the proof: the Buy card has no "bought" button.
+  record('the buy card has no bought button', () => {
+    const was = rtab; rtab = 'buy'; drawRight();
+    const body = document.getElementById('rbody');
+    assert(!body.querySelector('[data-bought]'), 'a card still carries the bought button');
+    assert(body.innerHTML.includes('SAULT'), 'the card to buy is not drawn');
+    rtab = was; drawRight();
+    return 'cards drawn, no flag to set';
+  });
+
+  // The Data sheet names a music folder; the server checks it and says why not.
+  await recordAsync('the Data sheet names a music folder', async () => {
+    openSettings();
+    const field = document.getElementById('srcpath'), btn = document.getElementById('doSource');
+    assert(field && btn, 'no music folder field');
+    assert(field.getAttribute('aria-label'), 'the field has no accessible name');
+    const realPost = post; const posted = [];
+    post = (url, body) => { posted.push({ url, body }); return Promise.resolve({ ok: false, error: 'no such folder: /x' }); };
+    try {
+      field.value = '/x'; await btn.onclick();
+      const p = posted[0];
+      assert(p && p.url === '/api/action' && p.body.action === 'source' && p.body.folder === '/x', `posted ${JSON.stringify(posted)}`);
+      assert(document.getElementById('toast').textContent === 'no such folder: /x', 'the refusal was not toasted');
+    } finally { post = realPost; closeSettings(); }
+    return 'posts action source; toasts the refusal';
   });
 
   console.log(JSON.stringify(RESULTS));
@@ -1428,6 +1598,9 @@ def _run_all():
 
     section('law 8 -- a decision is one control that undoes itself')
     check('one control, flips its own label', node_check('law 8: one control, flips its own label'))
+    check('sync rows take their state from job.steps', node_check('sync rows take their state from job.steps'))
+    check('the buy and vinyl panes read the server lists', node_check('the buy and vinyl panes read the server lists'))
+    check('a selection asks the server for its decision', node_check('law 8: a selection asks the server for its decision'))
 
     section('law 7 -- nothing is drag-only')
     check('every draggable row has a menu equivalent', node_check('law 7: nothing is drag-only'))
@@ -1454,6 +1627,13 @@ def _run_all():
     check('the ground follows the selection, from the payload', node_check('the ground follows the selection, from the payload only'))
     check('the page never reads a pixel', t_page_never_measures)
     check('the four glass twins are in the sheet', t_glass_twins_present)
+
+    section('first release, web -- fr-web')
+    check('Esc closes Unsaved changes, as Cancel', node_check('Esc closes the Unsaved changes prompt, as Cancel'))
+    check('blocked Review sync re-plans on the iPod', node_check('the blocked Review sync re-plans when the iPod appears'))
+    check('Re-read the device says what it read', node_check('Re-read the device says what it read'))
+    check('the buy card has no bought button', node_check('the buy card has no bought button'))
+    check('the Data sheet names a music folder', node_check('the Data sheet names a music folder'))
 
     section('the chrome -- Sync as glass, the context footer, mosaics, the panels')
     check('the one action is glass; no gradient', t_action_is_glass)

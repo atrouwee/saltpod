@@ -1,0 +1,42 @@
+{
+ "mounted": true,
+ "playlists": [
+  {
+   "keys": [
+    "alder-quartet|morning-field",
+    "birch-ensemble|second-light"
+   ],
+   "n": 2,
+   "name": "Evening",
+   "ours": true,
+   "smart": false
+  },
+  {
+   "keys": [
+    "birch-ensemble|second-light"
+   ],
+   "n": 1,
+   "name": "Keepers",
+   "ours": true,
+   "smart": false
+  },
+  {
+   "keys": [
+    "fern-collective|last-call"
+   ],
+   "n": 1,
+   "name": "Old Mix",
+   "ours": true,
+   "smart": false
+  },
+  {
+   "keys": [],
+   "n": 0,
+   "name": "Since 2000",
+   "ours": false,
+   "smart": true
+  }
+ ],
+ "rev": 1791789447118,
+ "source": "device"
+}

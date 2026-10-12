@@ -70,7 +70,18 @@ and still matched. One less thing.
 
 ## PROPOSED — what building it takes
 
-Not built. In order:
+Built since (`artworkdb.py`, `saltpod art status/rehearse/write`). The
+list below is kept as the plan it was. On 12 October the other half
+arrived: a cover dropped in the track panel is written into the file
+(research/TAG-WRITING.md, "a cover into the file"), the drive index's
+`has_art` follows, and `saltpod art status` then counts the track and
+`art write` gives it to the device. Two limits: a track the device already
+shows a cover for is not re-covered (the write appends, never replaces),
+and `status` on a device with no ArtworkDB at all now answers "holds 0"
+rather than crashing, while `rehearse`/`write` refuse there -- an entry is
+cloned from one the firmware made, never authored.
+
+In order:
 
 1. Let `parse()` accept an `mhfd` root and add the three list mappings.
    Small, and the round trip above is the test.

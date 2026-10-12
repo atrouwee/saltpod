@@ -15,7 +15,11 @@ import re
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 DIR = os.path.join(ROOT, 'data', 'discogs')
 FILES = {'collection': 'collection.csv', 'wantlist': 'wantlist.csv'}
 
@@ -68,4 +72,9 @@ def payload():
         else:
             out[name] = []
             out['files'][name] = {'path': rel, 'rows': 0, 'modified': None}
+    # IN THE ORDER THE PANE SHOWS THEM, so no client sorts (debt D9): the
+    # wantlist newest first, the collection by artist (through norm(), so
+    # "The" and bracketed suffixes do not move a record) and then title.
+    out['wantlist'].sort(key=lambda x: x.get('added') or '', reverse=True)
+    out['collection'].sort(key=lambda x: (norm(x.get('artist')), (x.get('title') or '').lower()))
     return out

@@ -35,7 +35,11 @@ import json
 import os
 import re
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 PATH = os.path.join(ROOT, 'data', 'device.json')
 
 TARGETS = ('apple', 'rockbox')
@@ -65,6 +69,45 @@ def set_roots(roots):
         f.write('\n')
     os.replace(tmp, PATH)
     return d['library_roots']
+
+
+def roots():
+    """`library_roots` from data/device.json, without the rest of load()'s
+    checks.
+
+    A FRESH INSTALL HAS FOLDERS BEFORE IT HAS AN IPOD. load() refuses
+    without a device GUID, which is right for anything that writes the
+    database and wrong for naming a music folder and indexing it: those
+    need only the roots. [] when there is no device.json yet.
+    """
+    if not os.path.exists(PATH):
+        return []
+    try:
+        with open(PATH) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return []
+    rs = d.get('library_roots')
+    if isinstance(rs, str):
+        rs = [rs]
+    if not rs and d.get('library_root'):
+        rs = [d['library_root']]
+    return [r for r in (rs or []) if r]
+
+
+def check_root(folder):
+    """(absolute folder, None) when `folder` can be a library root, or
+    (folder, sentence) when it cannot. The one check `saltpod sources add`
+    and the Data sheet's field both make."""
+    folder = (folder or '').strip()
+    if not folder:
+        return folder, 'which folder? name the folder your music is in'
+    folder = os.path.abspath(os.path.expanduser(folder))
+    if not os.path.isdir(folder):
+        return folder, 'no such folder: %s' % folder
+    if folder in [os.path.abspath(os.path.expanduser(r)) for r in roots()]:
+        return folder, 'already a source: %s' % folder
+    return folder, None
 
 
 def detect_target(mount):

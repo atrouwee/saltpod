@@ -230,6 +230,9 @@ Which is right, and it costs almost nothing, because the product already
 has exactly this shape: a **collection** is the thing you drag into, and
 `state.collection_order` is already the truth for what is in one.
 
+**DECIDED 12 October ("Yes, build it") and BUILT** -- see HANDOFF, "Covers
+into the file, and a Podcasts collection". It was:
+
 **PROPOSED:** a collection named Podcasts whose effect on sync is not a
 playlist but a `mediatype`. Seeded from the 11 files that already declare
 themselves, and open to anything dragged in afterwards -- a long mix, an

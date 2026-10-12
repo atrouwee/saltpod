@@ -97,7 +97,11 @@ import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 DEFAULT_CACHE_PATH = os.path.join(ROOT, 'data', 'local', 'loudness_cache.json')
 INDEX_PATH = os.path.join(ROOT, 'data', 'local', 'index.json')
 RECONCILE_PATH = os.path.join(ROOT, 'data', 'local', 'reconcile.json')

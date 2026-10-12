@@ -1,0 +1,68 @@
+{
+ "collection": [
+  {
+   "added": "2025-05-05 12:00:00",
+   "artist": "Grove",
+   "catno": "FX-001",
+   "folder": "Uncategorized",
+   "format": "LP, Album",
+   "key": "grove|paper moon",
+   "label": "Fixture Records",
+   "media": "Near Mint (NM or M-)",
+   "notes": "",
+   "rating": "4",
+   "release_id": "1000001",
+   "sleeve": "Very Good Plus (VG+)",
+   "title": "Paper Moon",
+   "year": "2019"
+  },
+  {
+   "added": "2024-01-01 12:00:00",
+   "artist": "Lumen (2)",
+   "catno": "FX-009",
+   "folder": "Uncategorized",
+   "format": "12\"",
+   "key": "lumen|shelf copy",
+   "label": "Fixture Records",
+   "media": "",
+   "notes": "no track in state",
+   "rating": "",
+   "release_id": "1000009",
+   "sleeve": "",
+   "title": "Shelf Copy",
+   "year": "2015"
+  }
+ ],
+ "dir": "data/discogs",
+ "files": {
+  "collection": {
+   "modified": "2026-01-02 09:00",
+   "path": "data/discogs/collection.csv",
+   "rows": 2
+  },
+  "wantlist": {
+   "modified": "2026-01-02 09:00",
+   "path": "data/discogs/wantlist.csv",
+   "rows": 1
+  }
+ },
+ "rev": 1791789447118,
+ "wantlist": [
+  {
+   "added": "2025-06-06 12:00:00",
+   "artist": "Hazel Unit",
+   "catno": "FX-002",
+   "folder": "",
+   "format": "LP",
+   "key": "hazel unit|wanted things",
+   "label": "Fixture Records",
+   "media": "",
+   "notes": "",
+   "rating": "",
+   "release_id": "1000002",
+   "sleeve": "",
+   "title": "Wanted Things",
+   "year": "2020"
+  }
+ ]
+}

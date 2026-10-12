@@ -1,0 +1,32 @@
+{
+ "built": "2026-01-02 09:00",
+ "folders": [
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Bought"
+  },
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Dune Society"
+  },
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Loose"
+  },
+  {
+   "lossless": 1,
+   "n": 1,
+   "name": "Music"
+  }
+ ],
+ "reach": {
+  "reachable": 3,
+  "tracks": 4
+ },
+ "rev": 1791789447118,
+ "root": "Music",
+ "total": 4
+}

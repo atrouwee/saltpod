@@ -50,6 +50,71 @@ def _epoch(v):
         return 0
 
 
+# Where Music keeps its XML library when "Share Library XML with other
+# applications" is on (Music > Settings > Advanced). Written by Music itself,
+# readable with Music closed; `saltpod plays applemusic` reads it by default.
+SHARED_XML = '~/Music/Music/Music Library.xml'
+
+
+class LibraryUnreadable(Exception):
+    """The file named is neither a Music XML library nor a saved read."""
+
+
+def music_running():
+    """Is Music open? Asked of the process list -- never of Music, which a
+    script would launch if it were closed."""
+    import subprocess
+    try:
+        return subprocess.run(['pgrep', '-x', 'Music'], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def read_library(path):
+    """Apple Music's library as columns: {name, artist, played, last,
+    skipped, read_at}, one entry per track.
+
+    Two sources, one shape. A saved read (the columnar JSON the 3 October
+    read left) is returned as it is. A Music XML library -- the shared
+    file, or File > Library > Export Library -- is a property list whose
+    `Tracks` hold `Name`, `Artist`, `Play Count`, `Play Date UTC` and
+    `Skip Count` per track; a track never played has no count at all.
+    """
+    import datetime as _dt
+    import os
+    import plistlib
+    with open(path, 'rb') as fh:
+        head = fh.read(64).lstrip()
+    if head.startswith(b'{'):
+        am = json.load(open(path))
+        if not all(k in am for k in ('name', 'artist', 'played', 'last', 'skipped')):
+            raise LibraryUnreadable('%s is JSON but not a saved Apple Music read'
+                                    % os.path.basename(path))
+        return am
+    try:
+        with open(path, 'rb') as fh:
+            lib = plistlib.load(fh)
+    except Exception as e:
+        raise LibraryUnreadable('%s is not a Music library file (%s)'
+                                % (os.path.basename(path), str(e)[:80]))
+    tracks = (lib.get('Tracks') or {}) if isinstance(lib, dict) else {}
+    if not tracks and not (isinstance(lib, dict) and 'Tracks' in lib):
+        raise LibraryUnreadable('%s has no Tracks: not a Music library file'
+                                % os.path.basename(path))
+    cols = {'name': [], 'artist': [], 'played': [], 'last': [], 'skipped': []}
+    for t in tracks.values():
+        last = t.get('Play Date UTC')
+        cols['name'].append(t.get('Name') or '')
+        cols['artist'].append(t.get('Artist') or '')
+        cols['played'].append(int(t.get('Play Count') or 0))
+        cols['last'].append(last.replace(tzinfo=_dt.timezone.utc).isoformat()
+                            if isinstance(last, _dt.datetime) else None)
+        cols['skipped'].append(int(t.get('Skip Count') or 0))
+    cols['read_at'] = _dt.datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M')
+    return cols
+
+
 def import_apple_music(st, am_path):
     """Put Apple Music's play counts on the tracks state knows about.
 
@@ -57,8 +122,9 @@ def import_apple_music(st, am_path):
     than once (a re-download, a second copy) the largest count is taken,
     because they are the same recording and the largest is the one that
     was played. Returns {'matched', 'unmatched_in_state', 'library'}.
+    `am_path` is either source `read_library` takes.
     """
-    am = json.load(open(am_path))
+    am = read_library(am_path)
     best = {}
     for i in range(len(am['name'] or [])):
         k = S.key_for(am['artist'][i], am['name'][i])

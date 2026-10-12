@@ -35,7 +35,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+from .paths import CODE_ROOT, DATA_ROOT  # noqa: E402  the two roots: see paths.py
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 from . import state as S  # noqa: E402
 from . import observe as O  # noqa: E402
 from . import platform as P  # noqa: E402
@@ -66,7 +67,7 @@ def _osa(argv, timeout):
     """Run an AppleScript with a hard timeout, and remember if it hung."""
     global MUSIC_WEDGED_AT
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=ROOT)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=CODE_ROOT)
     except subprocess.TimeoutExpired:
         MUSIC_WEDGED_AT = datetime.now().strftime('%H:%M')
         raise RuntimeError('Music.app accepted the request and did not answer within %ds' % timeout)
@@ -155,6 +156,16 @@ def library_reach():
             'reachable': _INDEX_CACHE.get('reach')}
 
 
+def _source_row(root):
+    """One library root as health reports it."""
+    # Name it by the drive when it is on one -- the volume, not the folder.
+    # That is the thing that gets unplugged, and the word you would use.
+    parts = root.rstrip('/').split('/')
+    name = parts[2] if len(parts) > 2 and parts[1] == 'Volumes' else (parts[-1] or root)
+    return {'name': name, 'path': root, 'online': os.path.isdir(root),
+            'volume': volume_of(root)}
+
+
 def health():
     """What the tool can reach right now. Every check here is a filesystem
     stat or a pgrep -- never an Apple event, which is the one thing that can
@@ -169,6 +180,11 @@ def health():
         mount = cfg.get('mount', '/Volumes/IPOD')
     except SystemExit as e:
         out['config'] = str(e)
+        # the folders are named even before the iPod is: a fresh install
+        # adds one from the Data sheet, and the sheet should say it took
+        out['sources'] = [_source_row(r) for r in config.roots()]
+        out['job'] = job_summary()
+        out['headline'] = headline(out)
         return out
     vol = os.path.isdir(mount)
     db = os.path.exists(os.path.join(mount, A.DB_REL))
@@ -192,13 +208,7 @@ def health():
     running = subprocess.run(['pgrep', '-x', 'Music'], capture_output=True).returncode == 0
     out['music'] = 'wedged' if (running and MUSIC_WEDGED_AT) else ('ok' if running else 'closed')
     for root in cfg.get('library_roots', []):
-        # Name it by the drive when it is on one -- the volume, not the folder.
-        # That is the thing that gets unplugged, and the word you would use.
-        parts = root.rstrip('/').split('/')
-        name = parts[2] if len(parts) > 2 and parts[1] == 'Volumes' else (parts[-1] or root)
-        out['sources'].append({'name': name, 'path': root,
-                               'online': os.path.isdir(root),
-                               'volume': volume_of(root)})
+        out['sources'].append(_source_row(root))
     # STATUS BELONGS TO THE VOLUME, not the source. Two folders on one
     # drive are two sources and one thing that can be unplugged, and the
     # strip showed that drive twice. The sources list stays for settings,
@@ -216,7 +226,65 @@ def health():
             _INDEX_CACHE.update(mtime=mt, tracks=n)
         out['index'] = {'built': datetime.fromtimestamp(mt).strftime('%Y-%m-%d %H:%M'),
                         'tracks': _INDEX_CACHE.get('tracks')}
+    out['job'] = job_summary()
+    out['headline'] = headline(out)
     return out
+
+
+SYNC_JOB = 'sync to the iPod'
+
+
+def running_job(name=None):
+    """The job still running, newest first; one named `name` if given."""
+    with JOBS_LOCK:
+        live = [j for j in JOBS.values() if j.state == 'running'
+                and (name is None or j.name == name)]
+    return max(live, key=lambda j: j.started) if live else None
+
+
+def job_summary():
+    """health.job (debt D12): the running job, a sync before anything else,
+    with its step counts so "14 of 38" is a lookup; None when idle."""
+    j = running_job(SYNC_JOB) or running_job()
+    if not j:
+        return None
+    with JOBS_LOCK:
+        steps = list(j.steps.values())
+    return {'id': j.id, 'name': j.name, 'state': j.state,
+            'seconds': round(time.time() - j.started),
+            'done': sum(1 for x in steps if x['state'] in ('done', 'error')),
+            'total': len(steps)}
+
+
+def headline(h):
+    """The idle headline (debt D12): one line about the link to the device,
+    the most severe first -- no configuration, then the iPod's state, then
+    ready with its free space. DESIGN-GLASS ("the shelf") wanted it on the
+    server so the phone shelf, the iPad accessory and the Mac footer say one
+    sentence. `level` is a status family name: ok, warn, missed, fault.
+    Reach ("Can't reach the Mac") is the one fact only a client can know,
+    so a client overlays it; it is not here."""
+    if h.get('config'):
+        return {'level': 'fault', 'text': 'No device configured'}
+    pod = h.get('ipod')
+    if pod == 'waking':
+        return {'level': 'warn', 'text': 'iPod waking'}
+    if pod == 'ejected':
+        when = h.get('ejected_at')
+        return {'level': 'ok', 'text': 'Ejected%s \u00b7 safe to unplug'
+                % ((' ' + str(when)) if when else '')}
+    if pod == 'ready':
+        free = h.get('free')
+        return {'level': 'ok', 'text': 'iPod ready' + (
+            ' \u00b7 %d GB free' % round(free / 1e9) if free is not None else '')}
+    return {'level': 'missed', 'text': 'iPod not connected'}
+
+
+class Busy(Exception):
+    """A second sync while one runs: answered 409 with the running job."""
+    def __init__(self, job):
+        super().__init__('a sync is already running')
+        self.job = job
 
 
 # ---------------------------------------------------------------- jobs
@@ -243,8 +311,26 @@ CLIENTS = []
 CLIENTS_LOCK = threading.Lock()
 
 
+# THE CHANGE SIGNAL (debt D11). Every event and every JSON reply carries
+# `rev`; it moves on each `data` or `job` event, so a client compares the
+# rev of an event with the rev of the payload it holds and refetches only
+# when they differ -- instead of refetching 1.5 MB on every event, its own
+# included. It starts from the clock, so a restarted server never hands out
+# a rev an old client has already seen.
+REV = {'n': int(time.time() * 1000)}
+REV_LOCK = threading.Lock()
+
+
+def rev():
+    return REV['n']
+
+
 def push(event):
     """Fan out to every open page. A dead client is dropped, never raised."""
+    with REV_LOCK:
+        if event.get('type') in ('data', 'job'):
+            REV['n'] += 1
+        event = dict(event, rev=REV['n'])
     line = 'data: %s\n\n' % json.dumps(event, ensure_ascii=False)
     with CLIENTS_LOCK:
         for q in list(CLIENTS):
@@ -294,11 +380,15 @@ def device_fingerprint():
 
 
 class Job:
+    say = None                          # `@@ say <sentence>`: the run's last word
+
     def __init__(self, name):
         self.id = '%s-%d' % (name, int(time.time() * 1000) % 10_000_000)
         self.name = name
         self.state = 'running'
         self.log = []
+        self.steps = {}                 # id -> {id, state, error}, in run order
+        self.say = None
         self.started = time.time()
         # A job log used to live only in this dict, capped at 400 lines, gone
         # the moment the server restarted -- for a tool whose whole job is
@@ -314,10 +404,52 @@ class Job:
         except Exception:
             self.fp = None                                  # never fail a sync over a log
 
+    # `@@ <id> <state>[ <error>]`. A playlist id (`p:`) may hold spaces and
+    # never carries an error, so it is matched greedily up to its state.
+    # A smart list's id (`s:`) may hold spaces the same way.
+    STEP = re.compile(r'^@@ ([ps]:.+|\S+) (doing|done|error)(?: (.*))?$')
+
+    def step_line(self, s):
+        """Fold one `@@` line into `steps` (debt D10). The page used to read
+        these out of the last 60 log lines and assume the ones it missed;
+        the job sees every line, so its list is complete."""
+        if s.startswith('@@ say '):
+            # THE ONE SENTENCE A CLIENT SHOWS WHEN THE RUN ENDS, in the
+            # server's words -- "the iPod is as it was" after a sync put its
+            # backup back. A client toasts it; it never composes its own.
+            self.say = s[len('@@ say '):].strip()
+            return
+        if s.startswith('@@ steps '):
+            try:
+                ids = json.loads(s[len('@@ steps '):])
+            except ValueError:
+                return
+            for i in ids:
+                self.steps.setdefault(i, {'id': i, 'state': 'waiting', 'error': None})
+            return
+        m = self.STEP.match(s)
+        if m:
+            st = self.steps.setdefault(m.group(1), {'id': m.group(1), 'state': 'waiting',
+                                                    'error': None})
+            st['state'] = m.group(2)
+            if m.group(3):
+                st['error'] = m.group(3)
+
+    def end_steps(self):
+        """When the run ends, a step still waiting is settled: it ran
+        unreported if the job finished, and never ran if it stopped."""
+        with JOBS_LOCK:
+            for st in self.steps.values():
+                if st['state'] in ('waiting', 'doing'):
+                    st['state'] = 'done' if self.state == 'done' else (
+                        'error' if st['state'] == 'doing' else 'todo')
+
     def line(self, s):
         with JOBS_LOCK:
             self.log.append(s.rstrip())
             del self.log[:-400]          # a long match run must not eat memory
+            if s.startswith('@@ '):
+                self.step_line(s.rstrip())
         if self.fp:
             try:
                 self.fp.write(s.rstrip() + '\n')
@@ -359,7 +491,9 @@ class Job:
 
     def as_dict(self):
         return {'id': self.id, 'name': self.name, 'state': self.state,
-                'log': self.log[-60:], 'seconds': round(time.time() - self.started)}
+                'log': self.log[-60:], 'seconds': round(time.time() - self.started),
+                'steps': [dict(x) for x in self.steps.values()],
+                'say': self.say}
 
 
 def run_job(name, steps, fingerprint=False):
@@ -381,7 +515,7 @@ def run_job(name, steps, fingerprint=False):
                 if callable(step):
                     step(job)
                     continue
-                p = subprocess.Popen(step, cwd=ROOT, stdout=subprocess.PIPE,
+                p = subprocess.Popen(step, cwd=CODE_ROOT, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, bufsize=1,
                                      env={**os.environ,
                                           'DEVELOPER_DIR': DEV_DIR})
@@ -403,6 +537,7 @@ def run_job(name, steps, fingerprint=False):
             # two, because it says how far the write got.
             if fingerprint:
                 after = device_fingerprint()
+            job.end_steps()
             job.close(before, after)
             push({'type': 'job', 'id': job.id, 'state': job.state, 'name': job.name})
             push({'type': 'data', 'why': job.name})
@@ -441,9 +576,37 @@ def am_index():
         return {'playlists': [], 'keys': [], 'read_at': None}
 
 
+# Which Apple Music cloud statuses mean you own the file (debt D5). It lived
+# in the page as AM_OWNED, so the same sentence was in JavaScript twice --
+# export_playlists.js decides `owned` for a playlist export, the page decided
+# it again for a library row -- and Swift would have made three.
+AM_OWNED = ('purchased', 'matched', 'uploaded')
+
+
+def am_row_answers(cloud):
+    """The answers a row seen only in Apple Music carries, so a client can
+    render it like any other row without deciding anything: whether the
+    cloud status means owned, the status worth showing (None for owned and
+    for an ordinary subscription track), and law 3's state -- no file on any
+    drive of yours, so `unowned`, with nothing to play until it is adopted."""
+    owned = cloud in AM_OWNED
+    return {'am_owned': owned,
+            'am_status': None if (owned or cloud == 'subscription' or not cloud) else cloud,
+            'state': 'unowned', 'play': None,
+            'decision': decision_of([{'held': False, 'tier': '', 'collections': []}])}
+
+
+def library_payload():
+    """/api/library: every Apple Music library row, with its answers."""
+    rows = []
+    for r in am_index().get('library') or []:
+        rows.append(dict(r, **am_row_answers(r.get('cloud'))))
+    return {'tracks': rows}
+
+
 def refresh_am_index():
     out = _osa(['osascript', '-l', 'JavaScript',
-                os.path.join(ROOT, 'bin/export_playlists.js'), '--index'], 600)
+                os.path.join(CODE_ROOT, 'bin/export_playlists.js'), '--index'], 600)
     if out.returncode != 0:
         raise RuntimeError((out.stderr or 'osascript failed').strip()[:400])
     d = json.loads(out.stdout)
@@ -470,8 +633,8 @@ def music_playlists():
     """Names and track counts straight out of Music.app."""
     try:
         out = subprocess.run(['osascript', '-l', 'JavaScript',
-                              os.path.join(ROOT, 'bin/export_playlists.js'), '--list'],
-                             capture_output=True, text=True, timeout=180, cwd=ROOT).stdout
+                              os.path.join(CODE_ROOT, 'bin/export_playlists.js'), '--list'],
+                             capture_output=True, text=True, timeout=180, cwd=CODE_ROOT).stdout
         return json.loads(out)
     except Exception:
         return []
@@ -523,6 +686,155 @@ def device_playlists():
     return {'mounted': mounted, 'source': src, 'playlists': out}
 
 
+# ------------------------------------------------- the Podcasts collection
+#
+# A collection like any other in state -- filled by a drop, `saltpod decide`
+# or `saltpod podcasts add`, ordered and emptied the same way -- whose effect
+# on sync is the podcast media type rather than a playlist (apply._plan pops
+# it, podcasts.sync_collection carries it out). What lives here is what the
+# page and the terminal ask of it: its count, what is pending, and the
+# seeding from files that declare themselves podcasts.
+
+_PODDEV = {'key': None, 'filed': set(), 'listed': []}
+
+
+def _device_db():
+    """(path, mounted): the device's iTunesDB, else the newest backup, else (None, False)."""
+    try:
+        from . import config
+        mount = config.load().get('mount', '/Volumes/IPOD')
+    except SystemExit:
+        mount = '/Volumes/IPOD'
+    dbp = os.path.join(mount, 'iPod_Control/iTunes/iTunesDB')
+    if os.path.exists(dbp):
+        return dbp, True
+    cand = sorted(glob.glob(os.path.join(ROOT, 'backups/ipod-*/iTunesDB')))
+    return (cand[-1], False) if cand else (None, False)
+
+
+def _podcasts_on_device():
+    """{'filed': keys the device files as podcasts, 'listed': the flagged
+    list's keys in order}, read once per database file and mtime."""
+    from . import podcasts as P, itunesdb_write as W, ipod_edit as E
+    dbp, _m = _device_db()
+    if not dbp:
+        return None
+    stamp = (dbp, os.path.getmtime(dbp))
+    if _PODDEV['key'] != stamp:
+        try:
+            root = W.parse(open(dbp, 'rb').read())
+        except Exception:
+            return None
+        key_of = {}
+        for t in E.tracks(root):
+            key_of[E.track_dbid(t)] = S.key_for(P._mhod(t, 4), P._mhod(t, 1))
+        _PODDEV.update({'key': stamp,
+                        'filed': {key_of[d] for d in P.filed(root) if d in key_of},
+                        'listed': [key_of[d] for d in P.list_dbids(root) if d in key_of]})
+    return _PODDEV
+
+
+def podcasts_summary(st=None):
+    """The Podcasts row's answers: members, and how many a sync still owes.
+
+    `pending` counts what the next sync would change: a member not yet on
+    the iPod, a member on it but not filed as a podcast, and -- only once the
+    collection exists in state -- a device podcast it no longer names. With
+    no device and no backup to read, only the first can be known.
+    """
+    from . import podcasts as P
+    st = st or S.load()
+    name = P.COLLECTION
+    members = [k for k in S.order_for(st, name) if k in st['tracks']]
+    live = [k for k in members if (st['tracks'][k].get('tier') != 'remove')]
+    dev = _podcasts_on_device()
+    coming = [k for k in live if not (st['tracks'][k].get('device') or {}).get('location')]
+    unfiled = filed_out = []
+    if dev is not None:
+        unfiled = [k for k in live if k not in coming and k not in dev['filed']]
+        if name in (st.get('collections') or []) or members:
+            filed_out = sorted(dev['filed'] - set(live))
+    return {'name': name, 'n': len(members),
+            'pending': len(coming) + len(unfiled) + len(filed_out),
+            'coming': len(coming), 'unfiled': len(unfiled), 'filed_out': len(filed_out),
+            'device_read': dev is not None}
+
+
+def _declaring_keys(st):
+    """State tracks whose file on the drive declares itself a podcast."""
+    from . import podcasts as P
+    out = []
+    for k, r in st['tracks'].items():
+        f = (_original(r.get('device') or {}, k) or {}).get('path')
+        if f and os.path.exists(f) and P.declares_podcast(f):
+            out.append(k)
+    return out
+
+
+def podcasts_op(body=None):
+    """The Podcasts collection, for the page and `saltpod podcasts`.
+
+    action status   its members, what is pending, and which files declare
+                    themselves podcasts but are not in it yet
+           seed     put those declaring files in (one undo entry)
+           add      put `keys` in -- a long mix, an audiobook
+           remove   take `keys` out; the next sync files them as music again
+    """
+    from . import podcasts as P
+    body = body or {}
+    act = body.get('action') or 'status'
+    name = P.COLLECTION
+    if act in ('add', 'remove'):
+        keys = [k for k in (body.get('keys') or []) if k]
+        if not keys:
+            return {'ok': False, 'error': 'no tracks named'}
+        out = apply_decision({'keys': keys, 'collection': name, 'mode': act})
+        return dict(out if isinstance(out, dict) else {}, ok=True, action=act,
+                    podcasts=podcasts_summary())
+    with LOCK:
+        st = S.load()
+    have = set(S.order_for(st, name))
+    declaring = [k for k in _declaring_keys(st) if k not in have]
+    if act == 'seed':
+        if declaring:
+            apply_decision({'keys': declaring, 'collection': name, 'mode': 'add'})
+        return {'ok': True, 'action': 'seed', 'added': declaring,
+                'podcasts': podcasts_summary()}
+    if act != 'status':
+        return {'ok': False, 'error': 'no action called %r' % act}
+    return {'ok': True, 'action': 'status', 'members': S.order_for(st, name),
+            'declaring': declaring, 'podcasts': podcasts_summary(st)}
+
+
+def cover_put(body=None):
+    """`saltpod cover`: put_art for the terminal, which hands over bytes.
+
+    The page POSTs the image itself to /api/art; JSON cannot carry one, so
+    this refuses anything but bytes rather than reading a path it was sent.
+    """
+    body = body or {}
+    blob = body.get('image')
+    if not isinstance(blob, (bytes, bytearray)):
+        return {'ok': False, 'error': 'POST the image bytes to /api/art'}
+    return put_art(body.get('key') or '', body.get('path') or '', bytes(blob))
+
+
+def sync_fits(exclude=None, mount=None):
+    """Would a sync with these rows unticked fit on the device (debt D7)?
+    The same plan and the same apply.fit() the sync itself runs; asked
+    before the job starts so a refusal is an answer, not a failed job.
+    None when there is no device to ask."""
+    try:
+        from . import apply as A
+        A._cfg()
+        m = mount or A.MOUNT
+        if not os.path.exists(os.path.join(m, A.DB_REL)):
+            return None
+        return A.fit(A.drop_excluded(A.plan(m), exclude), m)
+    except Exception:
+        return None
+
+
 def plan_summary(mount=None):
     """What a sync would do, as JSON, touching nothing.
 
@@ -537,20 +849,13 @@ def plan_summary(mount=None):
         if not os.path.exists(os.path.join(m, A.DB_REL)):
             return {'ok': False, 'reason': 'no iPod at %s' % m}
         p = A.plan(m)
-        # Estimated on the converted size, not the source: FLAC to ALAC is about
-        # the same, WAV and AIFF roughly halve, lossy files are copied as they
-        # are. Estimates -- the real number is only known after ffmpeg has run.
-        factor = {'.flac': 1.05, '.alac': 1.0, '.wav': 0.55, '.aiff': 0.55, '.aif': 0.55}
-        add_bytes = 0
-        # Per row as well as in total: the panel lets you untick rows, and a
+        # Estimated on the converted size (apply.estimated_bytes). Per row
+        # as well as in total: the panel lets you untick rows, and a
         # capacity figure that did not follow would be worse than none.
+        add_bytes = 0
         add_size = {}
         for k, r, src in p['adds']:
-            try:
-                sz = os.path.getsize(src)
-            except OSError:
-                sz = 0
-            est = int(sz * factor.get(os.path.splitext(src)[1].lower(), 1.0))
+            est = A.estimated_bytes(src)
             add_size[k] = est
             add_bytes += est
         try:
@@ -568,8 +873,11 @@ def plan_summary(mount=None):
                       'bytes': add_size.get(k, 0),
                       'convert': os.path.splitext(src)[1].lower() in A.CONVERT}
                      for k, r, src in p['adds']],
+            # (key, record, why) since plan() learned offline from unowned;
+            # unpacking two of the three made every plan with one unsourced
+            # track answer {ok: false} -- found by the first fixture library
             'no_source': [{'artist': r['artist'], 'title': r['title']}
-                          for k, r in p['no_source']],
+                          for k, r, _why in p['no_source']],
             'removes': [{'key': k, 'artist': r['artist'], 'title': r['title']}
                         for k, r, t in p['removes']],
             # metadata the two sides disagree about. `winner` says which one
@@ -578,9 +886,30 @@ def plan_summary(mount=None):
                         'title': r.get('title') or '', 'winner': w,
                         'fields': {kk: vv for kk, vv in f.items() if vv}}
                        for k, r, tid, w, f in (p.get('retags') or [])],
+            # THE SMART-PLAYLIST PHASE (decided 12 October, "Yes, a phase
+            # with rows"): one row per list the sync refreshes from its
+            # rules, `now` -> `would`, and the summary and Sound Check lines
+            # `saltpod plan` prints -- the same functions write both, so the
+            # terminal and the page say the same words. None when there is
+            # nothing to say.
+            'smart': A.smart_rows(p),
+            'smart_line': A.smart_line(p) if [r for r in (p.get('smart') or [])
+                                              if not r.get('firmware')] else None,
+            'soundcheck_line': A.soundcheck_line(p),
             # How many tracks each playlist ends up with, so an unticked
             # playlist row can say what it is leaving alone.
             'sizes': {c: len(m) for c, m in p['collections'].items()},
+            # The Podcasts collection is not a playlist row: its effect is a
+            # media type (apply._plan). `named` is False while state does not
+            # name it, and then the device's podcasts are left alone.
+            'podcasts': ({'named': True,
+                          'file': len(p['podcasts']['file']) + len(p['podcasts']['coming']),
+                          'unfile': len(p['podcasts']['unfile']),
+                          'reorder': p['podcasts']['reorder'],
+                          'changed': p['podcasts']['changed']}
+                         if p.get('podcasts') else
+                         {'named': False, 'file': 0, 'unfile': 0, 'reorder': False,
+                          'changed': False}),
             # AND WHICH ONES. A count tells you a playlist is being written;
             # it does not tell you what will be in it, which is the thing
             # you are actually approving. `on` is whether the track is
@@ -681,6 +1010,31 @@ def _local_maps():
     return _LOCBYKEY
 
 
+def file_identity(e):
+    """The key, artist and title a drive file is decided under.
+
+    ONE RULE FOR BOTH WAYS IN. The page names a drive row by this (an
+    untagged file's filename stands in for its title, because a key is
+    artist|title and it has neither) and `saltpod decide PATH` resolves a
+    path to the same key here, so a file decided on in the terminal and the
+    same file decided on in the page land on one record.
+    """
+    stem = os.path.splitext(os.path.basename(e.get('path') or ''))[0]
+    artist, title = e.get('artist') or '', e.get('title') or ''
+    if not (artist or title):
+        title = stem
+    # key_for('', '') is '|', which is truthy, so the old `key_for(artist,
+    # title) or key_for('', stem)` never reached the stem: every untagged
+    # file shared the one key '|'. The stem stands in before the key is made.
+    return {'key': S.key_for(artist, title), 'artist': artist, 'title': title}
+
+
+def path_identity(path):
+    """file_identity for an absolute path in the drive index, or None."""
+    ent = _local_maps()['path'].get(path) or _local_maps()['path'].get(os.path.abspath(path))
+    return file_identity(ent) if ent else None
+
+
 def _original(dev, key):
     """The index entry for the file this track was made from, if we have it."""
     m = _local_maps()
@@ -703,8 +1057,7 @@ def _detail_of(key, rec, dev):
     if not on_disk:
         why = 'no file on the drive — nothing to edit yet'
     elif not T.supported(path):
-        why = ('an id3 chunk needs the ID3v2 writer'
-               if ext == '.wav' else 'no %s writer yet' % (ext.lstrip('.') or '?'))
+        why = T.why_not(path)
     return {
         'path': path, 'name': os.path.basename(path), 'ext': ext,
         'folder': os.path.basename(os.path.dirname(path)) if path else '',
@@ -788,8 +1141,7 @@ def _detail_from_entry(ent):
     if not on_disk:
         why = 'the file is gone'
     elif not T.supported(path):
-        why = ('an id3 chunk needs the ID3v2 writer'
-               if ext == '.wav' else 'no %s writer yet' % (ext.lstrip('.') or '?'))
+        why = T.why_not(path)
     return {'path': path, 'name': os.path.basename(path), 'ext': ext,
             'folder': os.path.basename(os.path.dirname(path)) if path else '',
             'on_disk': on_disk, 'writable': bool(on_disk and T.supported(path)),
@@ -1122,14 +1474,24 @@ def discard_plan(body=None):          # body unused: there is nothing to say
 
 
 def put_art(key, path, blob):
-    """Save a cover into saltpod's own cache, keyed the way /api/art reads it.
+    """A cover you dropped: into the art cache, into the file, then the iPod.
 
-    HONEST ABOUT ITS REACH. This is the page's artwork and nothing else.
-    Embedding it in the file needs the APIC half of the ID3 writer, and
-    showing it on the device needs ArtworkDB -- both surveyed
-    (research/DEVICE-ARTWORK.md), neither built. Saving it here now means
-    the work is not lost when they are: the cache is where both will read
-    from.
+    THREE PLACES, ONE PICTURE. The cache (keyed the way /api/art reads it)
+    is what the page shows at once. The file on the drive is the master, so
+    the cover is written into it -- m4a through tags.write_art, MP3, AIFF
+    and WAV through an APIC frame in their ID3 tag (tags.embed_art) -- and
+    the drive index's has_art follows. From there the device half needs
+    nothing new: `saltpod art status` counts a track on the iPod whose file
+    has art and whose entry on the device has none, and `saltpod art write`
+    renders it into the ArtworkDB at the next sync.
+
+    This function's first note said the cache was only a start: "Saving it
+    here now means the work is not lost when they are: the cache is where
+    both will read from." Both now do -- the file is written from the
+    picture you dropped, and the device is given what the file carries.
+
+    A file that cannot take one keeps the cover in the cache only, and the
+    reply says why in the same words the track panel uses.
     """
     if not blob:
         return {'ok': False, 'error': 'no image'}
@@ -1163,10 +1525,74 @@ def put_art(key, path, blob):
     O.event('info', 'art', 'cover normalised', backend=r['backend'],
             bytes=os.path.getsize(out))
     G.forget(ident)                       # a new picture under the same src
+    sniffed = blob[:3] == b'\xff\xd8\xff' or blob[:8] == b'\x89PNG\r\n\x1a\n'
+    # THE ORIGINAL, NOT THE 320px CACHE COPY, when the file can carry it: a
+    # jpeg or png goes in at the resolution you dropped. webp and heic are
+    # not pictures an ID3 or MP4 reader can be relied on to show, so those
+    # go in as the normalised jpeg.
+    filed = embed_cover(key, path, blob if sniffed else open(out, 'rb').read())
     push({'type': 'data', 'why': 'art'})
+    if filed.get('in_file'):
+        note = 'in the file; `saltpod art write` puts it on the iPod'
+    else:
+        note = 'saltpod only: ' + (filed.get('why') or 'not written into the file')
     return {'ok': True, 'art': '/api/art?key=' + quote(ident),
-            'bytes': os.path.getsize(out),
-            'note': 'saltpod only for now: the file needs APIC, the iPod needs ArtworkDB'}
+            'bytes': os.path.getsize(out), 'in_file': bool(filed.get('in_file')),
+            'note': note}
+
+
+def embed_cover(key, path, image):
+    """Write `image` into the track's file on the drive. {'in_file', 'why'}.
+
+    ON A COPY, THEN RENAMED OVER. The audio digest is taken before and
+    checked on the copy, so a write that touched one byte of audio is thrown
+    away rather than discovered afterwards -- tags.verify's promise, kept
+    before the original is replaced rather than after.
+    """
+    import shutil as _sh
+    from . import tags as T
+    if path:
+        ent = _local_maps()['path'].get(path)
+        if not ent:
+            return {'in_file': False, 'why': 'not in the drive index'}
+        det = _detail_from_entry(ent)
+    else:
+        with LOCK:
+            rec = dict(S.load()['tracks'].get(key) or {})
+        if not rec:
+            return {'in_file': False, 'why': 'no such track'}
+        det = _detail_of(key, rec, rec.get('device') or {})
+    f = det.get('path') or ''
+    if not det.get('on_disk'):
+        return {'in_file': False, 'why': det.get('why') or 'no file on the drive'}
+    why = T.art_why_not(f)
+    if why:
+        return {'in_file': False, 'why': why}
+    stem, ext = os.path.splitext(f)
+    tmp = stem + '.saltpod-art' + ext
+    try:
+        probe = T.audio_probe(f)
+        _sh.copy2(f, tmp)
+        in_place = T.embed_art(tmp, image)
+        T.verify(tmp, probe, in_place=in_place)
+        os.replace(tmp, f)
+    except Exception as e:
+        O.event('warn', 'art', 'cover not written into the file', path=f, error=str(e))
+        return {'in_file': False, 'why': str(e)}
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    O.event('info', 'art', 'cover written into the file', path=f, bytes=len(image))
+    _index_patch(f, {'has_art': True})
+    if key:
+        # The row shows this cover from now on, ahead of an iTunes one: you
+        # chose it (row_art reads the flag).
+        with LOCK:
+            st = S.load()
+            if key in st['tracks']:
+                st['tracks'][key]['art_own'] = True
+                S.save(st)
+    return {'in_file': True, 'why': '', 'path': f}
 
 
 def _index_add(path):
@@ -1578,6 +2004,11 @@ def local_index():
     except Exception:
         return {'roots': [], 'folders': [], 'built': None}
     roots = d.get('roots') or []
+    # whether each root's volume is mounted, asked once per call: a lean
+    # drive row's `state` (row_state's offline/ready) depends on nothing else
+    online = {r: os.path.isdir(r) for r in roots}
+    # ...and its decision row: a file you hold, undecided, in no collection
+    lean_decision = decision_of([{'held': True, 'tier': '', 'collections': []}])
     groups = {}
     for e in d.get('tracks') or []:
         path = e.get('path') or ''
@@ -1594,13 +2025,10 @@ def local_index():
             g['lossless'] += 1
         # 581 files carry no tags at all. Their filename is the only name they
         # have, and a blank row is useless to browse, so it stands in.
-        stem = os.path.splitext(parts[-1])[0]
-        artist, title = e.get('artist') or '', e.get('title') or ''
-        if not (artist or title):
-            title = stem
+        ident = file_identity(e)
         g['tracks'].append({
-            'key': S.key_for(e.get('artist'), e.get('title')) or S.key_for('', stem),
-            'artist': artist, 'title': title, 'file': parts[-1],
+            'key': ident['key'],
+            'artist': ident['artist'], 'title': ident['title'], 'file': parts[-1],
             # the absolute path, because a key is artist|title and an
             # untagged file has neither -- the panel addresses it by this
             'path': e.get('path'),
@@ -1609,6 +2037,13 @@ def local_index():
             # a sub-path is worth showing: "Bought Tracks" is 1,180 files deep
             'sub': os.sep.join(parts[1:-1]) or None,
             'untagged': bool(e.get('untagged')),
+            # the answers a row needs before it has a record in the state
+            # (debt D3/D4): a file you own, ready when its drive is mounted;
+            # nothing to play until it is adopted, because /api/audio serves
+            # state rows (audio_source)
+            'state': row_state({'local': True, 'reachable': online.get(root)}),
+            'play': None,
+            'decision': lean_decision,
         })
     for g in groups.values():
         g['tracks'].sort(key=lambda t: ((t['sub'] or '').lower(), t['artist'].lower(), t['title'].lower()))
@@ -1674,7 +2109,9 @@ def reachable_keys(ttl=5.0):
 # is a rule, and rules live here.
 
 LISTS = ('to buy', 'to sync', 'to remove', 'needs a drive', 'on iPod', 'on T7',
-         'on vinyl', 'rented only', 'owned digitally')
+         'on vinyl', 'rented only', 'owned digitally',
+         # the buy pane's stages (debt D8) and the vinyl pane's to-do (D9)
+         'synced', 'FLAC to buy', 'not looked up', 'vinyl to add')
 
 
 _LP = {'built': None, 'own': set(), 'want': set()}
@@ -1754,6 +2191,22 @@ def _answers(t):
         lists.append('rented only')
     if held:
         lists.append('owned digitally')
+    # THE BUY PANE'S STAGES (debt D8), which the page filtered for itself:
+    # marked sync and now on the device is the last stage, "synced"; a track
+    # still to buy whose Bandcamp release was confirmed lossless is one to
+    # buy as FLAC; and one still to buy that nobody has looked up yet -- no
+    # iTunes answer, no verdict, not in flight -- is what "Look up the N
+    # without a source" is about.
+    if t.get('tier') == 'sync' and t.get('device'):
+        lists.append('synced')
+    if 'to buy' in lists and t.get('bc_verdict') == 'confirmed':
+        lists.append('FLAC to buy')
+    if 'to buy' in lists and not (t.get('url') or t.get('it_verdict') or t.get('looking')):
+        lists.append('not looked up')
+    # THE VINYL PANE'S TO-DO (debt D9): flagged for vinyl, and the release
+    # is neither in the Discogs collection nor on the wantlist yet.
+    if t.get('vinyl') and not owned_lp and not wanted_lp:
+        lists.append('vinyl to add')
     return {
         'lists': lists,
         'vinyl_owned': owned_lp, 'vinyl_wanted': wanted_lp, 'release_key': rk,
@@ -1762,14 +2215,162 @@ def _answers(t):
         # 466 tracks -- because only 904 of this drive's 4,048 files carry
         # an album_artist tag.
         'album_key': (t.get('album') or '').strip().lower() or None,
+        # the vinyl pane's group heading: one card per release, named the
+        # way the Discogs search wants it (D9)
+        'release_label': '%s \u2014 %s' % (t.get('artist') or '',
+                                             t.get('album') or '(unknown release)'),
         'held': held,
+        'state': row_state(t),
+        'play': row_play(t),
+        'decision': decision_of([dict(t, held=held)]),
     }
 
 
+def decision_of(rows):
+    """The one decision row a track menu offers, for one track or a
+    selection (debt D2, law 8).
+
+    It lived in the page's paintMenu as a nested ternary -- on the device,
+    else held, else not -- plus the tier the click sets, and Swift would have
+    been the second copy of both. Each row needs `device`, `held`, `tier`
+    and `collections`.
+
+    `verb`  'remove' when any of them is on the iPod; else 'sync' when every
+            one is held (a file you own); else 'buy'
+    `on`    the decision is already made: every one marked remove (for
+            'remove') or sync (for the other two). The label flips; there is
+            no third "undecided" row, because pressing it again IS the undo
+    `sets`  the tier the click sets. Undoing sync lands on 'undecided',
+            except that a track in a collection cannot be undecided (being
+            in one is the decision), so it stays 'sync'. For 'remove' when
+            not on, it is 'remove' and applies only to the rows on the device
+    `digital_only`  not on the iPod and every one held: "Owned digitally"
+
+    The words are the client's: a lookup table keyed by verb and on.
+    """
+    rows = list(rows)
+    if not rows:
+        return None
+    on_dev = any(r.get('device') for r in rows)
+    held = all(r.get('held') for r in rows)
+    if on_dev:
+        on = all(r.get('tier') == 'remove' for r in rows)
+        return {'verb': 'remove', 'on': on,
+                'sets': {'tier': 'undecided' if on else 'remove'},
+                'digital_only': False}
+    on = all(r.get('tier') == 'sync' for r in rows)
+    any_col = any(r.get('collections') for r in rows)
+    return {'verb': 'sync' if held else 'buy', 'on': on,
+            'sets': {'tier': 'undecided' if (on and not any_col) else 'sync'},
+            'digital_only': held}
+
+
+def decision_for(body):
+    """/api/decision and `saltpod decision`: decision_of over a selection.
+
+    The menu for one row reads the row's own `decision`; a selection of many
+    asks here, so no client combines rows. A key with no record in the state
+    (a library or drive row not yet adopted) counts as undecided, in no
+    collection, held when the drive index has a file for it.
+    """
+    keys = [k for k in (body.get('keys') or []) if k]
+    if not keys:
+        return {'ok': False, 'error': 'no keys'}
+    with LOCK:
+        tracks = S.load()['tracks']
+    loc = local_keys()
+    rows = []
+    for k in keys:
+        r = tracks.get(k)
+        if r is None:
+            rows.append({'device': False, 'held': k in loc, 'tier': '', 'collections': []})
+            continue
+        dev = r.get('device') or {}
+        on_pod = bool(dev) and r.get('on_ipod', True) is not False
+        rows.append({'device': on_pod,
+                     'held': bool(on_pod or dev.get('origin') or k in loc),
+                     'tier': r.get('tier'), 'collections': r.get('collections') or []})
+    return dict(decision_of(rows), ok=True, n=len(rows))
+
+
+def row_state(t):
+    """Which of law 3's three positions a row is in (debt D3).
+
+    `ready`    you hold the music and a sync could write it today
+    `offline`  you hold it, but on a drive that is not mounted
+    `unowned`  no file anywhere: buy it, or it stays a wish
+
+    The page worked this out in rowHTML from four fields; a Swift row would
+    have been the second copy. `device` counts as holding it.
+    """
+    if not (t.get('device') or t.get('local')):
+        return 'unowned'
+    return 'ready' if (t.get('device') or t.get('reachable')) else 'offline'
+
+
+def row_play(t):
+    """What a click on the row plays (debt D4): the file wherever it is
+    (`play_from` says which library), else the 30-second preview, else
+    nothing. Agrees with audio_source(), which serves `audio` rows."""
+    if t.get('audio'):
+        return 'file'
+    return 'preview' if t.get('preview') else None
+
+
+def collate(s):
+    """A sort key that reads names the way a person files them: accents
+    folded, case ignored, so "Ásgeir" sits with the A's and "dj" with "DJ".
+    One collation, here, because every client's own (JavaScript's
+    localeCompare, Swift's localizedCompare) differs from the next."""
+    import unicodedata
+    s = unicodedata.normalize('NFKD', s or '')
+    return ''.join(c for c in s if not unicodedata.combining(c)).casefold()
+
+
+def on_ipod_order(rows):
+    """"All on iPod" (debt D6): every track on the device, by artist then
+    title, as the Classic's Songs menu lists them. The page sorted this
+    itself with localeCompare; Swift's collation would not have agreed, so
+    the order is sent as keys."""
+    on = [t for t in rows if t.get('device')]
+    on.sort(key=lambda t: (collate(t.get('artist')), collate(t.get('title'))))
+    return [t['key'] for t in on]
+
+
+def sync_counts(rows):
+    """What the Sync button promises, answered once (debt D1).
+
+    The page used to count this itself, three lines in `counts()` and the
+    off count again in the data panel -- and the Swift client would have been
+    the third copy. It is a different question from `to_sync`: that list is
+    defined by TIER (marked sync, reachable, not on the device), while the
+    button is defined by COLLECTION MEMBERSHIP, because a sync writes the
+    collections and a track in none of them is never put on the device
+    whatever its tier. Both are kept and both are named, so neither client
+    has to pick one or derive the other.
+
+    `sync_off`     on the iPod and marked remove: what the next sync takes off
+    `sync_on`      not on the iPod, in a collection, its file reachable now
+    `sync_pending` the two together: the number on the button
+    `sync_waiting` in a collection and owned, but on a drive not mounted
+    """
+    off = sum(1 for t in rows if t.get('device') and t.get('tier') == 'remove')
+    on = sum(1 for t in rows if not t.get('device') and t.get('reachable')
+             and t.get('collections'))
+    waiting = sum(1 for t in rows if not t.get('device') and t.get('local')
+                  and not t.get('reachable') and t.get('collections'))
+    return {'sync_off': off, 'sync_on': on, 'sync_pending': off + on,
+            'sync_waiting': waiting}
+
+
 def row_art(k, r):
-    """The picture a track's row shows: the iTunes cover at 300px, else
-    your own file's cover through /api/art, else ''. One rule, read by the
-    payload and by `saltpod ground`."""
+    """The picture a track's row shows: a cover you dropped on it, else the
+    iTunes cover at 300px, else your own file's cover through /api/art,
+    else ''. One rule, read by the payload and by `saltpod ground`."""
+    if r.get('art_own'):
+        # a cover you dropped on this track, written into its file: the
+        # same picture the panel shows and the iPod is given
+        return '/api/art?key=' + quote(k)
     art = ((r.get('itunes') or {}).get('art') or '').replace('100x100bb', '300x300bb')
     if not art and (_original(r.get('device') or {}, k) or {}).get('has_art'):
         art = '/api/art?key=' + quote(k)
@@ -1838,10 +2439,11 @@ def tracks_payload(scope=''):
             'audio': bool(t7 or dev.get('origin') or dev.get('location')),
             'key': k, 'artist': r['artist'], 'title': r['title'],
             'playlists': r['playlists'], 'tier': r['tier'], 'vinyl': r['vinyl'],
-            # `bought` means you hold the music. A file IS that proof, so it is
-            # derived; the stored flag survives only as the manual override for
-            # "bought but not indexed yet".
-            'bought': bool(r.get('bought')) or bool(t7 or k in loc_keys),
+            # `bought` means you hold the music: a file on disk or on the
+            # iPod IS that proof, so it is derived and nothing else. The
+            # stored flag is ignored (control room, "Two buy lists that
+            # disagree": the file is the proof); held, below, is the same.
+            'bought': bool(t7 or k in loc_keys or on_pod),
             'on_ipod': r['on_ipod'],
             'collections': r['collections'],
             'orphan': bool(r.get('orphan')),
@@ -1872,10 +2474,27 @@ def tracks_payload(scope=''):
               'to_sync': sum(1 for t in out if 'to sync' in t['lists']),
               'needs_drive': sum(1 for t in out if 'needs a drive' in t['lists']),
               'to_remove': sum(1 for t in out if 'to remove' in t['lists']),
-              'on_ipod': sum(1 for t in out if 'on iPod' in t['lists'])}
-    st_cols = sorted(st.get('collections', []))
+              'on_ipod': sum(1 for t in out if 'on iPod' in t['lists']),
+              'synced': sum(1 for t in out if 'synced' in t['lists']),
+              'flac_to_buy': sum(1 for t in out if 'FLAC to buy' in t['lists']),
+              'not_looked_up': sum(1 for t in out if 'not looked up' in t['lists']),
+              'vinyl_to_add': len({t['release_label'] for t in out
+                                   if 'vinyl to add' in t['lists']})}
+    totals.update(sync_counts(out))
+    # The Podcasts collection is always there to drop onto, members or not.
+    from . import podcasts as _P
+    st_cols = sorted(set(st.get('collections', [])) | {_P.COLLECTION})
     order = {c: S.order_for(st, c) for c in st_cols}
+    pods = podcasts_summary(st)
+    # what only the podcast phase would change; members still to be copied
+    # are already in sync_on
+    totals['sync_podcasts'] = pods['unfiled'] + pods['filed_out']
+    totals['sync_pending'] = totals.get('sync_pending', 0) + totals['sync_podcasts']
     return {'tracks': out, 'collections': st_cols, 'order': order, 'totals': totals,
+            'podcasts': pods,
+            'on_ipod_order': on_ipod_order(out),
+            # the vinyl pane's cards, one per release, in heading order (D9)
+            'vinyl_order': sorted({t['release_label'] for t in out if t.get('vinyl')}, key=collate),
             'synced': st.get('synced_playlists') or [],
             'slugs': playlist_slugs(), 'updated': st.get('updated')}
 
@@ -1950,17 +2569,61 @@ def _label(body, keys):
     if 'tier' in body:
         return '%s \u2014 %s' % ({'remove': 'remove from the iPod', 'sync': 'sync to the iPod',
                                    'undecided': 'undecide'}.get(body['tier'], body['tier']), many)
-    for f in ('vinyl', 'bought'):
-        if f in body:
-            return '%s %s \u2014 %s' % ('set' if body[f] else 'clear', f, many)
+    if 'vinyl' in body:
+        return '%s vinyl \u2014 %s' % ('set' if body['vinyl'] else 'clear', many)
     return 'edit %s' % many
 
 
+def _resolve_paths(body):
+    """`paths` in a decision become keys, adopted under file_identity (D13).
+
+    A path names a file on the drive that may have no record yet -- an
+    untagged WAV has no key to type -- so the terminal can address it the
+    way the page does. Returns the body with `keys` and `adopt` filled in,
+    or an error naming the first path the index does not hold.
+    """
+    if not body.get('paths'):
+        return body, None
+    body = dict(body)
+    keys = list(body.get('keys') or ([body['key']] if body.get('key') else []))
+    adopt = list(body.get('adopt') or [])
+    for p in body.pop('paths'):
+        ident = path_identity(p)
+        if not ident:
+            return body, 'not in the drive index: %s' % p
+        keys.append(ident['key'])
+        adopt.append(ident)
+    body['keys'], body['adopt'] = keys, adopt
+    body.pop('key', None)
+    return body, None
+
+
 def apply_decision(body, _record=True):
+    from . import podcasts as _P
+    if body.get('rename_collection') == _P.COLLECTION:
+        # A place with an effect, not a name: renaming it would leave the
+        # device's podcasts filed under a list nothing names, and deleting it
+        # is what taking every track out already does, with an undo.
+        return {'ok': False, 'error': 'the Podcasts collection cannot be renamed or '
+                'deleted; take tracks out of it instead'}
+    body, err = _resolve_paths(body)
+    if err:
+        return {'ok': False, 'error': err}
+    if body.get('rename_collection') is not None and not str(body['rename_collection']).strip():
+        return {'ok': False, 'error': 'which collection?'}
+    if 'reorder' in body and not str((body['reorder'] or {}).get('collection') or '').strip():
+        return {'ok': False, 'error': 'which collection?'}
+    out = {}
     with LOCK:
         global LOCAL_KEYS
         LOCAL_KEYS = local_keys()
         st = S.load()
+        named = body.get('rename_collection')
+        if named is None and 'reorder' in body:
+            named = body['reorder'].get('collection')
+        if named is not None and named not in st.get('collections', []) \
+                and not any(named in r['collections'] for r in st['tracks'].values()):
+            return {'ok': False, 'error': 'no collection called %r' % named}
         if _record:
             touched = set(body.get('keys') or ([body['key']] if body.get('key') else []))
             for a in body.get('adopt') or []:
@@ -1985,9 +2648,10 @@ def apply_decision(body, _record=True):
                 rec['decided_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
                 if body['tier'] == 'sync':
                     marked.append(k)
-            for f in ('vinyl', 'bought', 'on_ipod'):
-                if f in body:
-                    rec[f] = bool(body[f])
+            # `vinyl` only. `bought` went with the card's button (a file is
+            # the proof) and `on_ipod` is the sync's to set, never a decision.
+            if 'vinyl' in body:
+                rec['vinyl'] = bool(body['vinyl'])
             if 'collection' in body:
                 c = str(body['collection']).strip()[:60]
                 if c:
@@ -1995,12 +2659,14 @@ def apply_decision(body, _record=True):
                     has = c in rec['collections']
                     order = st.setdefault('collection_order', {}).setdefault(c, [])
                     # Putting a track in a collection says it belongs on the
-                    # iPod. If there is no file for it and it was never bought,
-                    # that is the same sentence as "I have to go and buy this"
-                    # -- so it joins the buy list rather than sitting undecided
-                    # in a playlist that sync will report as no_source.
+                    # iPod. If there is no file for it and it is not on the
+                    # iPod, that is the same sentence as "I have to go and buy
+                    # this" -- so it joins the buy list rather than sitting
+                    # undecided in a playlist that sync will report as
+                    # no_source. (The file is the proof: the old `bought`
+                    # flag is not read.)
                     if (mode != 'remove' and not has
-                            and not rec.get('bought')
+                            and not rec.get('on_ipod')
                             and not (rec.get('device') or {}).get('origin')
                             and k not in LOCAL_KEYS
                             and rec.get('tier') in (None, '', 'undecided', 'remove')):
@@ -2020,9 +2686,15 @@ def apply_decision(body, _record=True):
             touched.append(k)
         if 'reorder' in body:
             r = body['reorder']
-            S.set_order(st, str(r.get('collection', '')), [str(x) for x in r.get('keys', [])])
+            # the sequence as it now stands, members you did not name kept
+            # at the end: the receipt says what the iPod will play, in order
+            out['order'] = S.set_order(st, str(r.get('collection', '')),
+                                       [str(x) for x in r.get('keys', [])])
         if 'rename_collection' in body:
             old, new = body['rename_collection'], str(body.get('to', '')).strip()[:60]
+            out['renamed'] = {'from': old, 'to': new or None,
+                              'members': sum(1 for rec in st['tracks'].values()
+                                             if old in rec['collections'])}
             for rec in st['tracks'].values():
                 if old in rec['collections']:
                     rec['collections'].remove(old)
@@ -2039,7 +2711,11 @@ def apply_decision(body, _record=True):
         S.save(st)
     # outside the lock: the worker takes it for itself
     want_lookup([k for k in marked if not (st['tracks'].get(k) or {}).get('itunes')])
-    return {'ok': True, 'touched': touched, 'looking': len(marked)}
+    # A DECISION SAYS SO (D11). It used to push nothing, so a second client
+    # never heard the first one decide; the reply carries the new rev, so
+    # the client that decided can tell this event is its own.
+    push({'type': 'data', 'why': 'decided'})
+    return dict({'ok': True, 'touched': touched, 'looking': len(marked), 'rev': rev()}, **out)
 
 
 # ---------------------------------------------------------------- audio
@@ -2123,6 +2799,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _json(self, obj, code=200):
+        """A JSON reply, stamped with the current `rev` (D11)."""
+        if isinstance(obj, dict) and 'rev' not in obj:
+            obj = dict(obj, rev=rev())
+        return self._send(code, json.dumps(obj))
+
     def _send(self, code, body, ctype='application/json'):
         b = body.encode('utf-8') if isinstance(body, str) else body
         self.send_response(code)
@@ -2139,9 +2821,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, open(os.path.join(HERE, 'curate.html')).read(),
                               'text/html; charset=utf-8')
         if u.path == '/api/tracks':
-            return self._send(200, json.dumps(tracks_payload((q.get('scope') or [''])[0])))
+            return self._json(tracks_payload((q.get('scope') or [''])[0]))
         if u.path == '/api/playlists':
-            return self._send(200, json.dumps(playlists_payload()))
+            return self._json(playlists_payload())
         if u.path == '/api/events':
             q = queue.Queue(maxsize=64)
             with CLIENTS_LOCK:
@@ -2167,11 +2849,11 @@ class Handler(BaseHTTPRequestHandler):
                         CLIENTS.remove(q)
             return
         if u.path == '/api/undo':
-            return self._send(200, json.dumps({'can_undo': len(UNDO), 'can_redo': len(REDO),
-                                               'next': UNDO[-1]['label'] if UNDO else None}))
+            return self._json({'can_undo': len(UNDO), 'can_redo': len(REDO),
+                                               'next': UNDO[-1]['label'] if UNDO else None})
         if u.path == '/api/looking':
             with LOOKUP_LOCK:
-                return self._send(200, json.dumps({'keys': sorted(LOOKING)}))
+                return self._json({'keys': sorted(LOOKING)})
         if u.path == '/api/history':
             hp = os.path.join(LOGS, 'history.jsonl')
             rows = []
@@ -2181,13 +2863,13 @@ class Handler(BaseHTTPRequestHandler):
                         rows.append(json.loads(ln))
                     except Exception:
                         pass
-            return self._send(200, json.dumps({'runs': rows[-50:][::-1]}))
+            return self._json({'runs': rows[-50:][::-1]})
         if u.path == '/api/device':
-            return self._send(200, json.dumps(device_playlists()))
+            return self._json(device_playlists())
         if u.path == '/api/health':
-            return self._send(200, json.dumps(health()))
+            return self._json(health())
         if u.path == '/api/plan':
-            return self._send(200, json.dumps(plan_summary()))
+            return self._json(plan_summary())
         if u.path == '/api/art':
             # Your own cover art, out of your own file. Extracted once with
             # ffmpeg and cached; no network, no API, no account -- and it
@@ -2219,10 +2901,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if u.path == '/api/decision':
+            # a question, so a GET as well as the registry's POST
+            return self._json(OPS['/api/decision']({'keys': q.get('key') or []}))
         if u.path == '/api/track':
             q = parse_qs(u.query)
-            return self._send(200, json.dumps(track_detail(
-                (q.get('key') or [''])[0], (q.get('path') or [''])[0])))
+            return self._json(track_detail(
+                (q.get('key') or [''])[0], (q.get('path') or [''])[0]))
         if u.path == '/api/local':
             d = local_index()
             want = (parse_qs(u.query).get('folder') or [None])[0]
@@ -2243,32 +2928,33 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     g = next((x for x in d['folders'] if x['name'] == want), None)
                     body['tracks'] = (g or {}).get('tracks') or []
-            return self._send(200, json.dumps(body))
+            return self._json(body)
         if u.path == '/api/library':
-            return self._send(200, json.dumps({'tracks': am_index().get('library') or []}))
+            return self._json(library_payload())
         if u.path == '/api/peek':
             name = (parse_qs(u.query).get('name') or [''])[0]
             try:
                 r = _osa(['osascript', '-l', 'JavaScript',
-                          os.path.join(ROOT, 'bin/export_playlists.js'), '--peek', name], 180)
+                          os.path.join(CODE_ROOT, 'bin/export_playlists.js'), '--peek', name], 180)
                 d = json.loads(r.stdout or '{}')
             except Exception as e:
                 d = {'error': str(e)[:200]}
             for row in d.get('tracks', []):
                 row['key'] = S.key_for(row.get('artist'), row.get('title'))
-            return self._send(200, json.dumps(d))
+                row.update(am_row_answers(row.get('cloud')))
+            return self._json(d)
         if u.path == '/api/discogs':
             from . import discogs
-            return self._send(200, json.dumps(discogs.payload()))
+            return self._json(discogs.payload())
         if u.path == '/api/job':
             with JOBS_LOCK:
                 j = JOBS.get((q.get('id') or [''])[0])
-            return self._send(200, json.dumps(j.as_dict() if j else {'state': 'gone'}))
+            return self._json(j.as_dict() if j else {'state': 'gone'})
         if u.path == '/api/audio':
             return self._audio((q.get('key') or [''])[0])
         if u.path == '/api/music':
-            return self._send(200, json.dumps({'playlists': music_playlists(),
-                                               'have': playlist_slugs()}))
+            return self._json({'playlists': music_playlists(),
+                                               'have': playlist_slugs()})
         return self._send(404, '{}')
 
     def _audio(self, key):
@@ -2357,20 +3043,26 @@ class Handler(BaseHTTPRequestHandler):
         # than through it.
         if u.path == '/api/art':
             q = parse_qs(u.query)
-            return self._send(200, json.dumps(put_art(
+            return self._json(put_art(
                 (q.get('key') or [''])[0], (q.get('path') or [''])[0],
-                self.rfile.read(n))))
+                self.rfile.read(n)))
         try:
             body = json.loads(self.rfile.read(n) or b'{}')
         except ValueError:
             return self._send(400, json.dumps({'ok': False, 'error': 'bad json'}))
         try:
             if u.path == '/api/decide':
-                return self._send(200, json.dumps(apply_decision(body)))
+                return self._json(apply_decision(body))
             if u.path in OPS:
-                return self._send(200, json.dumps(OPS[u.path](body)))
+                return self._json(OPS[u.path](body))
             if u.path == '/api/action':
-                return self._send(200, json.dumps(self._action(body)))
+                return self._json(self._action(body))
+        except Busy as b:
+            return self._json({'ok': False, 'error': str(b), 'job': b.job}, 409)
+        except SystemExit as e:
+            # a module that still says no by exiting (config.load, for one)
+            # must not take the request thread down with no reply
+            return self._json({'ok': False, 'error': str(e)})
         except Exception as e:
             return self._send(500, json.dumps({'ok': False, 'error': str(e)}))
         return self._send(404, '{}')
@@ -2399,24 +3091,40 @@ class Handler(BaseHTTPRequestHandler):
             S.rebuild(verbose=False)
             return {'ok': True}
         if a == 'device':
-            S.import_device(verbose=False)
-            return {'ok': True}
+            return reread_device()
         if a == 'sync':
             # Exclusions travel to the subprocess as a file, not as an
             # argument: a selection can name hundreds of keys and an argv is
             # not the place for that. Written under the run directory so a
             # sync is reconstructible from what is on disk afterwards.
+            # ONE SYNC AT A TIME (D12): two writers to one iTunesDB is the
+            # thing the whole backup discipline exists to prevent. A second
+            # client's Sync gets 409 and the running job's id to follow.
+            live = running_job(SYNC_JOB)
+            if live:
+                raise Busy(live.id)
             args = ['sync']
             ex = body.get('exclude') or None
-            if ex and (ex.get('tracks') or ex.get('playlists')):
+            # THE SERVER RE-CHECKS THE ROOM. The panel's Confirm is disabled
+            # when its own arithmetic says the ticked rows will not fit, but
+            # a button is not a guarantee: a second client, a stale panel,
+            # or a drive that filled since the plan was read would all get
+            # through. Refused here with the numbers; apply._sync refuses
+            # the same way for the terminal.
+            f = sync_fits(ex)
+            if f and f['fits'] is False:
+                return {'ok': False, 'error': 'will not fit', 'bytes': f['bytes'],
+                        'free_bytes': f['free_bytes']}
+            if ex and (ex.get('tracks') or ex.get('playlists') or ex.get('smart')):
                 rd = os.path.join(ROOT, 'data', 'runs')
                 os.makedirs(rd, exist_ok=True)
                 xp = os.path.join(rd, 'exclude-%d.json' % int(time.time()))
                 with open(xp, 'w') as fh:
                     json.dump({'tracks': list(ex.get('tracks') or []),
-                               'playlists': list(ex.get('playlists') or [])}, fh, indent=1)
+                               'playlists': list(ex.get('playlists') or []),
+                               'smart': list(ex.get('smart') or [])}, fh, indent=1)
                 args += ['--exclude', xp]
-            return {'ok': True, 'job': run_job('sync to the iPod', [
+            return {'ok': True, 'job': run_job(SYNC_JOB, [
                 ('sync', [py, '-u', '-c',
                  'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
                  'sys.exit(main(%r))' % (args,)]),
@@ -2431,6 +3139,15 @@ class Handler(BaseHTTPRequestHandler):
                 ('read playlists and library', [py, '-c',
                  'import sys; sys.path.insert(0, "src"); '
                  'from saltpod.curate import refresh_am_index; refresh_am_index()'])]).id}
+        if a == 'am_plays':
+            # Apple Music's play counts, read from its library FILE with the
+            # iPod ejected and Music closed -- `saltpod plays applemusic`,
+            # which refuses with one sentence (shown in the job box) when
+            # either is not so. Decided 12 October, "Make it a command".
+            return {'ok': True, 'job': run_job("read Apple Music's plays", [
+                ('read plays, last played and skips', [py, '-u', '-c',
+                 'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
+                 'sys.exit(main(["plays", "applemusic"]))'])]).id}
         if a == 'reports':
             import io
             import contextlib
@@ -2450,17 +3167,72 @@ class Handler(BaseHTTPRequestHandler):
             return {'ok': True, 'job': run_job('export', steps).id}
         if a == 'match':
             slugs = body.get('slugs') or []
-            steps = [('match %s' % s, [py, 'src/itunes_match.py', s]) for s in slugs]
+            steps = [('match %s' % s, job_module_argv('itunes_match', [s])) for s in slugs]
             if not steps:
                 return {'ok': False, 'error': 'no playlists named'}
             return {'ok': True, 'job': run_job('match', steps).id}
         if a == 'verify':
             slugs = body.get('slugs') or []
-            steps = [('verify %s' % s, [py, 'src/verify_bandcamp.py', s]) for s in slugs]
+            steps = [('verify %s' % s, job_module_argv('verify_bandcamp', [s])) for s in slugs]
             if not steps:
                 return {'ok': False, 'error': 'no playlists named'}
             return {'ok': True, 'job': run_job('verify', steps).id}
+        if a == 'source':
+            # NAMING A MUSIC FOLDER FROM THE PAGE (control room, "Naming the
+            # music folder"). The check is the one `saltpod sources add`
+            # makes, answered before a job starts so a typo is a toast, not
+            # a failed job; the job then runs that same verb, which walks
+            # the folder into the index and records it in device.json.
+            from . import config
+            folder, err = config.check_root(body.get('folder') or '')
+            if err:
+                return {'ok': False, 'error': err}
+            return {'ok': True, 'folder': folder, 'job': run_job('add a music folder', [
+                ('sources add', [py, '-u', '-c',
+                 'import sys; sys.path.insert(0, "src"); from saltpod.cli import main; '
+                 'sys.exit(main(%r))' % (['sources', 'add', folder],)])]).id}
         return {'ok': False, 'error': 'unknown action %r' % a}
+
+
+def reread_device(body=None):
+    """Read the iPod's database into the curation state, or say why not.
+
+    With no iPod and no backup there is nothing to read, and this used to
+    let import_device's SystemExit escape the request thread: the handler
+    catches Exception only, so the page got no reply and no toast. Now it is
+    a refusal with a sentence. With a backup it says so -- `read` is
+    'device' or 'backup', and `from` names the backup -- so the page's toast
+    can tell you it read last week's copy rather than claiming the device.
+    """
+    dbp, source = S.device_db()
+    if not dbp:
+        return {'ok': False, 'error': 'no iPod and no backup to read: plug it in '
+                                      'and put it in Disk Mode'}
+    try:
+        S.import_device(verbose=False, db_path=dbp)
+    except SystemExit as e:
+        return {'ok': False, 'error': str(e)}
+    out = {'ok': True, 'read': source}
+    if source == 'backup':
+        out['from'] = os.path.basename(os.path.dirname(dbp))
+    return out
+
+
+# The research modules a Data-sheet job runs. They moved into the package and
+# the jobs kept pointing at src/<name>.py, so both ended "job failed" every
+# time. A job names the module, never a path, and runpy finds it the way an
+# import would; bin/layer_census.py reads this tuple to count them reachable.
+JOB_MODULES = ('itunes_match', 'verify_bandcamp')
+
+
+def job_module_argv(mod, args):
+    """The argv a job step runs to start one of JOB_MODULES as __main__."""
+    if mod not in JOB_MODULES:
+        raise ValueError('not a job module: %s' % mod)
+    return [sys.executable, '-u', '-c',
+            'import sys, runpy; sys.path.insert(0, "src"); sys.argv = %r; '
+            'runpy.run_module("saltpod.%s", run_name="__main__")'
+            % (['saltpod/%s.py' % mod] + list(args), mod)]
 
 
 # ------------------------------------------------------- the service surface
@@ -2485,6 +3257,9 @@ _OPS = {
     '/api/recover': recover_from_ipod,
     '/api/tags': write_tags,
     '/api/track': track_info,
+    '/api/decision': decision_for,
+    '/api/podcasts': podcasts_op,
+    '/api/cover': cover_put,
 }
 
 

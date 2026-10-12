@@ -28,7 +28,11 @@ import subprocess
 import sys
 
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:                                     # the two roots: see paths.py
+    from .paths import DATA_ROOT
+except ImportError:                      # run straight from this directory
+    from paths import DATA_ROOT
+ROOT = DATA_ROOT                 # data/, backups/, reports/ -- SALTPOD_HOME when set
 INDEX = os.path.join(ROOT, "data", "local", "index.json")
 REPORTS = os.path.join(ROOT, "reports")
 

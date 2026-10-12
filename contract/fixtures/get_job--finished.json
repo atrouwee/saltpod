@@ -1,0 +1,24 @@
+{
+ "id": "index the music drive-9447260",
+ "log": [
+  "--- index",
+  "asking spotlight about 3 files...",
+  "  spotlight answered 0, ffprobe needed for 3",
+  "",
+  "not mounted: /fixture/f/unplugged/Music -- indexed the others; its tracks are kept as the last index found them",
+  "indexed 4 files (0 unreadable)",
+  "index: /fixture/f/home/data/local/index.json",
+  "indexed 4 files from /fixture/f/library/Music, /fixture/f/unplugged/Music",
+  "  .wav      3",
+  "  .flac     1",
+  "untagged (invisible to stock iPod menus): 1",
+  "needs conversion before the iPod plays it: 1",
+  "--- state rebuilt"
+ ],
+ "name": "index the music drive",
+ "rev": 1791789447124,
+ "say": null,
+ "seconds": 0,
+ "state": "done",
+ "steps": []
+}

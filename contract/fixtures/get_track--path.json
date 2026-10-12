@@ -1,0 +1,41 @@
+{
+ "art": null,
+ "artist": "",
+ "device": {
+  "artist": "",
+  "on": false,
+  "title": ""
+ },
+ "fields": {
+  "album": "",
+  "album_artist": "",
+  "artist": "",
+  "genre": "",
+  "title": "",
+  "track": "",
+  "year": ""
+ },
+ "file": {
+  "codec": "pcm_s16le",
+  "ext": ".wav",
+  "folder": "Demos",
+  "has_art": false,
+  "name": "03 - Juniper Hill - Slow Burn.wav",
+  "on_disk": true,
+  "path": "/fixture/f/library/Music/Loose/Demos/03 - Juniper Hill - Slow Burn.wav",
+  "seconds": 2.0,
+  "size": 32044,
+  "why": "",
+  "writable": true
+ },
+ "guess": {
+  "artist": "Juniper Hill",
+  "from": "03 - Juniper Hill - Slow Burn.wav",
+  "title": "Slow Burn"
+ },
+ "key": "",
+ "ok": true,
+ "path": "/fixture/f/library/Music/Loose/Demos/03 - Juniper Hill - Slow Burn.wav",
+ "rev": 1791789447118,
+ "title": ""
+}

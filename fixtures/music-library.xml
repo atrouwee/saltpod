@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Application Version</key>
+	<string>1.5</string>
+	<key>Date</key>
+	<date>2026-01-02T08:00:00Z</date>
+	<key>Features</key>
+	<integer>5</integer>
+	<key>Major Version</key>
+	<integer>1</integer>
+	<key>Minor Version</key>
+	<integer>1</integer>
+	<key>Music Folder</key>
+	<string>file:///fixture/Music/Media/</string>
+	<key>Playlists</key>
+	<array>
+		<dict>
+			<key>All Items</key>
+			<true/>
+			<key>Master</key>
+			<true/>
+			<key>Name</key>
+			<string>Library</string>
+			<key>Playlist ID</key>
+			<integer>1</integer>
+			<key>Playlist Items</key>
+			<array>
+				<dict>
+					<key>Track ID</key>
+					<integer>501</integer>
+				</dict>
+				<dict>
+					<key>Track ID</key>
+					<integer>502</integer>
+				</dict>
+				<dict>
+					<key>Track ID</key>
+					<integer>503</integer>
+				</dict>
+				<dict>
+					<key>Track ID</key>
+					<integer>504</integer>
+				</dict>
+			</array>
+		</dict>
+	</array>
+	<key>Show Content Ratings</key>
+	<true/>
+	<key>Tracks</key>
+	<dict>
+		<key>501</key>
+		<dict>
+			<key>Album</key>
+			<string>Field Notes</string>
+			<key>Artist</key>
+			<string>Alder Quartet</string>
+			<key>Kind</key>
+			<string>Purchased AAC audio file</string>
+			<key>Name</key>
+			<string>Morning Field</string>
+			<key>Play Count</key>
+			<integer>12</integer>
+			<key>Play Date UTC</key>
+			<date>2026-01-01T21:00:00Z</date>
+			<key>Skip Count</key>
+			<integer>2</integer>
+			<key>Track ID</key>
+			<integer>501</integer>
+		</dict>
+		<key>502</key>
+		<dict>
+			<key>Album</key>
+			<string>Field Notes</string>
+			<key>Artist</key>
+			<string>Alder Quartet</string>
+			<key>Kind</key>
+			<string>Purchased AAC audio file</string>
+			<key>Name</key>
+			<string>Morning Field</string>
+			<key>Play Count</key>
+			<integer>3</integer>
+			<key>Track ID</key>
+			<integer>502</integer>
+		</dict>
+		<key>503</key>
+		<dict>
+			<key>Album</key>
+			<string>Paper Moon</string>
+			<key>Artist</key>
+			<string>Grove</string>
+			<key>Kind</key>
+			<string>Apple Music AAC audio file</string>
+			<key>Name</key>
+			<string>Paper Moon</string>
+			<key>Play Count</key>
+			<integer>5</integer>
+			<key>Play Date UTC</key>
+			<date>2025-12-31T09:00:00Z</date>
+			<key>Track ID</key>
+			<integer>503</integer>
+		</dict>
+		<key>504</key>
+		<dict>
+			<key>Artist</key>
+			<string>Nobody Here</string>
+			<key>Kind</key>
+			<string>MPEG audio file</string>
+			<key>Name</key>
+			<string>Not In Saltpod</string>
+			<key>Track ID</key>
+			<integer>504</integer>
+		</dict>
+	</dict>
+</dict>
+</plist>
