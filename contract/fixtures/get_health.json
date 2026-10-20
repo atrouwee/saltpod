@@ -1,10 +1,10 @@
 {
  "config": null,
  "ejected_at": null,
- "free": 15791632384,
+ "free": 6592159744,
  "headline": {
   "level": "ok",
-  "text": "iPod ready · 16 GB free"
+  "text": "iPod ready · 7 GB free"
  },
  "index": {
   "built": "2026-01-02 09:00",
@@ -12,8 +12,8 @@
  },
  "ipod": "ready",
  "job": null,
- "music": "closed",
- "rev": 1791789447118,
+ "music": "ok",
+ "rev": 1792495046562,
  "size": 494384795648,
  "sources": [
   {

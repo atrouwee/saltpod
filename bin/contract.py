@@ -112,7 +112,7 @@ DECLARED_ENUMS = {
     'health.music': (['closed', 'ok', 'wedged'], 'curate.health'),
     'job.state': (['done', 'error', 'gone', 'running'], 'curate.Job, Handler /api/job'),
     'track.play_from': (['ipod', 't7', None], 'curate.tracks_payload'),
-    'event.type': (['data', 'job', 'reload'], 'curate.push callers'),
+    'event.type': (['data', 'job', 'reload', 'hello'], 'curate.push callers; hello is the SSE greeting with the server boot'),
     'track.state': (['offline', 'ready', 'unowned'], 'curate.row_state'),
     'track.play': (['file', 'preview', None], 'curate.row_play'),
     'decision.verb': (['buy', 'remove', 'sync'], 'curate.decision_of'),

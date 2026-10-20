@@ -1,33 +1,37 @@
 [
  {
-  "rev": 1791789447119,
+  "boot": "1792495046562",
+  "type": "hello"
+ },
+ {
+  "rev": 1792495046563,
   "type": "data",
   "why": "decided"
  },
  {
-  "rev": 1791789447120,
+  "rev": 1792495046564,
   "type": "data",
   "why": "undo sync to the iPod — a track"
  },
  {
-  "rev": 1791789447121,
+  "rev": 1792495046565,
   "type": "data",
   "why": "decided"
  },
  {
-  "rev": 1791789447122,
+  "rev": 1792495046566,
   "type": "data",
   "why": "decided"
  },
  {
-  "id": "index the music drive-9447260",
+  "id": "index the music drive-5046675",
   "name": "index the music drive",
-  "rev": 1791789447123,
+  "rev": 1792495046567,
   "state": "done",
   "type": "job"
  },
  {
-  "rev": 1791789447124,
+  "rev": 1792495046568,
   "type": "data",
   "why": "index the music drive"
  }

@@ -357,6 +357,63 @@ def watch_page(path, interval=1.0):
     threading.Thread(target=run, daemon=True).start()
 
 
+# THE SERVER KEEPS UP WITH ITS OWN CODE. curate.html is read fresh on every
+# request, so a server left running for days serves today's page from last
+# week's Python -- and the page then asks for fields the server never sends
+# (10-20 Oct 2026: every preview silent, Read Apple Music never landing,
+# because the 4 Oct server predated `play`). So the server watches its own
+# .py files and, once they have been quiet for a moment and no job is running,
+# replaces itself in place (same pid, same port, same arguments). Pages hear a
+# new `boot` in the hello on reconnect and reload.
+BOOT = str(int(time.time() * 1000))
+
+
+def _code_mtimes():
+    out = {}
+    for f in glob.glob(os.path.join(HERE, '*.py')):
+        try:
+            out[f] = os.path.getmtime(f)
+        except OSError:
+            pass
+    return out
+
+
+def restart_self():
+    sys.stdout.flush(); sys.stderr.flush()
+    spec = globals().get('__spec__')
+    if __name__ == '__main__' and spec is not None and spec.name:
+        cmd = [sys.executable, '-m', spec.name] + sys.argv[1:]
+    else:
+        cmd = [sys.executable] + sys.argv
+    if '--no-open' not in cmd:
+        cmd.append('--no-open')              # the tab is already open; never a second one
+    os.execv(sys.executable, cmd)
+
+
+def watch_code(interval=1.0, quiet=2.0):
+    def run():
+        seen = _code_mtimes()
+        changed_at = None
+        while True:
+            time.sleep(interval)
+            now = _code_mtimes()
+            if now != seen:
+                seen, changed_at = now, time.time()
+                continue
+            if changed_at is None or time.time() - changed_at < quiet:
+                continue
+            j = running_job()
+            if j is not None:                # never under a sync, a read or an index
+                continue
+            try:
+                O.event('info', 'restart', 'saltpod code changed; restarting in place')
+            except Exception:
+                pass
+            print('saltpod code changed - restarting in place')
+            restart_self()
+    threading.Thread(target=run, daemon=True).start()
+
+
 
 def device_fingerprint():
     """What the iPod holds right now, cheap enough to take twice per sync.
@@ -2835,6 +2892,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Connection', 'keep-alive')
                 self.end_headers()
                 self.wfile.write(b'retry: 2000\n\n')
+                self.wfile.write(('data: %s\n\n' % json.dumps({'type': 'hello', 'boot': BOOT})).encode())
+                self.wfile.flush()
                 while True:
                     try:
                         self.wfile.write(q.get(timeout=20).encode())
@@ -3323,10 +3382,11 @@ def main(argv=None):
     threading.Thread(target=_ground_worker, daemon=True).start()
     threading.Thread(target=_mosaic_worker, daemon=True).start()
     watch_page(os.path.join(HERE, 'curate.html'))
+    watch_code()
     url = 'http://127.0.0.1:%d/' % a.port
     print('saltpod  ->  %s' % url)
     print('everything happens in the page. ctrl-c here when done.')
-    print('live: edits to curate.html reload open tabs; jobs redraw them in place.')
+    print('live: edits to curate.html reload open tabs; edits to the .py files restart the server; jobs redraw in place.')
     if not a.no_open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:

@@ -402,9 +402,9 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .art { width: 44px; height: 44px; border-radius: var(--r-sm); background: var(--seam);
        object-fit: cover; flex: none; -webkit-user-drag: none; }
 .t { min-width: 0; }
-.t .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;
+.t .n { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;
         letter-spacing: var(--ls-tight); font-size: var(--fs-name); }
-.t .s { color: var(--dim); font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: var(--ls-mono);
+.t .s { display: block; color: var(--dim); font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: var(--ls-mono);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
 .ch { color: var(--dim); font-size: var(--fs-text); padding-left: 2px; }
 /* Where a track LIVES, as against what you have decided about it. Facts get
@@ -1769,8 +1769,8 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
     <div class="q" role="search"><svg class="qi" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><path d="M232.49,215.51,185,168a92.12,92.12,0,1,0-17,17l47.53,47.54a12,12,0,0,0,17-17ZM44,112a68,68,0,1,1,68,68A68.07,68.07,0,0,1,44,112Z"/></svg><input type="search" id="q" class="gl-field" placeholder="search everything"><kbd>/</kbd></div>
     <div class="hright">
       <div class="counts" id="counts"></div>
-      <button id="dosync" class="gl-action" title="write the collections to the iPod">Sync</button>
-      <button id="gear" title="settings and data jobs">&#9881;</button>
+      <button id="dosync" class="gl-action" data-move="open-review open-review-nothing open-review-wont-fit open-blocked sync-anyway sync see-the-row sync-reads-them" data-words="Sync" title="write the collections to the iPod">Sync</button>
+      <button id="gear" data-move="open-data offline-data not-yet" data-move-via="verify index" title="settings and data jobs">&#9881;</button>
     </div>
   </div>
 </header>
@@ -1789,7 +1789,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
   <aside class="srcpane gl-ends" id="src" aria-label="Source">
-    <div class="plabel gl-strip"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Drive</span></span><span class="modes" id="smodes"></span></div>
+    <div class="plabel gl-strip"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" data-move="look-at-the-source" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Drive</span></span><span class="modes" id="smodes"></span></div>
     <div class="pbody" id="srcbody" role="listbox" aria-label="Apple Music and library"></div>
     <!-- how much of the drive can be read right now, as a pill the list
          scrolls under; empty (and so not drawn) when all of it can -->
@@ -1801,7 +1801,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       <span id="midacts" style="display:flex;gap:12px"></span>
       <span class="pstat" id="midstat"></span>
       <span class="modes" id="flmodes"></span></div>
-    <div class="pbody" id="list" role="listbox" aria-multiselectable="true" tabindex="0"></div>
+    <div class="pbody" id="list" data-move-keys="press-s:s key-c:c key-i:i key-v:v hear-the-file:Space hear-the-preview:Space move:Shift+J take-out:x clear-the-filter:Escape" role="listbox" aria-multiselectable="true" tabindex="0"></div>
   </section>
 
   <aside class="right gl-ends" id="right" aria-label="Buy and vinyl">
@@ -1814,21 +1814,21 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
     <div class="substat pstat gl-pill" id="rstat"></div>
   </aside>
 
-  <div class="sheet gl-glass gl-heavy" id="lsheet">
+  <div class="sheet gl-glass gl-heavy" id="lsheet" data-move-keys="close-new:Escape">
     <div class="plabel gl-strip"><span class="name">New collection</span><span class="sp"></span><span class="act" id="lsheetesc">esc</span></div>
     <div class="pbody">
-      <div class="ninl"><input type="text" id="newin" class="gl-field" placeholder="name it, or pick below"></div>
+      <div class="ninl"><input type="text" id="newin" data-move="name-it" class="gl-field" placeholder="name it, or pick below"></div>
       <div class="month">from Apple Music</div>
       <div id="seedrows" role="listbox" aria-label="Apple Music playlists to seed from"></div>
     </div>
   </div>
-  <div class="sheet gl-glass gl-heavy" id="rsheet">
+  <div class="sheet gl-glass gl-heavy" id="rsheet" data-move-keys="data-esc:Escape close-data:Escape close-while-running:Escape close-while-reading:Escape failed-close:Escape close-data-last-seen:Escape">
     <div class="plabel gl-strip"><span class="name">Data</span><span class="sp"></span><span class="act" id="rsheetesc">esc</span></div>
     <div class="pbody" id="rsheetbody"></div>
   </div>
 </div>
 
-<footer id="foot" class="gl-glass-bar gl-bar-bottom"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
+<footer id="foot" class="gl-glass-bar gl-bar-bottom" data-move-keys="undo-empty:Meta+z undo-discard:Meta+z redo:Meta+Shift+z"><span id="keys"></span><span id="hstrip" class="st"></span></footer>
 <audio id="au"></audio><div id="toast"></div>
 <!-- A decision landing has no visual home of its own -- it is a toast that
      is easy to miss and a redraw that moved on. aria-live is polite so it
@@ -1836,7 +1836,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
      is already reading, and sr-only keeps it off screen without pulling it
      out of the accessibility tree the way display:none would. -->
 <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-<div id="menu" class="gl-glass"><div class="plabel seam gl-seam-h-in" id="menuh"></div><div class="mb" id="menub"></div></div>
+<div id="menu" class="gl-glass" data-move-keys="menu-escape:Escape close-the-menu:Escape close-menu:Escape"><div class="plabel seam gl-seam-h-in" id="menuh"></div><div class="mb" id="menub"></div></div>
 
 <!-- THE SYNC PANEL. One list, twice: the changes you are approving, and then
      the same rows reporting themselves as they happen. Built from the
@@ -1845,7 +1845,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
      a .gl-strip action bar floating over the end -- because it is another
      pane, not another idea. -->
 <div id="spscrim"></div>
-<aside id="sp" class="gl-glass gl-heavy">
+<aside id="sp" class="gl-glass gl-heavy" data-move-keys="review-close:Escape review-nothing-close:Escape review-wont-fit-close:Escape hold-close:Escape">
   <div class="plabel gl-strip"><span class="name" id="spt">Review sync</span><span class="act" id="spx">esc</span></div>
   <!-- A GROUP, not a listbox: its rows are checkboxes you tick off, not
        options you choose one of. -->
@@ -1858,13 +1858,13 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
      .pbody, .substat -- because it is another pane, not another idea. The
      cover is small and sits with the identity it belongs to; the fields
      below it are the form. -->
-<aside id="tp" class="gl-glass gl-heavy">
-  <div class="plabel gl-strip"><span class="name" id="tpt">Track</span><span class="act" id="tpx">esc</span></div>
+<aside id="tp" class="gl-glass gl-heavy" data-move-keys="close:Escape close-guess:Escape close-panel:Escape close-after:Escape">
+  <div class="plabel gl-strip"><span class="name" id="tpt">Track</span><span class="act" id="tpx" data-move="close-with-edits">esc</span></div>
   <div class="pbody" id="tpbody"></div>
   <div class="substat pstat"><span class="sp" id="tpnote"></span><span id="tpbtn"></span></div>
 </aside>
 
-<div id="dlg"><div id="dlgbox" class="gl-glass">
+<div id="dlg" data-move-keys="close-the-dialog:Escape keep-editing:Escape keep:Escape"><div id="dlgbox" class="gl-glass">
   <div class="plabel seam gl-seam-h-in"><span class="name" id="dlgt">Collection</span><span id="dlgbtn"></span></div>
   <div id="dlgbody">
     <p id="dlgp"></p>
@@ -2305,13 +2305,13 @@ function rowHTML(t,i,seq){
   // for every row while nothing is marked, which is the correct default --
   // mark() below corrects the one cursor row to true when there is no
   // multi-selection.
-  return `<div id="trk-${i}" class="row ${t.tier==='remove'?'skip':''} ${state} ${MARK.has(t.key)?'marked':''}" role="option" aria-selected="${MARK.has(t.key)}"${stateTitle} draggable="true" data-i="${i}" data-k="${esc(t.key)}">
+  return `<div id="trk-${i}" class="row ${t.tier==='remove'?'skip':''} ${state} ${MARK.has(t.key)?'marked':''}" role="option" aria-selected="${MARK.has(t.key)}"${stateTitle} draggable="true" data-move="drag-in drag-to-vinyl" data-words="the row" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
     <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
       <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
         heard(t)].filter(Boolean).join(' · ')}</div></div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only eqsr">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only eqsr">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" data-move="dots open-menu" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -2371,12 +2371,12 @@ function drawFoot(){
     $('#keys').innerHTML=`<span class="selcount"><b>${MARK.size}</b> selected</span>
       <span class="kk p"><kbd>s</kbd>sync all</span><span class="kk p"><kbd>x</kbd>${inCol?'take all out':'remove all'}</span>
       <span class="kk p"><kbd>c</kbd>add all to playlist</span><span class="kk s"><kbd>esc</kbd>clear</span>${ALLKEYS_HTML}
-      <button id="undoc" class="undoc" type="button"></button><span id="saved" style="margin-left:auto"></span>`;
+      <button id="undoc" class="undoc" type="button" data-move="undo"></button><span id="saved" style="margin-left:auto"></span>`;
     wireAllKeys(); paintUndo();
     return;
   }
   $('#keys').innerHTML=(KEYS[footCtx()]||KEYS.ipod).map(keyHTML).join('')+ALLKEYS_HTML
-    +`<button id="undoc" class="undoc" type="button"></button><span id="saved" style="margin-left:auto"></span>`;
+    +`<button id="undoc" class="undoc" type="button" data-move="undo"></button><span id="saved" style="margin-left:auto"></span>`;
   wireAllKeys(); paintUndo();
 }
 // The right pane's focus is a context of its own (the buy list's keys).
@@ -2644,7 +2644,7 @@ function nudge(dir){
 // looked up here, never worked out from the rows.
 function podRow(c){
   const p=PODCASTS, on=c===colPick&&active==='ipod', pend=p.pending>0;
-  return colRow({name:esc(c), cnt:(on&&pend?'<span class="pdot"></span>':'')+(pend?`+${p.pending}`:p.n), menu:true,
+  return colRow({name:esc(c), cnt:(on&&pend?'<span class="pdot"></span>':'')+(pend?`+${p.pending}`:p.n), menu:true, moreMove:'podcast-dots',
     attrs:` data-c="${esc(c)}"`,
     cls:`${c===colPick?(active==='ipod'?'on':'was'):''} ${pend?'pend':''}`,
     title:`${esc(c)} — ${p.n} tracks, filed on the iPod as podcasts, not as a playlist${pend?`; the next sync changes ${p.pending}`:''}`});
@@ -2665,7 +2665,7 @@ function drawCols(){
   const n={}; ALL.forEach(t=>t.collections.forEach(c=>n[c]=(n[c]||0)+1));
   const names=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
   let h=colRow({name:'All on iPod', cnt:TOTALS.on_ipod||0,
-    cls:(colPick===null&&!devPick&&active==='ipod')?'on':'', attrs:' data-all="1"'});
+    cls:(colPick===null&&!devPick&&active==='ipod')?'on':'', attrs:' data-all="1" data-move="leave-collection all-on-ipod"'});
   h+=names.map(c=>{
       if(c===PODCASTS.name)return podRow(c);
       // what sync would still have to do: tracks in it that are not on the device,
@@ -2678,7 +2678,7 @@ function drawCols(){
       // On the open row the pending mark is a dot beside an ink count, not
       // orange text: orange on the raised fill is 4.06:1 and fails (law 2's
       // own colour kept, moved from the word to a mark that needs no ratio).
-      return colRow({name:esc(c), cnt:(on&&pend?'<span class="pdot"></span>':'')+mark, menu:true, attrs:` data-c="${esc(c)}"`,
+      return colRow({name:esc(c), cnt:(on&&pend?'<span class="pdot"></span>':'')+mark, menu:true, attrs:` data-c="${esc(c)}" data-move="open-collection see-it" data-words="the collection"`,
         cls:`${c===colPick?(active==='ipod'?'on':'was'):''} ${pend?'pend':''}`,
         title:`${esc(c)} — ${n[c]||0} tracks${off.length?`, ${ready} ready to sync, ${waiting} not owned yet`:', all on the iPod'}`});
     }).join('');
@@ -2780,7 +2780,7 @@ function paintSeeds(){
     ? `<p class="note">Not read yet — the gear has <b style="color:var(--ink)">Read Apple Music</b>.</p>`
     : rows.length
       ? rows.map(p=>colRow({name:esc(p.name), cnt:p.tracks, cls:'dim',
-          attrs:` data-seed="${esc(p.name)}"`,
+          attrs:` data-seed="${esc(p.name)}" data-move="take-whole"`,
           title:`${esc(p.name)} — ${p.tracks} tracks, created ${(p.created||'?').slice(0,10)}`})).join('')
       : `<p class="note">No playlist called that. <kbd>enter</kbd> makes “${esc(newQ.trim())}” as a new one.</p>`;
   el.querySelectorAll('[data-seed]').forEach(x=>x.onclick=()=>seedFrom(x.dataset.seed));
@@ -2814,14 +2814,14 @@ function drawSrc(){
 function drawAM(){
   const st=p=>p.slug===amPick?(active==='am'?'on':'was'):'';
   let h=colRow({name:'All in Apple Music', cnt:AMLIB||'',
-    cls:amPick==='__all__'?(active==='am'?'on':'was'):'', attrs:' data-am="__all__"'});
+    cls:amPick==='__all__'?(active==='am'?'on':'was'):'', attrs:' data-am="__all__" data-move="peek-back"'});
   // each playlist like an album: the server's mosaic (or the empty thumbnail
   // until it exists), the name over "N tracks · YYYY-MM" -- both from the
   // payload's own fields (`tracks`, `created`) -- and the count at the right
   const sub=p=>[p.tracks!=null?`${p.tracks} track${p.tracks===1?'':'s'}`:'', (p.created||'').slice(0,7)].filter(Boolean).join(' · ');
   h+= AMP.length ? AMP.map(p=>colRow({name:esc(p.name), sub:esc(sub(p)), mosaic:p.art||null, cnt:p.tracks,
         menu:true, cls:`${st(p)} ${p.imported?'':'dim'}`,
-        attrs:` data-am="${esc(p.slug)}" draggable="true"`,
+        attrs:` data-am="${esc(p.slug)}" data-move="peek pour" data-words="a playlist" draggable="true"`, moreMove:'dots',
         title:`${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''} — drag onto a collection, or onto + new`
       })).join('')
     : `<p class="note">Not read yet. Open the gear and press <b style="color:var(--ink)">Read Apple Music</b>.</p>`;
@@ -2891,7 +2891,7 @@ function paintModes(pane,el){
   // album view hid it. Hidden here means INVISIBLE, not absent -- the slot
   // stays and the marks never move.
   const plus = pane==='ipod'
-    ? `<span class="plus" id="newcol" title="new collection"
+    ? `<span class="plus" id="newcol" data-move="new-collection" title="new collection"
              style="visibility:${m==='list'?'visible':'hidden'}">${ICON_PLUS}</span>` : '';
   el.innerHTML=plus
               +`<span class="${m==='list'?'on':''}" data-m="list" title="playlists">${ICON_LIST}</span>`
@@ -2982,7 +2982,7 @@ function colRow(o){
   return `<div class="col ${o.cls||''}${picked?' gl-open':''}"${role}${o.attrs||''}${o.title?` title="${o.title}"`:''}>`
     + art + name
     + `<span class="cnt">${o.cnt==null?'':o.cnt}</span>`
-    + `<span class="more${o.menu?'':' hold'}"${moreAttrs} title="more">&#8943;</span></div>`;
+    + `<span class="more${o.menu?'':' hold'}"${o.moreMove?` data-move="${o.moreMove}" data-words="dots"`:''}${moreAttrs} title="more">&#8943;</span></div>`;
 }
 
 /* the drive: what is already owned, filed the way the drive files it */
@@ -3089,7 +3089,7 @@ function drawRight(){
     const flac=TOTALS.flac_to_buy||0;
     $('#rstat').innerHTML=`<s>${todo.length}</s> to buy · <s>&euro;${eur.toFixed(2)}</s> · <s>${ready.length}</s> ready · <s>${done.length}</s> synced`;
     let h='';
-    const dots=t=>`<span class="more" data-card="${esc(t.key)}" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span>`;
+    const dots=t=>`<span class="more" data-card="${esc(t.key)}" data-move-via="dont-buy" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span>`;
     // Identity, price and a lossless source are looked up when a track joins
     // this list -- not for the whole library in advance. This says where that
     // got to, per track, so a blank price reads as "not asked yet" rather than
@@ -3155,7 +3155,7 @@ function drawRight(){
     const where=`<code>${esc(DISCOGS.dir||'data/discogs')}/</code>`;
     let h='';
     h+=grp('add','To add on Discogs',toAdd.length, toAdd.length
-      ? toAdd.map(f=>`<div class="card" role="listitem"><b>${esc(f.name)}</b><span class="more" data-vrel="${esc(f.name)}" title="more">&#8943;</span><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
+      ? toAdd.map(f=>`<div class="card" role="listitem"><b>${esc(f.name)}</b><span class="more" data-vrel="${esc(f.name)}" data-move="unwant" title="more">&#8943;</span><div class="sub">${f.tracks.map(t=>esc(t.title)).join(' · ')}</div>
           <div class="acts"><a href="https://www.discogs.com/search/?q=${encodeURIComponent(f.name.replace(' — ',' '))}&type=release" target="_blank">Search Discogs</a></div></div>`).join('')
       : flagged.length ? '<p class="note">Everything flagged is already wanted or owned.</p>'
       : '<p class="note">Nothing flagged. Drag a track here, or press <kbd>v</kbd> on one.</p>');
@@ -3308,22 +3308,22 @@ function openSettings(){
           Music.app has no creation date for a playlist, so the dates are derived: the earliest and
           latest a track in it was added. The list is ordered by the latest, which is when you last
           worked on it.</div>
-        <div class="acts"><button id="doAM">Read Apple Music</button>
+        <div class="acts"><button id="doAM" data-move="read-ejected read-mounted">Read Apple Music</button>
           <button id="doAMPlays">Read its play counts</button></div>
         <div class="month">the drive</div>
         <div class="fact">${HEALTH&&HEALTH.index?`<b>${HEALTH.index.tracks}</b> files indexed, ${HEALTH.index.built}`:'<span class="warn">never indexed</span>'} &middot;
           ${(HEALTH&&HEALTH.sources||[]).map(x=>`${esc(x.name)} ${x.online?'online':'<span class="warn">offline</span>'}`).join(' &middot; ')||'no source configured'}.
           Walks the folders in <code>library_roots</code> and remembers every audio file. Run it after you buy something.</div>
-        <div class="acts"><button id="doIndex">Index the drive</button></div>
+        <div class="acts"><button id="doIndex" data-move="index index-away index-no-root">Index the drive</button></div>
         <div class="fact">Name a music folder and it is walked into the index now, and every index after.</div>
-        <div class="acts"><input type="text" id="srcpath" class="gl-field" placeholder="/path/to/your/music"
+        <div class="acts"><input type="text" id="srcpath" data-move="name-a-folder" data-move-keys="leave-the-field:Escape" class="gl-field" placeholder="/path/to/your/music"
           aria-label="music folder" spellcheck="false" autocomplete="off">
-          <button id="doSource">Add the folder</button></div>
+          <button id="doSource" data-move="add-the-folder">Add the folder</button></div>
         <div class="month">the iPod</div>
         <div class="fact"><b>${TOTALS.on_ipod||0}</b> tracks on the device &middot;
           ${TOTALS.to_remove||0} marked to remove &middot;
           ${ALL.filter(t=>t.lossless).length} with a lossless original</div>
-        <div class="acts"><button id="doDevice">Re-read the device</button></div>
+        <div class="acts"><button id="doDevice" data-move="reread-live reread-backup reread-nothing">Re-read the device</button></div>
       </div>
       <div>
         <div class="month">playlists already imported &middot; ${SLUGS.length}</div>
@@ -3331,7 +3331,7 @@ function openSettings(){
         <div class="acts"><select id="slug" class="gl-field">${SLUGS.map(s=>`<option>${s}</option>`).join('')}</select></div>
         <div class="acts">
           <button id="doMatch">Match against iTunes</button>
-          <button id="doVerify">Verify Bandcamp durations</button>
+          <button id="doVerify" data-move="verify">Verify Bandcamp durations</button>
           <button id="doRebuild">Rebuild state</button></div>
         <div class="month">Discogs</div>
         <div class="fact">${['wantlist','collection'].map(k=>{const f=(DISCOGS.files||{})[k]||{};
@@ -3392,7 +3392,7 @@ $('#gear').onclick=()=>{ if($('#rsheet').classList.contains('on'))closeSettings(
 // the same plan / sync pair the terminal has, now with `--exclude`.
 $('#dosync').onclick=openSync;
 $('#spx').onclick=closeSync;
-$('#tpx').onclick=closeTrack;
+$('#tpx').onclick=()=>closeTrack();   // never the click event as `force`: the X asks, like Escape
 $('#spscrim').onclick=()=>{ if($('#tp').classList.contains('on'))closeTrack(); else closeSync(); };
 
 // A job keeps being polled whether or not the overlay is open; the overlay, when
@@ -3498,7 +3498,7 @@ function askDropEdits(){
     + ' been changed and not written to the file yet.';
   dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
   $('#dlglist').innerHTML='';
-  $('#dlgbtn').innerHTML='<button class="go gl-action" id="dlgok">Discard</button>';
+  $('#dlgbtn').innerHTML='<button class="go gl-action" id="dlgok" data-move="discard-edits">Discard</button>';
   $('#dlgok').onclick=()=>{ closeDlg(); closeTrack(true); };
   dlg.classList.add('on');
 }
@@ -3515,14 +3515,14 @@ function paintTrack(){
   const d = TP.data, f = d.file || {};
   const ro = !f.writable;
   let h = '<div class="tpid">'
-    + '<div class="tpart" id="tpart" title="'+(ro?'':'drop an image, or click to choose one')+'">'
+    + '<div class="tpart" id="tpart" data-move="drop-a-cover" title="'+(ro?'':'drop an image, or click to choose one')+'">'
     + (d.art ? '<img src="'+d.art+'" alt="">' : '')
     + '<span class="ph">'+(d.art?'':'no cover')+'</span></div>'
     + '<div style="flex:1 1 auto;min-width:0">'
     + '<div class="fld'+('title' in TP.edits?' dirty':'')+'" style="padding-left:0">'
-    + '<input class="v" data-f="title" placeholder="Title" value="'+esc(tpValue('title'))+'"'+(ro?' readonly':'')+'></div>'
+    + '<input class="v" data-f="title" placeholder="Title" value="'+esc(tpValue('title'))+'"'+(ro?' readonly':' data-move="edit"')+'></div>'
     + '<div class="fld'+('artist' in TP.edits?' dirty':'')+'" style="padding-left:0">'
-    + '<input class="v" data-f="artist" placeholder="Artist" value="'+esc(tpValue('artist'))+'"'+(ro?' readonly':'')+'></div>'
+    + '<input class="v" data-f="artist" placeholder="Artist" value="'+esc(tpValue('artist'))+'"'+(ro?' readonly':' data-move="edit"')+'></div>'
     + '</div></div>';
 
   // the filename's guess, only when it has something to add
@@ -3531,13 +3531,13 @@ function paintTrack(){
     h += '<div class="tpguess"><div class="src">the name on disk suggests</div>'
       + '<div class="pair"><em>artist</em>'+esc(g.artist)+'</div>'
       + '<div class="pair"><em>title</em>'+esc(g.title)+'</div>'
-      + '<span class="act2" id="tpuse">Use this</span></div>';
+      + '<span class="act2" id="tpuse" data-move="use-this">Use this</span></div>';
   }
 
   h += '<div class="month">release</div>';
   for(const [k,label] of TP_FIELDS.slice(2)){
     h += '<div class="fld'+(k in TP.edits?' dirty':'')+(ro?' ro':'')+'"><span class="k">'+label+'</span>'
-      + '<input class="v" data-f="'+k+'" value="'+esc(tpValue(k))+'"'+(ro?' readonly':'')+'></div>';
+      + '<input class="v" data-f="'+k+'" value="'+esc(tpValue(k))+'"'+(ro?' readonly':' data-move="edit"')+'></div>';
   }
 
   h += '<div class="month">file</div>'
@@ -3596,8 +3596,8 @@ function tpFoot(){
   // SAVE APPEARS WHEN THERE IS SOMETHING TO SAVE. Finder commits on blur;
   // that is wrong here, because the commit writes a file on your drive.
   $('#tpbtn').innerHTML = n && !ro
-    ? '<button class="go gl-action" id="tpsave"'+(TP.busy?' disabled':'')+'>Save</button>'
-    : '<button id="tpclose">Close</button>';
+    ? '<button class="go gl-action" id="tpsave" data-move="save"'+(TP.busy?' disabled':'')+'>Save</button>'
+    : '<button id="tpclose" data-move="close-locked">Close</button>';
   const sv = $('#tpsave'); if(sv) sv.onclick = saveTrack;
   const cl = $('#tpclose'); if(cl) cl.onclick = closeTrack;
 }
@@ -3888,7 +3888,7 @@ function paintSync(){
 
 function paintSyncFoot(fits){
   const note=$('#spnote'), btn=$('#spbtn');
-  const close=()=>{btn.innerHTML='<button id="spdone">Close</button>';
+  const close=()=>{btn.innerHTML='<button id="spdone" data-move="blocked-close synced-close stopped-close">Close</button>';
     const d=$('#spdone'); if(d)d.onclick=closeSync;};
   if(SP.state==='blocked'){ note.textContent=''; close(); return; }
   const c=spCounts(), n=c.adds+c.rems+c.pls+(c.tags||0)+(c.smart||0);
@@ -3903,8 +3903,8 @@ function paintSyncFoot(fits){
     // put the panel away and change nothing. Cancel throws the staged
     // changes away, so it is a named button that asks first -- and it sits
     // apart from Confirm rather than beside it.
-    btn.innerHTML=(n?'<button id="spdrop">Cancel</button>':'')
-      + '<button class="go gl-action" id="spgo"'+((!n||!fits)?' disabled':'')+'>'
+    btn.innerHTML=(n?'<button id="spdrop" data-move="cancel">Cancel</button>':'')
+      + '<button class="go gl-action" id="spgo" data-move="confirm"'+((!n||!fits)?' disabled':'')+'>'
       + (n ? 'Confirm' : 'Nothing to do') + '</button>';
     note.textContent = !fits ? 'not enough room'
       : n ? 'nothing has changed on the device yet' : '';
@@ -3934,7 +3934,7 @@ function askDiscard(){
     + '<br><br><b style="color:var(--ink)">\u2318Z brings it back</b> as one step.';
   dlgin.style.display='none'; $('#dlgex').innerHTML=''; $('#dlgsec').hidden=true;
   $('#dlglist').innerHTML='';
-  $('#dlgbtn').innerHTML='<button class="go gl-action" id="dlgok">Discard</button>';
+  $('#dlgbtn').innerHTML='<button class="go gl-action" id="dlgok" data-move="discard">Discard</button>';
   $('#dlgok').onclick=doDiscard;
   dlg.classList.add('on');
 }
@@ -4003,8 +4003,11 @@ function readSyncLog(j){
    rename, add-all-wanted and delete -- the confirms stay as panels. */
 const menu=$('#menu');
 let MENU=null;
+// the flows' move each menu row makes (saltFlow reads data-move; nothing here acts on it)
+const MOVE_OF={'m-info':'get-info get-info-untagged get-info-locked','m-vinyl':'want-vinyl','m-want':'flip buy dont-buy','m-imp':'import'};
 function menuRow(label,key,tick,cls){
-  return `<div class="drow ${cls||''}"><span class="dn">${label}</span>${tick?'<span class="dc">&#10003;</span>':''}${key?`<span class="dk">${key}</span>`:''}</div>`;
+  const mv=MOVE_OF[cls];
+  return `<div class="drow ${cls||''}"${mv?` data-move="${mv}"`:''}><span class="dn">${label}</span>${tick?'<span class="dc">&#10003;</span>':''}${key?`<span class="dk">${key}</span>`:''}</div>`;
 }
 // law 8's words, keyed by the server's decision verb: [not yet, already]
 const DECISION_WORDS={remove:['Remove from iPod',"Don't remove"],
@@ -4163,7 +4166,7 @@ function paintMenu(){
     h.innerHTML=`<span class="back" title="back">&lsaquo;</span>Add to playlist`;
     h.querySelector('.back').onclick=()=>{MENU.kind='track';paintMenu();};
     const cols=[...new Set([...COLS,...PENDING])].sort((a,b)=>a.localeCompare(b));
-    b.innerHTML=(cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}"><span class="dn">${esc(c)}</span>${t.collections.includes(c)?'<span class="dc">&#10003;</span>':''}</div>`).join(''):'')
+    b.innerHTML=(cols.length?cols.map(c=>`<div class="drow" data-pc="${esc(c)}" data-move="add-from-the-menu"><span class="dn">${esc(c)}</span>${t.collections.includes(c)?'<span class="dc">&#10003;</span>':''}</div>`).join(''):'')
       +'<div class="sep"></div>'+`<input id="menunew" class="gl-field" placeholder="new playlist…">`;
     b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=async()=>{
       const c=x.dataset.pc, sel2=(MARK.size>1&&MARK.has(t.key))?markedKeys():[t.key];
@@ -4174,7 +4177,7 @@ function paintMenu(){
         return toast(`${fresh.length} added to ${c}`); }
       const had=t.collections.includes(c);
       await decide({collection:c},[t.key]); toast(had?`out of ${c}`:`added to ${c}`);
-      const nt=BYKEY.get(t.key); if(nt){MENU.payload=nt;paintMenu();} else closeMenu();
+      const nt=BYKEY.get(t.key); if(nt&&MENU){MENU.payload=nt;paintMenu();} else closeMenu();   // draw() may have closed it
     });
     const inp=b.querySelector('#menunew');
     inp.onkeydown=async e=>{e.stopPropagation();
@@ -4311,7 +4314,8 @@ async function deleteFromIpod(t,keys){
   toast('off the iPod on the next sync'
         + (inCols?` \u00b7 still in ${inCols} playlist${inCols>1?'s':''}`:''));
 }
-document.addEventListener('click',e=>{ if(MENU&&!menu.contains(e.target)&&!e.target.classList.contains('more')&&!(e.target.closest&&e.target.closest('#flmodes')))closeMenu(); });
+// a row that repainted the menu under the click is gone from the page by now: that click was inside
+document.addEventListener('click',e=>{ if(MENU&&e.target.isConnected&&!menu.contains(e.target)&&!e.target.classList.contains('more')&&!(e.target.closest&&e.target.closest('#flmodes')))closeMenu(); });
 // a scroll of the page closes the menu; a scroll inside the menu is the menu working
 document.addEventListener('scroll',e=>{ if(MENU&&!(e.target instanceof Node&&menu.contains(e.target)))closeMenu(); },true);
 
@@ -4332,7 +4336,7 @@ function openDlg(mode,why,plan){
   dlgin.value = mode==='__rename__' ? colPick : '';
   // the collections this track is already in, as a list rather than a row of chips
   $('#dlgex').innerHTML = cfg.list && t
-    ? [...new Set([...COLS,...PENDING])].sort().map(c=>`<div class="drow ${t.collections.includes(c)?'tick':''}" data-c="${esc(c)}">
+    ? [...new Set([...COLS,...PENDING])].sort().map(c=>`<div class="drow ${t.collections.includes(c)?'tick':''}" data-c="${esc(c)}" data-move="dialog-pick">
         <span class="dn">${esc(c)}</span></div>`).join('')
     : '';
   $('#dlgex').querySelectorAll('[data-c]').forEach(s=>s.onclick=()=>{decide({collection:s.dataset.c});closeDlg();});
@@ -4630,10 +4634,13 @@ pollHealth(); setInterval(pollHealth,4000);
 // EventSource reconnects on its own, so a server restart heals without a
 // keystroke; `retry: 2000` on the stream sets how fast.
 let ES=null;
+let BOOT=null;
 function liveConnect(){
   try{ ES=new EventSource('/api/events'); }catch(e){ return; }
   ES.onmessage=async ev=>{
     let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
+    // a new server (it restarts itself when its code changes) means new answers: take the page that goes with them
+    if(m.type==='hello'){ if(BOOT&&m.boot!==BOOT){ toast('saltpod updated — reloading'); setTimeout(()=>location.reload(),150); } BOOT=m.boot; return; }
     if(m.type==='reload'){ toast('page changed — reloading'); setTimeout(()=>location.reload(),150); return; }
     // `rev` (D11): an event this page's data already includes -- its own
     // decision, answered before the event arrived -- is not news
@@ -4644,5 +4651,5 @@ function liveConnect(){
   ES.onerror=()=>{};                     // EventSource retries by itself
 }
 liveConnect();
-load();
+load().then(refreshUndo);   // the server keeps its undo stack across reloads; the footer should say so
 </script></body></html>

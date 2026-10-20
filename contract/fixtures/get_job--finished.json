@@ -1,5 +1,5 @@
 {
- "id": "index the music drive-9447260",
+ "id": "index the music drive-5046675",
  "log": [
   "--- index",
   "asking spotlight about 3 files...",
@@ -16,7 +16,7 @@
   "--- state rebuilt"
  ],
  "name": "index the music drive",
- "rev": 1791789447124,
+ "rev": 1792495046568,
  "say": null,
  "seconds": 0,
  "state": "done",

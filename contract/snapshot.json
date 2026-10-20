@@ -9,6 +9,7 @@
    ],
    "event.type": [
     "data",
+    "hello",
     "job"
    ],
    "health.headline.level": [
@@ -20,7 +21,7 @@
     "ready"
    ],
    "health.music": [
-    "closed"
+    "ok"
    ],
    "job.state": [
     "done",
@@ -64,7 +65,7 @@
  },
  "enum_sources": {
   "decision.verb": "curate.decision_of",
-  "event.type": "curate.push callers",
+  "event.type": "curate.push callers; hello is the SSE greeting with the server boot",
   "health.headline.level": "curate.headline",
   "health.ipod": "curate.health",
   "health.music": "curate.health",
@@ -83,7 +84,8 @@
   "event.type": [
    "data",
    "job",
-   "reload"
+   "reload",
+   "hello"
   ],
   "health.headline.level": [
    "fault",
@@ -167,6 +169,23 @@
       ]
      },
      "why": {
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "type": [
+     "object"
+    ]
+   },
+   "hello": {
+    "fields": {
+     "boot": {
+      "type": [
+       "string"
+      ]
+     },
+     "type": {
       "type": [
        "string"
       ]
