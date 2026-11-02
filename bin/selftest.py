@@ -379,10 +379,13 @@ def t_token_census():
     css = css.split('<style>')[1].split('</style>')[0]
     # every :root { ... } block is the place literals live (two after vendoring)
     roots = re.findall(r':root\s*\{[^}]*\}', css)
-    body = css
+    body = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
     for blk in roots:
-        body = body.replace(blk, '')
-    body = re.sub(r'/\*.*?\*/', '', body, flags=re.S)
+        body = body.replace(re.sub(r'/\*.*?\*/', '', blk, flags=re.S), '')
+    # so does any other block that only defines tokens: saltglass's appearance
+    # blocks ([data-gl-appearance="light"] and its twins, since 5e3eb73)
+    # redefine the palette under a selector that is not a bare :root
+    body = re.sub(r'[^{};]+\{(?:\s*(?:--[\w-]+|color-scheme)\s*:[^;{}]*;)+\s*\}', '', body)
     bad = {}
     for label, pat in (('font size', r'font(?:-size)?:\s*(?:[^;]*?\s)?([\d.]+px)'),
                        ('radius', r'border-radius:\s*([\d.]+px)'),
@@ -746,33 +749,36 @@ def t_playlists_payload_art():
 
 
 def t_vendored_glass():
-    """The vendored saltglass blocks are one commit's bytes, untouched.
+    """The vendored saltglass blocks are one saltSDK tag's bytes, untouched.
 
     The page carries the design system's CSS and ground.js inline, and the
-    server carries band.py as glassband.py, each between markers naming the
-    saltglass commit it came from. All three must name the same commit, and
-    each must equal what scripts/vendor_glass.py would write from that
-    commit: a hand edit to a vendored block is an edit the next vendoring
-    silently throws away. Skips where the saltglass repo is not checked out
-    beside this one (the public tree, a fresh clone). A newer saltglass
-    commit is reported, not failed -- re-vendoring is a decision.
+    server carries band.py as glassband.py, each between saltglass: markers
+    that name the tag, the commit and a sha256 of the bytes between them.
+    `saltsdk check` (in the saltSDK checkout beside this one) verifies all of
+    it offline: a hand edit to a vendored block is an edit the next
+    `saltsdk vendor --to <tag>` silently throws away. Skips where saltSDK is
+    not checked out (the public tree, a fresh clone); then it still asserts
+    that the three blocks exist and name one commit.
     """
-    sys.path.insert(0, os.path.join(ROOT, 'scripts'))
-    import vendor_glass as V
-    try:
-        why = V.check(V.DEFAULT_SRC)
-    except V.VendorError:
-        page = open(V.PAGE).read()
-        band = open(V.BAND).read() if os.path.exists(V.BAND) else ''
-        have = V.found(page, band)
-        assert len(have) == 3, 'not vendored: %s' % sorted({'css', 'js', 'band'} - set(have))
-        shas = {v[0] for v in have.values()}
-        assert len(shas) == 1, 'vendored blocks disagree on the source sha: %s' % shas
-        return None
-    if why and why.startswith('stale:'):
-        return why
-    assert not why, why
-    return 'css, js, band all @%s' % V.found(open(V.PAGE).read(), '')['css'][0][:10]
+    import re
+    page = open(os.path.join(ROOT, 'src', 'saltpod', 'curate.html')).read()
+    band = open(os.path.join(ROOT, 'src', 'saltpod', 'glassband.py')).read()
+    pins = {}
+    for kind, text in (('css', page), ('js', page), ('band', band)):
+        m = re.search(r'saltglass:%s (?:v[\w.]+ )?@([0-9a-f]+)' % kind, text)
+        assert m, 'not vendored: %s' % kind
+        pins[kind] = m.group(1)[:7]
+    assert len(set(pins.values())) == 1, 'vendored blocks disagree on the source commit: %s' % pins
+    tools = [os.environ.get('SALTSDK', ''),
+             os.path.join(os.path.dirname(ROOT), 'saltGlass', 'tools', 'saltsdk'),
+             os.path.expanduser('~/Code/saltGlass/tools/saltsdk')]   # from a worktree too
+    tool = next((t for t in tools if t and os.path.exists(t)), None)
+    if not tool:
+        return 'css, js, band all @%s (saltsdk not checked out; hashes not verified)' % pins['css']
+    r = subprocess.run([sys.executable, tool, 'check', '--root', ROOT], capture_output=True, text=True)
+    out = (r.stdout + r.stderr).strip()
+    assert r.returncode == 0, out[-400:]
+    return out.splitlines()[-1] if out else 'saltsdk check: ok'
 
 
 def t_js_parses():
@@ -2244,6 +2250,58 @@ def t_contract():
     return r.stdout.strip().splitlines()[-1].replace('contract holds: ', '')
 
 
+def t_am_newest_added_first():
+    """Apple Music's playlists list newest-added first, whatever order the cache holds.
+
+    `last` is the latest a track was added; a playlist still being added to
+    belongs at the top. am_index sorts on read, so a cache written before the
+    exporter sorted this way orders the same. `created` breaks a tie."""
+    from saltpod import curate as C
+    tmp = tempfile.mkdtemp(prefix='saltpod-am-')
+    keep = C.AM_INDEX
+    try:
+        C.AM_INDEX = os.path.join(tmp, 'apple_music.json')
+        rows = [{'name': 'old', 'created': '2024-01-01', 'last': '2024-02-01'},
+                {'name': 'made-long-ago', 'created': '2020-01-01', 'last': '2026-10-19'},
+                {'name': 'never-dated', 'created': None, 'last': None},
+                {'name': 'tie-newer', 'created': '2026-01-01', 'last': '2026-10-19'}]
+        json.dump({'playlists': rows, 'keys': [], 'read_at': None}, open(C.AM_INDEX, 'w'))
+        got = [p['name'] for p in C.am_index()['playlists']]
+        want = ['tie-newer', 'made-long-ago', 'old', 'never-dated']
+        assert got == want, 'order is %s, want %s' % (got, want)
+        return 'newest-added first; created breaks the tie; undated last'
+    finally:
+        C.AM_INDEX = keep
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def t_drive_newest_added_first():
+    """A drive folder's last addition is its newest directory mtime, not a file date.
+
+    A copied file keeps its old dates, so the folder a file just landed in
+    is told by the directory's own mtime, deepest included."""
+    from saltpod import curate as C
+    tmp = tempfile.mkdtemp(prefix='saltpod-drive-')
+    try:
+        old, new = os.path.join(tmp, 'old'), os.path.join(tmp, 'new', 'cd1')
+        os.makedirs(old); os.makedirs(new)
+        for d, f in ((old, 'a.mp3'), (new, 'b.mp3')):
+            open(os.path.join(d, f), 'w').close()
+            os.utime(os.path.join(d, f), (1e9, 1e9))        # a copy from 2001
+        os.utime(old, (1.6e9, 1.6e9)); os.utime(os.path.dirname(new), (1.6e9, 1.6e9))
+        os.utime(new, (1.7e9, 1.7e9))                       # a file landed here later
+        online = {tmp: True}
+        C._FOLDER_ADDED.clear()
+        a = C.folder_added(old, False, online)
+        b = C.folder_added(os.path.join(tmp, 'new'), False, online)
+        assert a == 1.6e9 and b == 1.7e9, 'old %s new %s' % (a, b)
+        assert C.folder_added(old, False, {tmp: False}) is None, 'an unmounted drive was walked'
+        return 'the subfolder\'s later arrival dates its folder; unmounted is None'
+    finally:
+        C._FOLDER_ADDED.clear()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def t_home_isolated():
     """A job step under a temporary SALTPOD_HOME writes nothing in the source tree.
 
@@ -2728,6 +2786,8 @@ def main():
 
     section('http — the contract both clients use')
     check('a job under SALTPOD_HOME stays out of the tree', t_home_isolated)
+    check('Apple Music playlists: newest-added first', t_am_newest_added_first)
+    check('drive folders: newest-added first', t_drive_newest_added_first)
     check('fixture: cover into the file, Podcasts at sync', t_fixture_cover_and_podcasts)
     check('the contract holds (contract.py --check)', t_contract)
     check('the API answers questions', t_api)

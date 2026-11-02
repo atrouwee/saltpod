@@ -623,14 +623,21 @@ def am_index():
     loved, hated, smart, shared, genius -- so `created` is the earliest a track
     in it was added, which for a monthly is the month it was made.
 
+    Playlists come newest-added first: `last` (the latest a track was added)
+    is what says a playlist is still being added to; `created` breaks ties.
+    Sorted here, not only in the read, so an older cache orders the same.
+
     Cached because it reads the entire library; refresh it from the gear.
     """
     if not os.path.exists(AM_INDEX):
         return {'playlists': [], 'keys': [], 'read_at': None}
     try:
-        return json.load(open(AM_INDEX))
+        d = json.load(open(AM_INDEX))
     except Exception:
         return {'playlists': [], 'keys': [], 'read_at': None}
+    d['playlists'] = sorted(d.get('playlists', []), reverse=True,
+                            key=lambda p: (p.get('last') or '', p.get('created') or ''))
+    return d
 
 
 # Which Apple Music cloud statuses mean you own the file (debt D5). It lived
@@ -2044,6 +2051,35 @@ def playlists_payload():
 
 LOCAL_KEYS = set()          # refreshed on every decision; see apply_decision
 
+_FOLDER_ADDED = {}          # folder path -> (asked at, answer); see folder_added
+
+
+def folder_added(path, loose, online):
+    """When something was last added to a drive folder, as epoch seconds.
+
+    A file's own dates cannot say: a copy keeps its creation date (exFAT
+    and Finder both carry it over, so a track copied last week reads 2010),
+    and a tag write moves its mtime. A directory's mtime moves exactly when
+    an entry lands in it, so the newest one in the folder's tree is the
+    last addition. Files loose in a root count by the root's own mtime.
+    About 500 directories on the drive stat in ~0.2 s; asked again within
+    a minute, the answer is reused. None when the drive is not mounted --
+    local_index falls back to the newest file mtime the index recorded."""
+    if not any(online.get(r) for r in online if path == r or path.startswith(r.rstrip(os.sep) + os.sep)):
+        return None
+    hit = _FOLDER_ADDED.get(path)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    try:
+        if loose:
+            t = os.stat(path).st_mtime
+        else:
+            t = max(os.stat(d).st_mtime for d, _dirs, _files in os.walk(path))
+    except (OSError, ValueError):
+        t = None
+    _FOLDER_ADDED[path] = (time.time(), t)
+    return t
+
 
 def local_index():
     """The music you already own, as the drive itself organises it.
@@ -2076,7 +2112,10 @@ def local_index():
         parts = rel.split(os.sep)
         name = parts[0] if len(parts) > 1 else os.path.basename(root)
         g = groups.setdefault(name, {'name': name, 'root': os.path.basename(os.path.dirname(root)) or root,
-                                     'tracks': [], 'lossless': 0})
+                                     'tracks': [], 'lossless': 0,
+                                     'dir': os.path.join(root, name) if len(parts) > 1 else root,
+                                     'loose': len(parts) == 1, 'file_last': 0})
+        g['file_last'] = max(g['file_last'], e.get('mtime') or 0)
         ext = (e.get('ext') or '').lower()
         if ext in LOSSLESS_EXT:
             g['lossless'] += 1
@@ -2104,7 +2143,13 @@ def local_index():
         })
     for g in groups.values():
         g['tracks'].sort(key=lambda t: ((t['sub'] or '').lower(), t['artist'].lower(), t['title'].lower()))
+    # newest-added first, the way Apple Music's playlists list (am_index)
+    for g in groups.values():
+        t = folder_added(g.pop('dir'), g.pop('loose'), online) or g['file_last']
+        g['last'] = time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(t)) if t else None
+        del g['file_last']
     out = sorted(groups.values(), key=lambda g: g['name'].lower())
+    out.sort(key=lambda g: g['last'] or '', reverse=True)
     return {'roots': roots, 'built': time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(idx))),
             'folders': out}
 
@@ -2420,6 +2465,31 @@ def sync_counts(rows):
             'sync_waiting': waiting}
 
 
+def fed_by(st, rows):
+    """Where the tracks now on the iPod came from: per volume, the ones whose
+    original file sits on it, and how many came out of an Apple Music
+    playlist. The route card's fills (one row per volume, like the strip,
+    plus Music). Counts overlap -- a track can be both -- so they are each
+    a share of `on_ipod`, never parts of one whole."""
+    try:
+        from . import config
+        roots = config.load().get('library_roots', [])
+    except SystemExit:
+        roots = []
+    vols = sorted((v['path'] for v in volumes_for(roots)), key=len, reverse=True)
+    n = {v: 0 for v in vols}
+    music = 0
+    for t in rows:
+        if not t.get('device'):
+            continue
+        music += bool(t.get('am'))
+        o = ((st['tracks'].get(t['key']) or {}).get('device') or {}).get('origin') or ''
+        v = next((v for v in vols if o == v or o.startswith(v.rstrip(os.sep) + os.sep)), None)
+        if v:
+            n[v] += 1
+    return {'volumes': [{'path': v, 'n': n[v]} for v in vols], 'music': music}
+
+
 def row_art(k, r):
     """The picture a track's row shows: a cover you dropped on it, else the
     iTunes cover at 300px, else your own file's cover through /api/art,
@@ -2538,6 +2608,7 @@ def tracks_payload(scope=''):
               'vinyl_to_add': len({t['release_label'] for t in out
                                    if 'vinyl to add' in t['lists']})}
     totals.update(sync_counts(out))
+    totals['fed_by'] = fed_by(st, out)
     # The Podcasts collection is always there to drop onto, members or not.
     from . import podcasts as _P
     st_cols = sorted(set(st.get('collections', [])) | {_P.COLLECTION})
@@ -2892,7 +2963,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Connection', 'keep-alive')
                 self.end_headers()
                 self.wfile.write(b'retry: 2000\n\n')
-                self.wfile.write(('data: %s\n\n' % json.dumps({'type': 'hello', 'boot': BOOT})).encode())
+                self.wfile.write(('data: %s\n\n' % json.dumps({'type': 'hello', 'boot': BOOT, 'rev': rev()})).encode())
                 self.wfile.flush()
                 while True:
                     try:
@@ -2972,7 +3043,8 @@ class Handler(BaseHTTPRequestHandler):
             want = (parse_qs(u.query).get('folder') or [None])[0]
             # the folder list is small; the tracks are 4,000+, so they come one
             # folder at a time, the way a peek reads one playlist
-            folders = [{'name': g['name'], 'n': len(g['tracks']), 'lossless': g['lossless']}
+            folders = [{'name': g['name'], 'n': len(g['tracks']), 'lossless': g['lossless'],
+                        'last': g['last']}
                        for g in d['folders']]
             body = {'root': os.path.basename(d['roots'][0]) if d['roots'] else None,
                     'built': d['built'], 'folders': folders,

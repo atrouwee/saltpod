@@ -240,6 +240,15 @@ section.mid { grid-column: 3; container-type: inline-size; }
 @container (max-width: 330px) { .row .tags .tag { display: none; } }
 aside.right { grid-column: 4; }
 body.nl { --lw: 24px; }  body.ns { --sw: 24px; }  body.nr { --rw: 24px; }
+/* A SIDE PANE IS AS WIDE AS YOU DRAG IT. A 7px handle on its inner edge
+   (paneWidths below sets --lw/--sw/--rw on the root and remembers them); a
+   folded pane is a rail and has none -- the body's 24px wins over the root's. */
+.prz { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 3; cursor: col-resize; }
+.prz::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; }
+.prz:hover::after, .prz.on::after { background: var(--faint); }
+aside.left .prz, aside.srcpane .prz { right: 0; }
+aside.right .prz { left: 0; }
+body.nl aside.left .prz, body.ns aside.srcpane .prz, body.nr aside.right .prz { display: none; }
 /* A folded pane is a 24px rail carrying its name and nothing else. The
    marks and the plus belong to a pane you can see: left in, they overlapped
    the turned title and offered to switch a view that is not on screen. */
@@ -313,6 +322,8 @@ body:not(.nl) aside.left .plabel, body:not(.ns) aside.srcpane .plabel, section.m
   position: absolute; top: 0; left: 0; right: 0; z-index: 2; }
 body:not(.nl) aside.left .pbody, body:not(.ns) aside.srcpane .pbody, section.mid .pbody, body:not(.nr) aside.right .pbody {
   padding-top: var(--strip-h); scroll-padding-top: var(--strip-h); }
+/* the centre's column header is sticky under the strip: keys stop a row below both */
+section.mid #list { scroll-padding-top: calc(var(--strip-h) + 30px); }
 /* THE FILTER IS A POPOVER, not a row. The funnel at the right end of the
    centre strip opens the row menu (#menu, kind 'filter' -- the same glass,
    the same title strip, saying "Show") with one radio row per filter; a row
@@ -357,6 +368,43 @@ aside.srcpane .substat:empty { display: none; }
 body:not(.ns) aside.srcpane .pbody, body:not(.nr) aside.right .pbody {
   padding-bottom: var(--pill-clear); scroll-padding-bottom: var(--pill-clear); }
 body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-first, like the others */
+/* THE STATUS PILL AND ITS CARD float over the end of the centre list, as the
+   native app's do (Status.swift). The shape is borrowed from iPadOS -- a glass
+   pill that grows a glass card above itself -- and nothing else (owner,
+   2026-10-21: "take inspiration from such a UI pattern ... not copy the
+   airplay/sound functionality"): no output picker, no levels, no speaker list.
+   The pill says the running job, the server out of reach, or the server's
+   headline; the card says it at length: the iPod and its space in words (the
+   headline while it is not mounted), the job, where the tracks on the iPod
+   came from, then Index the drive and Settings. The footer keeps the
+   per-device lights. */
+#statusbox { position: absolute; left: 50%; transform: translateX(-50%); bottom: var(--gl-pill-inset); z-index: 2;
+  max-width: calc(100% - 2 * var(--gl-pill-inset)); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#status { max-width: 100%; padding: 7px 16px; text-transform: none; color: var(--gl-ink); display: flex; gap: 8px; align-items: center; white-space: nowrap;
+  font-family: var(--mono); font-size: var(--fs-tag); letter-spacing: var(--ls-ctrl); cursor: pointer; }
+#status:empty { display: none; }
+#status .g, #statuscard .g { flex: none; font-size: var(--fs-meta); line-height: 1; }
+#status .g.warn { color: var(--orange); }
+#status .g.dim { color: var(--gl-dim, var(--dim)); }
+#status .x { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#statuscard { font-family: var(--face); text-transform: none; letter-spacing: normal; width: 300px; max-width: 100%; padding: 16px; border-radius: var(--gl-r-lg);
+  display: flex; flex-direction: column; gap: 14px; }
+#statuscard[hidden] { display: none; }
+#statuscard .hd { display: flex; gap: 12px; align-items: center; }
+#statuscard .tile { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm); background: var(--gl-open-fill); color: var(--gl-ink); }
+#statuscard .tile svg { width: 13px; height: 21px; }
+#statuscard .hd b { display: block; font-size: var(--fs-name); color: var(--gl-ink); }
+#statuscard .hd span, #statuscard .note, #statuscard .lbl, #statuscard .ln .n { font-family: var(--mono); font-size: var(--fs-tag); color: var(--gl-dim); }
+#statuscard .note { display: flex; gap: 8px; align-items: center; color: var(--gl-ink); }
+#statuscard .lbl { padding-bottom: 6px; }
+#statuscard .ln { display: flex; align-items: center; gap: 8px; height: 32px; box-shadow: 0 -1px 0 var(--gl-open-fill);
+  font-size: var(--fs-text); color: var(--gl-ink); }
+#statuscard .ln .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#statuscard .ln.off .nm { color: var(--gl-dim); }
+#statuscard .acts { display: flex; gap: 8px; }
+#statuscard .acts button { flex: 1; height: 36px; font-family: var(--face); text-transform: none; letter-spacing: normal; font-size: var(--fs-text); }
+section.mid .pbody { padding-bottom: var(--pill-clear); scroll-padding-bottom: var(--pill-clear); }
 
 /* ---------- rows ---------- */
 /* Rows float on the ground -- separated by space, not rules -- and the selected
@@ -369,6 +417,66 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
        padding: 9px 10px; cursor: pointer; border-radius: var(--r-md); margin-bottom: 3px;
        user-select: none; -webkit-user-select: none; }
+/* THE CENTRE LIST IS A TABLE: Title, Artist, Album, Format, iPod, Time, the
+   way the native app's track table reads (TrackTable.swift). #list holds the
+   tracks and every row is a subgrid of them, so a column lines up down the
+   whole list even where a track has no tag and the next has three; the
+   header is the first child, sticky under the title strip, on the same
+   tracks. Title, Artist and Album share the width by weight (--w-*, dragged
+   in the header, colWeights below); the rest are fixed slots or as wide as
+   their widest row. A narrow centre drops Album, then Artist and the tags (the info pane keeps them) -- the title
+   then carries the artist again (.na), as the row did before. */
+#list { display: grid; align-content: start; column-gap: 12px;
+        grid-template-columns: [art] 44px [title] minmax(0, var(--w-title, 2fr))
+          [artist] minmax(0, var(--w-artist, 1.2fr)) [album] minmax(0, var(--w-album, 1.2fr))
+          [where] auto [tags] fit-content(18%) [format] 58px [ipod] 30px [time] 40px [end] auto [stop]; }
+#list > :not(.row):not(.colhead) { grid-column: 1 / -1; }
+#list .row { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 12px; }
+#list .row > .art { grid-column: art; } #list .row > .t { grid-column: title; }
+#list .row > .c-artist { grid-column: artist; } #list .row > .c-album { grid-column: album; }
+#list .row > .src { grid-column: where; } #list .row > .tags { grid-column: tags; }
+#list .row > .br { grid-column: format; } #list .row > .pod { grid-column: ipod; justify-self: center; }
+#list .row > .c-time { grid-column: time; } #list .row > .end { grid-column: end; }
+.c-artist, .c-album { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        font-size: var(--fs-text); color: var(--ink); }
+.c-album { color: var(--dim); }
+.c-time { font-family: var(--mono); font-size: var(--fs-meta); letter-spacing: var(--ls-mono);
+        font-variant-numeric: tabular-nums; color: var(--dim); text-align: right; }
+.end { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.t .na { display: none; }
+.row.sel .c-artist { color: var(--on-sel); }
+.row.sel .c-album, .row.sel .c-time { color: var(--on-sel-dim); }
+.row.unowned .c-artist, .row.unowned .c-album { opacity: .45; }
+.row.offline .c-artist, .row.offline .c-album { opacity: .7; }
+/* the header: the strip's material, sticky just under the title strip (top 0 is
+   the scroller's content edge, which its padding already puts below the strip) */
+.colhead { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px;
+        position: sticky; top: 0; z-index: 1; margin: 0 0 4px; padding: 0 10px;
+        height: 26px; align-items: center; border-radius: var(--r-sm);
+        font-family: var(--mono); font-size: var(--fs-tag); letter-spacing: var(--ls-ctrl);
+        text-transform: uppercase; color: var(--gl-dim, var(--dim)); }
+.colhead > span { position: relative; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        height: 100%; display: flex; align-items: center; }
+.colhead > [data-col="time"] { justify-content: flex-end; }
+.colhead > [data-col="ipod"] { overflow: visible; justify-content: center; }
+.colhead > [data-col="format"] { justify-content: flex-end; }
+.colhead.sorts > [data-col] { cursor: pointer; }
+.colhead.sorts > [data-col]:hover { color: var(--ink); }
+.colhead > [aria-sort="ascending"], .colhead > [aria-sort="descending"] { color: var(--ink); }
+.colhead .arr { margin-left: 4px; font-size: var(--fs-tag); }
+.colhead .order { grid-column: where / stop; justify-content: flex-end; text-transform: none; }
+.colhead .rz { position: absolute; top: 4px; bottom: 4px; right: 0; width: 7px; cursor: col-resize; overflow: visible; }
+.colhead .rz::after { content: ""; position: absolute; top: 3px; bottom: 3px; right: 2px; width: 1px; background: var(--faint); }
+.colhead .rz:hover::after, .colhead .rz.on::after { background: var(--ink); }
+@container (max-width: 780px) {
+  #list { grid-template-columns: [art] 44px [title] minmax(0, var(--w-title, 2fr))
+          [artist] minmax(0, var(--w-artist, 1.2fr)) [where] auto [tags] fit-content(18%) [format] 58px [ipod] 30px [time] 40px [end] auto [stop]; }
+  #list .c-album, .colhead [data-col="album"] { display: none; } }
+@container (max-width: 620px) {
+  #list { grid-template-columns: [art] 44px [title] minmax(0, 1fr) [where] auto [format] 58px [ipod] 30px [time] 40px [end] auto [stop]; }
+  #list .row > .tags,
+  #list .c-artist, .colhead [data-col="artist"], .colhead [data-col="title"] .rz { display: none; }
+  .t .na { display: inline; } }
 .row:hover { background: var(--panel); }
 .row.sel, .row.sel:hover { background: transparent; }
 /* A MARKED ROW IS NOT A SELECTED ROW. The cursor is one row and wears the
@@ -401,6 +509,11 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row.sel .tag { color: var(--on-sel); border-color: var(--on-sel-line); }
 .art { width: 44px; height: 44px; border-radius: var(--r-sm); background: var(--seam);
        object-fit: cover; flex: none; -webkit-user-drag: none; }
+/* no cover: a music note in the square (TrackTable.swift's placeholder) */
+div.art:empty { display: flex; align-items: center; justify-content: center; color: var(--dim); }
+div.art:empty::before { content: ""; width: 16px; height: 16px; background: currentColor; opacity: .7;
+       -webkit-mask: var(--note) center / contain no-repeat; mask: var(--note) center / contain no-repeat; }
+:root { --note: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 2.6 14 1v9.6a2.3 2.3 0 1 1-1.5-2.15V4.3L7.5 5.3v7.3A2.3 2.3 0 1 1 6 10.45z'/%3E%3C/svg%3E"); }
 .t { min-width: 0; }
 .t .n { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;
         letter-spacing: var(--ls-tight); font-size: var(--fs-name); }
@@ -458,6 +571,10 @@ body.nr aside.right .plabel .fold { order: -1; }   /* the rail reads chevron-fir
 .row.sel .pod { color: var(--on-sel); }
 .row.sel .src, .row.sel .src b { color: var(--on-sel); }
 .tags { display: flex; gap: 6px; align-items: center; flex: none; }
+/* the tags column is capped (fit-content(18%) above) so a track in three
+   collections cannot starve Title, Artist and Album to nothing; a run longer
+   than the cap clips at the column edge, and the info pane still lists them all */
+#list .row > .tags { min-width: 0; overflow: hidden; }
 .tag { font-family: var(--mono); font-size: var(--fs-tag); letter-spacing: var(--ls-ctrl); text-transform: uppercase;
        padding: 2px 7px; border-radius: var(--r-pill); border: 1px solid var(--faint);
        color: var(--dim); white-space: nowrap; }
@@ -1072,64 +1189,126 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
    line of tokens.css, which is a comment of its own, and closes there; the
    marker is then text. The closing marker is harmless only because nothing
    follows it before the end of the sheet. So: no rule after that marker,
-   and no closing of this comment. scripts/vendor_glass.py replaces what is
+   and no closing of this comment. `saltsdk vendor --to <tag>` replaces what is
    between the markers and leaves this line alone.
-<!-- saltglass:css @cc154d31ce49da64e6729d4601b8c99bde5d7249 -->
+<!-- saltglass:css v0.5.1 @91f89d6 sha256=c8f875f7fab51e790867f60b0f48e9a5480a132b7dbda91fa1ac839e3dc8d6f6 from=tokens.css+glass.css -->
 /* saltglass — tokens.css
-   :root only. Nothing here paints; glass.css paints with these.
+   Nothing here paints; glass.css paints with these.
 
    A host overrides the five identity inputs and nothing else. Everything
    below the inputs is derived with color-mix(), so a host never writes an
    rgba literal to adopt the system. Numbers that are not colours (blur,
    saturation, durations, radii) are listed once so a host can tune them in
    one place and so glass.css can contain no literal at all (check_tokens.py
-   enforces that). */
+   enforces that). tokens.json is this file resolved (tools/export_tokens.py);
+   a `@tier` comment names the tier of the tokens below it.
+
+   Five blocks, and check_tokens.py admits these and no others:
+   1. :root -- the inputs, the appearance alphas (dark), the numbers.
+   2. [data-gl-appearance="dark"] -- a dark region inside a light page: the
+      dark inputs and alphas again, on that element.
+   3. :root[data-gl-appearance="light"], [data-gl-appearance="light"] -- the
+      light appearance, on the whole page or on one element (a light sidebar
+      inside a dark page).
+   4. @media (prefers-color-scheme: light) :root[data-gl-appearance="auto"] --
+      the light appearance when the host asked to follow the device. A page that
+      sets nothing stays dark: saltpod is unchanged.
+   5. :root, [data-gl-appearance] -- every colour derived from the inputs. It is
+      declared again on each element that carries the attribute, so a region
+      that changes its inputs recomputes its glass, rims and text; a derivation
+      declared only at :root would resolve once with the root's inputs and paint
+      dark glass on a light panel (GAPS.md gap 6).
+   The saltROOM round (2026-10-24) adds the state, pattern and content tiers and
+   the histogram channels: their numbers live in block 1, their colours in block
+   5, and the five alphas of its marks of absence and its busy marks are
+   appearance alphas, so the light appearance sets its own (DESIGN.md s3).
+   An appearance sets ground, ink, shadow and live, the appearance alphas and
+   the status family (ok, warn, fault, missed: saltVoice, 2026-11-01). It
+   never sets the accent: the accent is the host's in every appearance. A host
+   that maps its own palette writes its mapping for each appearance it uses.
+
+   The palette round (2026-11-01, docs/PALETTE.md) completes the set. Every
+   colour resolves in four cells: dark, light, dark + Increase Contrast, light +
+   Increase Contrast, as Apple ships every system colour. It adds:
+   6. @media (prefers-contrast: more) -- the two contrast blocks, one per
+      appearance (and the auto one under a light device), mirrored on
+      [data-gl-contrast="more"] for a host that mirrors the native setting or a
+      demo. A contrast block changes inputs and alphas only, never a formula: the
+      recompute block derives every other token from them.
+   An appearance now also sets the series' lightness and chroma (their hue stays
+   the accent's turn, so a series is the same hue in both), the histogram
+   channels and their blend, and the label hues. New tiers: label (the system
+   label hues a host's categories use) and slot (the colours an app fills
+   itself: tonal ink, the brand; their contract is in the slot tier's notes).
+   7. @media print { :root } -- the light appearance on paper. */
 :root {
+  /* @tier identity */
   /* identity: the five inputs a host maps to its own palette */
   --gl-ground: #141d29;   /* the flat ground; also the glass fill's hue and the scrim's */
-  --gl-ink: #fffffc;      /* text; also every rim, highlight and seam catch */
+  --gl-ink: #fffffc;      /* text; also every rim and the wash colour */
   --gl-shadow: #070c13;   /* the dark of the etched seams and the floating shadow */
   --gl-accent: #2f6fd0;   /* the one primary action and drop targets; never "where you are" */
   --gl-live: #f75c03;     /* "what you hear": the playing row's time, the live dot */
 
-  /* derived colours */
-  --gl-glass-fill: color-mix(in srgb, var(--gl-ground) 60%, transparent);   /* the material's fill */
-  --gl-glass-fill-heavy: color-mix(in srgb, var(--gl-ground) 88%, transparent); /* the thickened fill: a full-height panel or sheet (.gl-heavy) */
-  --gl-rim: color-mix(in srgb, var(--gl-ink) 40%, transparent);             /* the 1px edge of a floating surface */
-  --gl-rim-hc: color-mix(in srgb, var(--gl-ink) 50%, transparent);          /* the rim under Increase Contrast */
-  --gl-spec: color-mix(in srgb, var(--gl-ink) 14%, transparent);            /* the 1px top highlight */
-  --gl-sel: color-mix(in srgb, var(--gl-ink) 14%, transparent);             /* the selected row's fill */
-  --gl-sel-rim: color-mix(in srgb, var(--gl-ink) 40%, transparent);         /* the selected row's rim */
-  --gl-sel-solid: color-mix(in srgb, var(--gl-ink) 14%, var(--gl-ground));  /* the same row when nothing is behind it */
-  --gl-dim: color-mix(in srgb, var(--gl-ink) 55%, transparent);             /* secondary text on the ground */
-  --gl-dim-glass: color-mix(in srgb, var(--gl-ink) 75%, transparent);       /* secondary text on glass (glass hosts re-declare --gl-dim to this) */
-  --gl-seam-dark: color-mix(in srgb, var(--gl-shadow) 55%, transparent);    /* structure seam: the dark line */
-  --gl-seam-light: color-mix(in srgb, var(--gl-ink) 13%, transparent);      /* structure seam: the light catch */
-  --gl-seam-dark-in: color-mix(in srgb, var(--gl-shadow) 35%, transparent); /* inner seam: the dark line */
-  --gl-seam-light-in: color-mix(in srgb, var(--gl-ink) 9%, transparent);    /* inner seam: the light catch */
+  /* @tier appearance */
+  /* the alphas an appearance sets: the dark values here, the light ones in block 3 */
+  --gl-dim-a: .55;        /* secondary text on the ground: ink at this alpha */
+  --gl-dim-glass-a: .75;  /* secondary text on glass */
+  --gl-rim-a: .40;        /* the 1px edge of a floating surface: ink at this alpha */
+  --gl-rim-hc-a: .50;     /* the rim under Increase Contrast */
+  --gl-sel-rim-a: .40;    /* the selected row's rim */
+  --gl-catch-a: .14;      /* the light that catches an edge: the fixed near-white at this alpha (D1) */
+  --gl-seam-a: .55;       /* the seams' dark line: the shadow at this alpha */
+  --gl-float-a: .45;      /* the floating shadow: the shadow at this alpha */
+  --gl-action-a: .55;     /* the accent's alpha over the blur: the one primary action as tinted glass. Light is solid (1): a tint over a light ground cannot carry a white label */
+  --gl-unset-a: .26;      /* a mark that can be set and is not (--gl-unset): ink at this. Light is .39, the same 2.35:1 on its ground */
+  --gl-ghost-a: .24;      /* a ghost tile's outline (--gl-ghost-line). Light .36, the same 2.19:1 */
+  --gl-ring-track-a: .18; /* the progress ring's track (--gl-ring-track). Light .27, the same 1.77:1 */
+  --gl-ring-wait-a: .50;  /* the waiting ring's dotted track (--gl-ring-wait). Light .63, 3:1 on the band's floor */
+  --gl-grip-a: .45;       /* the pane grip under the pointer (--gl-grip-ink). Light .63, 3:1 on the band's floor */
+  --gl-meter-fill-a: .70; /* a level meter's fill: series 1 (the ink) at this (--gl-meter-fill). Light .7, MEASURED 2026-11-01: 5.7:1 on its track (dark 8.0:1) */
+  --gl-hist-hour-a: .14;  /* a level histogram's long layer (the last hour): ink at this, as a photo histogram's luminance (--gl-hist-hour). Light .14, MEASURED 2026-11-01: 1.3:1 on the ground, context only (the live layer carries the reading) */
+  --gl-hist-live-a: .70;  /* a level histogram's live layer (the last seconds): series 2 at this (--gl-hist-live). Light and dark .70, MEASURED 2026-11-01: on the ground 3.6:1 light, 4.2:1 dark; on the hour layer 3.1:1 both (.55 gave 2.6:1 light, 2.5:1 dark on the hour) */
+  --gl-sheet-scrim-a: .55; /* the scrim under a consent sheet: the shadow at this (--gl-sheet-scrim). Light .35, MEASURED 2026-11-01: no contrast floor (the sheet is .gl-heavy glass) */
+  /* the palette round (2026-11-01): the neutral ladders, the surfaces, the tints, the accent's text, the
+     series and the channels, each an alpha or a number per appearance (docs/PALETTE.md s1) */
+  --gl-ink-3-a: .34;      /* tertiary text (placeholder, disabled): ink at this, 3:1 on the ground. Light .48 */
+  --gl-ink-4-a: .22;      /* quaternary: a rule inside text, a watermark; 2:1, decorative only. Light .33 */
+  --gl-fill-1-a: .16;     /* fill ladder, 1:1.6 on the ground: a slider or ring track, thin shapes. Light .23 */
+  --gl-fill-2-a: .12;     /* 1:1.4: medium shapes, a switch that is off, a chip. Light .17 */
+  --gl-fill-3-a: .08;     /* 1:1.25: large shapes, a well, a segmented track. Light .12 */
+  --gl-fill-4-a: .06;     /* 1:1.15: large areas with complex content. Light .08 */
+  --gl-fill-5-a: .03;     /* 1:1.08: a form's background on the Mac (Apple's quinary fill). Light .04 */
+  --gl-sep-a: .12;        /* a separator between rows, 1:1.4; Increase Contrast sets the high-contrast rim's alpha. Light .17 */
+  --gl-surface-a: .06;    /* a card or grouped cell: the catch over the ground at this. Light .80 (near white on the grey page) */
+  --gl-surface-2-a: .11;  /* content inside a card. Light 0: Apple's inverted grouped order, the page grey again */
+  --gl-elevated-a: .09;   /* a sheet or popover's backing when glass is off. Light 1 */
+  --gl-status-tint-a: .12; /* a status chip's tint (chips only, never a panel): the status over the ground at this, behind its glyph. Light .10 */
+  --gl-brand-tint-a: .16; /* the brand's tint band: the brand over the ground at this. Light .12 */
+  --gl-brand-wash-a: .35; /* the brand's wash in the content layer, under glass bars. Light .22 */
+  --gl-accent-text-l: .68; /* the accent as text (a link, a selected tab's label): the accent's hue at this OKLCH lightness. Light .50 */
+  --gl-accent-text-c: .16; /* ... and at most this chroma */
+  --gl-axis-a: .45;       /* the zero line and the axis: ink over the ground at this, 3:1. Light .50 (.45 measured 2.80) */
+  --gl-ref-a: .70;        /* reference lines: ink over the ground at this */
+  --gl-grid-a: .07;       /* grid lines: ink over the ground at this */
+  --gl-series-2-l: .74;   /* each series' OKLCH lightness and chroma; the hue is the accent's turned (block 5). Light .44 .13 */
+  --gl-series-2-c: .13;
+  --gl-series-3-l: .66;   /* light .59 .14 */
+  --gl-series-3-c: .13;
+  --gl-series-4-l: .66;   /* light .60 .14 */
+  --gl-series-4-c: .13;
+  --gl-series-5-l: .70;   /* light .62 .12 */
+  --gl-series-5-c: .13;
+  --gl-series-6-l: .82;   /* light .50 .08 */
+  --gl-series-6-c: .13;
+  --gl-chan-a: .34;       /* each histogram channel's alpha. Light .70 */
+  --gl-chan-blend: lighter; /* how the channels composite: added light on dark; multiply on light, where added light clips to white */
+  --gl-chan-outline-a: .55; /* the luminance fill's 1px outline: ink at this. Increase Contrast 1 */
+  --gl-tonal-floor: 3.2;  /* the contrast a tonal ink must clear on this ground (tonal.py MIN_CONTRAST); Increase Contrast 4.5 (MIN_CONTRAST_HC) */
 
-  /* endings: a surface that ends by its fill, not by a line */
-  --gl-strip-a: .35;      /* the tint of a strip or a pill: the ground's alpha over the blur */
-  --gl-strip-fill: color-mix(in srgb, var(--gl-ground) calc(var(--gl-strip-a) * 100%), transparent);      /* the strip and the pill: tinted glass, a step darker */
-  --gl-strip-fill-light: color-mix(in srgb, var(--gl-ink) calc(var(--gl-strip-a) * 30%), transparent);    /* the same, a step lighter (.gl-light) */
-  --gl-pill-rim: color-mix(in srgb, var(--gl-ink) 18%, transparent);        /* the pill's 1px rim */
-  --gl-pill-spec: color-mix(in srgb, var(--gl-ink) 10%, transparent);       /* the pill's 1px top highlight */
-  --gl-open-fill: color-mix(in srgb, var(--gl-ink) 10%, transparent);       /* the open row in a list of names: a wash, not glass */
-  --gl-open-rim: color-mix(in srgb, var(--gl-ink) 18%, transparent);        /* the open row's 1px rim */
-
-  /* controls: the three the system owns -- the one action, the secondary button, the field */
-  --gl-action-a: .55;     /* the accent's alpha over the blur: the one primary action as tinted glass */
-  --gl-action-fill: color-mix(in srgb, var(--gl-accent) calc(var(--gl-action-a) * 100%), transparent);  /* .gl-action's fill */
-  --gl-action-rim: color-mix(in srgb, var(--gl-ink) 22%, transparent);      /* .gl-action's 1px rim */
-  --gl-action-spec: color-mix(in srgb, var(--gl-ink) 18%, transparent);     /* .gl-action's 1px top highlight */
-  --gl-on-accent: #fff;   /* the label on the accent: the one literal below the inputs, because no derivation of the ink is guaranteed to read on every accent. A host overrides it with its accent. */
-  --gl-btn-fill: var(--gl-open-fill);   /* .gl-btn, a secondary action: the open row's wash, as a button */
-  --gl-btn-rim: var(--gl-open-rim);     /* .gl-btn's 1px rim */
-  --gl-btn-off: color-mix(in srgb, var(--gl-ink) 5%, transparent);          /* .gl-btn disabled: a fainter wash, no rim */
-  --gl-field-fill: color-mix(in srgb, var(--gl-ink) 10.5%, transparent);    /* .gl-field, the icy input: an ink wash, no stroke */
-  --gl-field-spec: color-mix(in srgb, var(--gl-ink) 14%, transparent);      /* .gl-field's 1px top highlight */
-
+  /* @tier material */
   /* the material */
+  --gl-glass-a: .60;      /* the glass fill's density: the ground at this alpha. .60 is glass; a host that wants frost (a till, bright rooms) sets about .80 with --gl-blur near 40px */
   --gl-blur: 16px;        /* backdrop blur of a floating surface */
   --gl-sat: 180%;         /* backdrop saturation of a floating surface */
   --gl-sel-blur: 12px;    /* the selected row's backdrop blur: lighter, it is inside a list */
@@ -1138,6 +1317,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   --gl-action-sat: 160%;
   --gl-art-blur: 64px;    /* the ground picture's blur: a wash of colour, never a picture */
   --gl-art-sat: 1.2;
+  --gl-catch: #fffffc;    /* the light that catches an edge: the fixed near-white in every appearance (D1); every spec and light seam mixes it, never the ink */
 
   /* motion */
   --gl-fade: 700ms;       /* the crossfade between two ground layers */
@@ -1145,20 +1325,879 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   --gl-drift: 1.05;       /* the zoom-through scale of an incoming layer; 1 turns it off */
   --gl-ease: cubic-bezier(.32,.72,0,1);
 
-  /* shape and depth */
-  --gl-shadow-float: 0 14px 28px color-mix(in srgb, var(--gl-shadow) 45%, transparent);
-  --gl-shadow-pill: 0 10px 24px color-mix(in srgb, var(--gl-shadow) 35%, transparent);  /* a floating pill: lower and softer than a menu */
+  /* shape */
   --gl-r-lg: 14px;        /* menus, dialogs */
   --gl-r-pill: 99px;      /* fields and buttons in a bar; pills; the open row */
   --gl-pill-inset: 10px;  /* a pill's distance from the sides and the bottom of its pane */
   --gl-row-dense: 28px;   /* the min-height of a dense row in a list of names */
-  --gl-hit: 32px;         /* the height of a control (.gl-action, .gl-btn): the Mac's; a touch host raises it to 44px */
+  --gl-hit: 32px;         /* the height of a control (.gl-action, .gl-btn): the Mac's. A touch host sets 44px (the touch tier, DESIGN.md s4); the system does not guess from media queries */
+  --gl-tab-h: 62px;       /* .gl-tabbar's height: the iOS 26 floating tab bar (saltpod DESIGN-GLASS 3.3, measured from the kit) */
+  --gl-tab-sel-h: 54px;   /* the current tab's pill inside it: the bar less 4 a side, so the radii stay concentric */
+  --gl-tab-cell: 76px;    /* one tab's width: the bar hugs its tabs and is never stretched to the screen */
+  --gl-bar-inset: 21px;   /* a floating bar's distance from the bottom edge, inside the home indicator's 34 */
 
   /* the band */
   --gl-scrim-unknown: .60; /* the scrim before the host has measured a cover */
-  --gl-ymax: .05;          /* documentation only: the ground's luminance ceiling. The server owns this number. */
+  --gl-ymax: .05;          /* documentation only: the dark ground's luminance ceiling. The server owns this number. */
+  --gl-ymin: .30;          /* documentation only: the light ground's luminance floor (band.py Y_MIN). The server owns this number. */
+
+  /* @tier status */
+  /* status: a family apart from the series, the accent and the live colour. Always
+     paired with a glyph or a word (ok check, warn triangle, fault cross, missed
+     hollow circle), never alone, never a wash or a ground, never on chrome.
+     Tuned for the dark appearance; the light appearance sets its own (same
+     hues, darker: 4.5:1 or more on the light ground as text, DESIGN.md s4
+     Appearances), so an appearance block sets the status family too. */
+  --gl-ok: oklch(.80 .15 150);      /* fresh, made, up */
+  --gl-warn: oklch(.86 .14 95);     /* stale, close, watch */
+  --gl-fault: oklch(.74 .15 10);    /* failed, down; pink-red, away from the live orange */
+  --gl-missed: oklch(.72 .04 300);  /* did not happen: low chroma, read by its hollow glyph */
+
+  /* ---- the saltROOM round (2026-10-24): DESIGN.md s3 "Changes", s5 "The saltROOM patterns".
+     Its numbers here; its colours, derived from the inputs, in the recompute block below. ---- */
+
+  /* @tier state */
+  /* interaction states: the numbers (the colours are in the recompute block) */
+  --gl-focus-w: 2px;                                                        /* the ring's width */
+  --gl-focus-off: 1px;                                                      /* the ring's distance outside a control; a row plate draws it as a spread instead */
+  --gl-quick: 160ms;                                                        /* a state that fades in: a hover plate, the grip */
+  --gl-reveal: 220ms;                                                       /* words that slide out of a ring on hover or focus */
+  --gl-meter-move: 90ms;  /* a meter follows its reads (about 7 a second) with this, linear */
+
+  /* @tier pattern */
+  /* sizes the patterns share. Radii: tile 2, small 6, row 8, medium 10, large 14, pill 99 */
+  --gl-r-tile: 2px;       /* a picture tile, a frame in a contact strip, a ghost, the navigator's rectangle */
+  --gl-r-sm: 6px;         /* a chart's plot, the navigator, a select or input in a form */
+  --gl-r-row: 8px;        /* a sidebar row's plate (.gl-side): Apple's sidebar radius on macOS 26 */
+  --gl-r-md: 10px;        /* a readout well (.gl-well) */
+  --gl-icon: 16px;        /* the icon slot: a 16px grid */
+  --gl-icon-sm: 12px;     /* the small slot: a section header, a badge, a flag in a row */
+  --gl-icon-stroke: 1.25; /* one stroke for every line icon, round caps and joins */
+  --gl-group-h: 36px;     /* the floating control group (.gl-group): the capsule's height */
+  --gl-group-item-h: 28px; /* a control inside it */
+  --gl-group-pad: 4px;    /* the capsule's inner padding at its ends */
+  --gl-seg-h: 28px;       /* a segment of .gl-seg */
+  --gl-seg-pad: 3px;      /* the track's padding around its segments */
+  --gl-ring-size: 22px;   /* the progress ring (.gl-ring) */
+  --gl-ring-w: 2;         /* its stroke, in SVG user units on a 22-unit box */
+  --gl-ring-dash-on: 2;   /* waiting: the dotted track, dash and gap */
+  --gl-ring-dash-off: 3.2;
+  --gl-ring-words-max: 300px; /* the widest the words slide out to */
+  --gl-grip-w: 5px;       /* the pane grip (.gl-grip) */
+  --gl-grip-h: 36px;
+  --gl-edge-fade: 36px;   /* the scroll edge's fade below the row it protects (.gl-scroll-edge) */
+  --gl-vf-arm: 18px;      /* the viewfinder corners (.gl-vf): arm length, thickness, distance outside the picture, halo blur */
+  --gl-vf-t: 2px;
+  --gl-vf-out: 5px;
+  --gl-vf-blur: 1.5px;
+  --gl-msel-a: 80%;       /* the rest of a multiple selection: a ring in each picture's own tonal ink at this */
+  --gl-mark-hit: 26px;    /* a tool on a picture (.gl-tools): the hit area */
+  --gl-mark-icon: 13px;   /* the drawn icon inside it */
+  --gl-mark-inset: 4px;   /* a mark's distance from the picture's edge */
+  --gl-mark-scrim-x: 44px; /* how far the corner scrim reaches past the tools */
+  --gl-mark-scrim-y: 30px;
+  --gl-mark-pause: 200ms; /* the hover rest before the tools come; the host's script reads it */
+  --gl-mark-fade: 120ms;
+  --gl-read-big: 18px;    /* a readout well's value line */
+  --gl-read-small: 10.5px; /* its settings line, small caps */
+  --gl-read-track: .05;    /* that line's letter-spacing in em (a number, so native hosts get it too: tracking = .05 x font size); small caps need air */
+  --gl-dot: 8px;          /* a status dot (.gl-dot), always beside its word (law 4) */
+  --gl-meter-h: 6px;      /* a live level meter's track (.gl-meter) */
+  --gl-meter-hold-w: 2px; /* the meter's peak-hold tick */
+  --gl-sheet-w: 520px;    /* a consent sheet (.gl-sheet) at most this wide; 16px from each edge on a phone */
+  --gl-rail-w: 24px;      /* a pane folded to a rail (.gl-rail): saltFrame's 24 pt fold */
+  --gl-rail-text: 11px;   /* the folded pane's name, written down the rail (.gl-rail) */
+  --gl-toast-rise: 6px;   /* how far a toast (.gl-toast) rises as it enters */
+
+  /* @tier content */
+  /* the content layer: what reads no input */
+  --gl-tonal-min: 3.2;        /* documentation only: the contrast floor tonal.py holds every tonal ink to. The server owns the number */
+  --gl-mark-ink: #fffffc; /* a mark ON a picture (.gl-mark, .gl-tools, the navigator's line): the fixed near-white with the shadow's halo in every appearance, because it reads against the picture, not the ground (D1's reasoning). The ink on dark, so dark is unchanged */
+
+  /* @tier chart */
+  /* the three channels of a colour histogram: the physical R, G and B, not identities, so not
+     derived from the accent. Searched for colour-vision separation as an additive overlay
+     ('lighter' at --gl-chan-a over the luminance fill); test_tokens.py prints the numbers.
+     The light appearance sets its own set, composited with 'multiply' (--gl-chan-blend):
+     added light over a light plot clips to white (dE_ok 1.1), so on light darkness separates. */
+  --gl-chan-r: oklch(.62 .16 30);   /* red, kept 10 degrees of hue off the live orange */
+  --gl-chan-g: oklch(.88 .16 140);  /* green, the light one: lightness is what keeps it apart from red under deuteranopia */
+  --gl-chan-b: oklch(.68 .16 250);  /* blue */
+  --gl-chan-lum-a: .14;             /* the luminance fill under the channels, ink at this; its 1px outline in ink at --gl-chan-outline-a carries the shape for every vision */
+
+  /* @tier label */
+  /* the label hues: a host's own categories (a photo's colour label, a file tag, a calendar). Apple's
+     hue angles at one OKLCH lightness per appearance, 3:1 or better on the ground and the brightest
+     stop (4.5:1 under Increase Contrast). Law 4 already admits them; they are NOT told apart under
+     colour-vision deficiency, so a label always carries its name or its position. Never status,
+     never an action, never selection. An appearance sets its own (docs/PALETTE.md s1.3). */
+  --gl-label-red: oklch(.72 .15 25);
+  --gl-label-orange: oklch(.72 .15 57);
+  --gl-label-yellow: oklch(.72 .13 95);
+  --gl-label-green: oklch(.72 .15 147);
+  --gl-label-teal: oklch(.72 .11 203);
+  --gl-label-blue: oklch(.72 .15 251);
+  --gl-label-indigo: oklch(.72 .14 275);
+  --gl-label-purple: oklch(.72 .15 322);
+  --gl-label-pink: oklch(.72 .15 356);
+  --gl-label-brown: oklch(.72 .07 60);
+  --gl-label-gray: oklch(.72 .01 286);
+  color-scheme: dark;  /* the default appearance is dark: light-dark() in the slots (glass.css) picks the dark cell, not the UA's light default */
 }
 
+[data-gl-appearance="dark"] {
+  --gl-ground: #141d29;
+  --gl-ink: #fffffc;
+  --gl-shadow: #070c13;
+  --gl-live: #f75c03;
+  --gl-dim-a: .55;
+  --gl-dim-glass-a: .75;
+  --gl-rim-a: .40;
+  --gl-rim-hc-a: .50;
+  --gl-sel-rim-a: .40;
+  --gl-catch-a: .14;
+  --gl-seam-a: .55;
+  --gl-float-a: .45;
+  --gl-action-a: .55;
+  --gl-unset-a: .26;
+  --gl-ghost-a: .24;
+  --gl-ring-track-a: .18;
+  --gl-ring-wait-a: .50;
+  --gl-grip-a: .45;
+  --gl-meter-fill-a: .70;
+  --gl-hist-hour-a: .14;
+  --gl-hist-live-a: .70;
+  --gl-sheet-scrim-a: .55;
+  --gl-ink-3-a: .34;
+  --gl-ink-4-a: .22;
+  --gl-fill-1-a: .16;
+  --gl-fill-2-a: .12;
+  --gl-fill-3-a: .08;
+  --gl-fill-4-a: .06;
+  --gl-fill-5-a: .03;
+  --gl-sep-a: .12;
+  --gl-surface-a: .06;
+  --gl-surface-2-a: .11;
+  --gl-elevated-a: .09;
+  --gl-status-tint-a: .12;
+  --gl-brand-tint-a: .16;
+  --gl-brand-wash-a: .35;
+  --gl-accent-text-l: .68;
+  --gl-accent-text-c: .16;
+  --gl-axis-a: .45;
+  --gl-ref-a: .70;
+  --gl-grid-a: .07;
+  --gl-series-2-l: .74;
+  --gl-series-2-c: .13;
+  --gl-series-3-l: .66;
+  --gl-series-3-c: .13;
+  --gl-series-4-l: .66;
+  --gl-series-4-c: .13;
+  --gl-series-5-l: .70;
+  --gl-series-5-c: .13;
+  --gl-series-6-l: .82;
+  --gl-series-6-c: .13;
+  --gl-chan-a: .34;
+  --gl-chan-blend: lighter;
+  --gl-chan-outline-a: .55;
+  --gl-tonal-floor: 3.2;
+  --gl-ok: oklch(.80 .15 150);
+  --gl-warn: oklch(.86 .14 95);
+  --gl-fault: oklch(.74 .15 10);
+  --gl-missed: oklch(.72 .04 300);
+  --gl-chan-r: oklch(.62 .16 30);
+  --gl-chan-g: oklch(.88 .16 140);
+  --gl-chan-b: oklch(.68 .16 250);
+  --gl-label-red: oklch(.72 .15 25);
+  --gl-label-orange: oklch(.72 .15 57);
+  --gl-label-yellow: oklch(.72 .13 95);
+  --gl-label-green: oklch(.72 .15 147);
+  --gl-label-teal: oklch(.72 .11 203);
+  --gl-label-blue: oklch(.72 .15 251);
+  --gl-label-indigo: oklch(.72 .14 275);
+  --gl-label-purple: oklch(.72 .15 322);
+  --gl-label-pink: oklch(.72 .15 356);
+  --gl-label-brown: oklch(.72 .07 60);
+  --gl-label-gray: oklch(.72 .01 286);
+  color-scheme: dark;
+}
+
+:root[data-gl-appearance="light"], [data-gl-appearance="light"] {
+  --gl-ground: #f3f5f8;
+  --gl-ink: #141d29;
+  --gl-shadow: #070c13;
+  --gl-live: #d94f00;
+  --gl-dim-a: .62;
+  --gl-dim-glass-a: .70;
+  --gl-rim-a: .50;
+  --gl-rim-hc-a: .62;
+  --gl-sel-rim-a: .20;
+  --gl-catch-a: .70;
+  --gl-seam-a: .32;
+  --gl-float-a: .18;
+  --gl-action-a: 1;
+  --gl-unset-a: .39;
+  --gl-ghost-a: .36;
+  --gl-ring-track-a: .27;
+  --gl-ring-wait-a: .63;
+  --gl-grip-a: .63;
+  --gl-meter-fill-a: .70;
+  --gl-hist-hour-a: .14;
+  --gl-hist-live-a: .70;
+  --gl-sheet-scrim-a: .35;
+  --gl-ink-3-a: .48;
+  --gl-ink-4-a: .33;
+  --gl-fill-1-a: .23;
+  --gl-fill-2-a: .17;
+  --gl-fill-3-a: .12;
+  --gl-fill-4-a: .08;
+  --gl-fill-5-a: .04;
+  --gl-sep-a: .17;
+  --gl-surface-a: .80;
+  --gl-surface-2-a: 0;
+  --gl-elevated-a: 1;
+  --gl-status-tint-a: .10;
+  --gl-brand-tint-a: .12;
+  --gl-brand-wash-a: .22;
+  --gl-accent-text-l: .50;
+  --gl-accent-text-c: .16;
+  --gl-axis-a: .50;
+  --gl-ref-a: .70;
+  --gl-grid-a: .07;
+  --gl-series-2-l: .44;
+  --gl-series-2-c: .13;
+  --gl-series-3-l: .59;
+  --gl-series-3-c: .14;
+  --gl-series-4-l: .60;
+  --gl-series-4-c: .14;
+  --gl-series-5-l: .62;
+  --gl-series-5-c: .12;
+  --gl-series-6-l: .50;
+  --gl-series-6-c: .08;
+  --gl-chan-a: .70;
+  --gl-chan-blend: multiply;
+  --gl-chan-outline-a: .55;
+  --gl-tonal-floor: 3.2;
+  --gl-ok: oklch(.44 .12 150);
+  --gl-warn: oklch(.54 .11 95);
+  --gl-fault: oklch(.57 .22 10);
+  --gl-missed: oklch(.55 .06 300);
+  --gl-chan-r: oklch(.80 .08 28);
+  --gl-chan-g: oklch(.56 .08 140);
+  --gl-chan-b: oklch(.64 .18 250);
+  --gl-label-red: oklch(.56 .15 25);
+  --gl-label-orange: oklch(.56 .13 57);
+  --gl-label-yellow: oklch(.56 .11 95);
+  --gl-label-green: oklch(.56 .15 147);
+  --gl-label-teal: oklch(.56 .09 203);
+  --gl-label-blue: oklch(.56 .15 251);
+  --gl-label-indigo: oklch(.56 .15 275);
+  --gl-label-purple: oklch(.56 .15 322);
+  --gl-label-pink: oklch(.56 .15 356);
+  --gl-label-brown: oklch(.56 .07 60);
+  --gl-label-gray: oklch(.56 .01 286);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-gl-appearance="auto"] {
+    --gl-ground: #f3f5f8;
+    --gl-ink: #141d29;
+    --gl-shadow: #070c13;
+    --gl-live: #d94f00;
+    --gl-dim-a: .62;
+    --gl-dim-glass-a: .70;
+    --gl-rim-a: .50;
+    --gl-rim-hc-a: .62;
+    --gl-sel-rim-a: .20;
+    --gl-catch-a: .70;
+    --gl-seam-a: .32;
+    --gl-float-a: .18;
+    --gl-action-a: 1;
+    --gl-unset-a: .39;
+    --gl-ghost-a: .36;
+    --gl-ring-track-a: .27;
+    --gl-ring-wait-a: .63;
+    --gl-grip-a: .63;
+    --gl-meter-fill-a: .70;
+    --gl-hist-hour-a: .14;
+    --gl-hist-live-a: .70;
+    --gl-sheet-scrim-a: .35;
+    --gl-ink-3-a: .48;
+    --gl-ink-4-a: .33;
+    --gl-fill-1-a: .23;
+    --gl-fill-2-a: .17;
+    --gl-fill-3-a: .12;
+    --gl-fill-4-a: .08;
+    --gl-fill-5-a: .04;
+    --gl-sep-a: .17;
+    --gl-surface-a: .80;
+    --gl-surface-2-a: 0;
+    --gl-elevated-a: 1;
+    --gl-status-tint-a: .10;
+    --gl-brand-tint-a: .12;
+    --gl-brand-wash-a: .22;
+    --gl-accent-text-l: .50;
+    --gl-accent-text-c: .16;
+    --gl-axis-a: .50;
+    --gl-ref-a: .70;
+    --gl-grid-a: .07;
+    --gl-series-2-l: .44;
+    --gl-series-2-c: .13;
+    --gl-series-3-l: .59;
+    --gl-series-3-c: .14;
+    --gl-series-4-l: .60;
+    --gl-series-4-c: .14;
+    --gl-series-5-l: .62;
+    --gl-series-5-c: .12;
+    --gl-series-6-l: .50;
+    --gl-series-6-c: .08;
+    --gl-chan-a: .70;
+    --gl-chan-blend: multiply;
+    --gl-chan-outline-a: .55;
+    --gl-tonal-floor: 3.2;
+    --gl-ok: oklch(.44 .12 150);
+    --gl-warn: oklch(.54 .11 95);
+    --gl-fault: oklch(.57 .22 10);
+    --gl-missed: oklch(.55 .06 300);
+    --gl-chan-r: oklch(.80 .08 28);
+    --gl-chan-g: oklch(.56 .08 140);
+    --gl-chan-b: oklch(.64 .18 250);
+    --gl-label-red: oklch(.56 .15 25);
+    --gl-label-orange: oklch(.56 .13 57);
+    --gl-label-yellow: oklch(.56 .11 95);
+    --gl-label-green: oklch(.56 .15 147);
+    --gl-label-teal: oklch(.56 .09 203);
+    --gl-label-blue: oklch(.56 .15 251);
+    --gl-label-indigo: oklch(.56 .15 275);
+    --gl-label-purple: oklch(.56 .15 322);
+    --gl-label-pink: oklch(.56 .15 356);
+    --gl-label-brown: oklch(.56 .07 60);
+    --gl-label-gray: oklch(.56 .01 286);
+    color-scheme: light;
+  }
+}
+
+/* 6. Increase Contrast (docs/PALETTE.md s5): the differences from each appearance. The hues move
+   (live, the status family, the series, the labels), the neutral ladders step one rung up, the
+   rim and the separator take the high-contrast alpha, the tonal floor is 4.5. The accent does
+   not move: it is a solid fill with a white label here, and #2f6fd0 holds 4.5:1 under it; text in
+   the accent's hue goes through --gl-accent-text. Mirrored on data-gl-contrast="more". */
+@media (prefers-contrast: more) {
+  :root, [data-gl-appearance="dark"] {
+    --gl-live: oklch(.71 .18 41);
+    --gl-dim-a: .62;
+    --gl-dim-glass-a: .85;
+    --gl-rim-a: .50;
+    --gl-ink-3-a: .46;
+    --gl-ink-4-a: .34;
+    --gl-fill-1-a: .22;
+    --gl-fill-2-a: .16;
+    --gl-fill-3-a: .12;
+    --gl-fill-4-a: .08;
+    --gl-fill-5-a: .06;
+    --gl-sep-a: .50;
+    --gl-accent-text-l: .76;
+    --gl-accent-text-c: .12;
+    --gl-axis-a: .55;
+    --gl-ref-a: .80;
+    --gl-grid-a: .10;
+    --gl-series-2-l: .84;
+    --gl-series-2-c: .08;
+    --gl-series-3-l: .75;
+    --gl-series-3-c: .16;
+    --gl-series-4-l: .69;
+    --gl-series-4-c: .13;
+    --gl-series-5-l: .87;
+    --gl-series-5-c: .11;
+    --gl-series-6-l: .68;
+    --gl-series-6-c: .09;
+    --gl-chan-outline-a: 1;
+    --gl-tonal-floor: 4.5;
+    --gl-fault: oklch(.75 .15 10);
+    --gl-missed: oklch(.73 .04 300);
+    --gl-label-red: oklch(.80 .11 25);
+    --gl-label-orange: oklch(.80 .13 57);
+    --gl-label-yellow: oklch(.80 .13 95);
+    --gl-label-green: oklch(.80 .15 147);
+    --gl-label-teal: oklch(.80 .11 203);
+    --gl-label-blue: oklch(.80 .10 251);
+    --gl-label-indigo: oklch(.80 .10 275);
+    --gl-label-purple: oklch(.80 .15 322);
+    --gl-label-pink: oklch(.80 .12 356);
+    --gl-label-brown: oklch(.80 .07 60);
+    --gl-label-gray: oklch(.80 .01 286);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root[data-gl-appearance="light"], [data-gl-appearance="light"] {
+    --gl-live: oklch(.56 .17 41);
+    --gl-dim-a: .75;
+    --gl-dim-glass-a: .80;
+    --gl-rim-a: .62;
+    --gl-ink-3-a: .62;
+    --gl-ink-4-a: .48;
+    --gl-fill-1-a: .33;
+    --gl-fill-2-a: .23;
+    --gl-fill-3-a: .17;
+    --gl-fill-4-a: .12;
+    --gl-fill-5-a: .08;
+    --gl-sep-a: .62;
+    --gl-accent-text-l: .44;
+    --gl-accent-text-c: .16;
+    --gl-axis-a: .60;
+    --gl-ref-a: .80;
+    --gl-grid-a: .10;
+    --gl-series-2-l: .40;
+    --gl-series-2-c: .13;
+    --gl-series-3-l: .54;
+    --gl-series-3-c: .13;
+    --gl-series-4-l: .53;
+    --gl-series-4-c: .13;
+    --gl-series-5-l: .31;
+    --gl-series-5-c: .06;
+    --gl-series-6-l: .46;
+    --gl-series-6-c: .07;
+    --gl-chan-outline-a: 1;
+    --gl-tonal-floor: 4.5;
+    --gl-warn: oklch(.48 .10 75);
+    --gl-fault: oklch(.50 .20 10);
+    --gl-missed: oklch(.48 .06 300);
+    --gl-label-red: oklch(.48 .15 25);
+    --gl-label-orange: oklch(.48 .11 57);
+    --gl-label-yellow: oklch(.48 .09 95);
+    --gl-label-green: oklch(.48 .14 147);
+    --gl-label-teal: oklch(.48 .08 203);
+    --gl-label-blue: oklch(.48 .13 251);
+    --gl-label-indigo: oklch(.48 .15 275);
+    --gl-label-purple: oklch(.48 .15 322);
+    --gl-label-pink: oklch(.48 .15 356);
+    --gl-label-brown: oklch(.48 .07 60);
+    --gl-label-gray: oklch(.48 .01 286);
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: light) {
+  :root[data-gl-appearance="auto"] {
+    --gl-live: oklch(.56 .17 41);
+    --gl-dim-a: .75;
+    --gl-dim-glass-a: .80;
+    --gl-rim-a: .62;
+    --gl-ink-3-a: .62;
+    --gl-ink-4-a: .48;
+    --gl-fill-1-a: .33;
+    --gl-fill-2-a: .23;
+    --gl-fill-3-a: .17;
+    --gl-fill-4-a: .12;
+    --gl-fill-5-a: .08;
+    --gl-sep-a: .62;
+    --gl-accent-text-l: .44;
+    --gl-accent-text-c: .16;
+    --gl-axis-a: .60;
+    --gl-ref-a: .80;
+    --gl-grid-a: .10;
+    --gl-series-2-l: .40;
+    --gl-series-2-c: .13;
+    --gl-series-3-l: .54;
+    --gl-series-3-c: .13;
+    --gl-series-4-l: .53;
+    --gl-series-4-c: .13;
+    --gl-series-5-l: .31;
+    --gl-series-5-c: .06;
+    --gl-series-6-l: .46;
+    --gl-series-6-c: .07;
+    --gl-chan-outline-a: 1;
+    --gl-tonal-floor: 4.5;
+    --gl-warn: oklch(.48 .10 75);
+    --gl-fault: oklch(.50 .20 10);
+    --gl-missed: oklch(.48 .06 300);
+    --gl-label-red: oklch(.48 .15 25);
+    --gl-label-orange: oklch(.48 .11 57);
+    --gl-label-yellow: oklch(.48 .09 95);
+    --gl-label-green: oklch(.48 .14 147);
+    --gl-label-teal: oklch(.48 .08 203);
+    --gl-label-blue: oklch(.48 .13 251);
+    --gl-label-indigo: oklch(.48 .15 275);
+    --gl-label-purple: oklch(.48 .15 322);
+    --gl-label-pink: oklch(.48 .15 356);
+    --gl-label-brown: oklch(.48 .07 60);
+    --gl-label-gray: oklch(.48 .01 286);
+  }
+}
+
+[data-gl-contrast="more"], [data-gl-contrast="more"] [data-gl-appearance="dark"] {
+  --gl-live: oklch(.71 .18 41);
+  --gl-dim-a: .62;
+  --gl-dim-glass-a: .85;
+  --gl-rim-a: .50;
+  --gl-ink-3-a: .46;
+  --gl-ink-4-a: .34;
+  --gl-fill-1-a: .22;
+  --gl-fill-2-a: .16;
+  --gl-fill-3-a: .12;
+  --gl-fill-4-a: .08;
+  --gl-fill-5-a: .06;
+  --gl-sep-a: .50;
+  --gl-accent-text-l: .76;
+  --gl-accent-text-c: .12;
+  --gl-axis-a: .55;
+  --gl-ref-a: .80;
+  --gl-grid-a: .10;
+  --gl-series-2-l: .84;
+  --gl-series-2-c: .08;
+  --gl-series-3-l: .75;
+  --gl-series-3-c: .16;
+  --gl-series-4-l: .69;
+  --gl-series-4-c: .13;
+  --gl-series-5-l: .87;
+  --gl-series-5-c: .11;
+  --gl-series-6-l: .68;
+  --gl-series-6-c: .09;
+  --gl-chan-outline-a: 1;
+  --gl-tonal-floor: 4.5;
+  --gl-fault: oklch(.75 .15 10);
+  --gl-missed: oklch(.73 .04 300);
+  --gl-label-red: oklch(.80 .11 25);
+  --gl-label-orange: oklch(.80 .13 57);
+  --gl-label-yellow: oklch(.80 .13 95);
+  --gl-label-green: oklch(.80 .15 147);
+  --gl-label-teal: oklch(.80 .11 203);
+  --gl-label-blue: oklch(.80 .10 251);
+  --gl-label-indigo: oklch(.80 .10 275);
+  --gl-label-purple: oklch(.80 .15 322);
+  --gl-label-pink: oklch(.80 .12 356);
+  --gl-label-brown: oklch(.80 .07 60);
+  --gl-label-gray: oklch(.80 .01 286);
+}
+
+[data-gl-contrast="more"][data-gl-appearance="light"], [data-gl-contrast="more"] [data-gl-appearance="light"] {
+  --gl-live: oklch(.56 .17 41);
+  --gl-dim-a: .75;
+  --gl-dim-glass-a: .80;
+  --gl-rim-a: .62;
+  --gl-ink-3-a: .62;
+  --gl-ink-4-a: .48;
+  --gl-fill-1-a: .33;
+  --gl-fill-2-a: .23;
+  --gl-fill-3-a: .17;
+  --gl-fill-4-a: .12;
+  --gl-fill-5-a: .08;
+  --gl-sep-a: .62;
+  --gl-accent-text-l: .44;
+  --gl-accent-text-c: .16;
+  --gl-axis-a: .60;
+  --gl-ref-a: .80;
+  --gl-grid-a: .10;
+  --gl-series-2-l: .40;
+  --gl-series-2-c: .13;
+  --gl-series-3-l: .54;
+  --gl-series-3-c: .13;
+  --gl-series-4-l: .53;
+  --gl-series-4-c: .13;
+  --gl-series-5-l: .31;
+  --gl-series-5-c: .06;
+  --gl-series-6-l: .46;
+  --gl-series-6-c: .07;
+  --gl-chan-outline-a: 1;
+  --gl-tonal-floor: 4.5;
+  --gl-warn: oklch(.48 .10 75);
+  --gl-fault: oklch(.50 .20 10);
+  --gl-missed: oklch(.48 .06 300);
+  --gl-label-red: oklch(.48 .15 25);
+  --gl-label-orange: oklch(.48 .11 57);
+  --gl-label-yellow: oklch(.48 .09 95);
+  --gl-label-green: oklch(.48 .14 147);
+  --gl-label-teal: oklch(.48 .08 203);
+  --gl-label-blue: oklch(.48 .13 251);
+  --gl-label-indigo: oklch(.48 .15 275);
+  --gl-label-purple: oklch(.48 .15 322);
+  --gl-label-pink: oklch(.48 .15 356);
+  --gl-label-brown: oklch(.48 .07 60);
+  --gl-label-gray: oklch(.48 .01 286);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-gl-appearance="auto"][data-gl-contrast="more"] {
+    --gl-live: oklch(.56 .17 41);
+    --gl-dim-a: .75;
+    --gl-dim-glass-a: .80;
+    --gl-rim-a: .62;
+    --gl-ink-3-a: .62;
+    --gl-ink-4-a: .48;
+    --gl-fill-1-a: .33;
+    --gl-fill-2-a: .23;
+    --gl-fill-3-a: .17;
+    --gl-fill-4-a: .12;
+    --gl-fill-5-a: .08;
+    --gl-sep-a: .62;
+    --gl-accent-text-l: .44;
+    --gl-accent-text-c: .16;
+    --gl-axis-a: .60;
+    --gl-ref-a: .80;
+    --gl-grid-a: .10;
+    --gl-series-2-l: .40;
+    --gl-series-2-c: .13;
+    --gl-series-3-l: .54;
+    --gl-series-3-c: .13;
+    --gl-series-4-l: .53;
+    --gl-series-4-c: .13;
+    --gl-series-5-l: .31;
+    --gl-series-5-c: .06;
+    --gl-series-6-l: .46;
+    --gl-series-6-c: .07;
+    --gl-chan-outline-a: 1;
+    --gl-tonal-floor: 4.5;
+    --gl-warn: oklch(.48 .10 75);
+    --gl-fault: oklch(.50 .20 10);
+    --gl-missed: oklch(.48 .06 300);
+    --gl-label-red: oklch(.48 .15 25);
+    --gl-label-orange: oklch(.48 .11 57);
+    --gl-label-yellow: oklch(.48 .09 95);
+    --gl-label-green: oklch(.48 .14 147);
+    --gl-label-teal: oklch(.48 .08 203);
+    --gl-label-blue: oklch(.48 .13 251);
+    --gl-label-indigo: oklch(.48 .15 275);
+    --gl-label-purple: oklch(.48 .15 322);
+    --gl-label-pink: oklch(.48 .15 356);
+    --gl-label-brown: oklch(.48 .07 60);
+    --gl-label-gray: oklch(.48 .01 286);
+  }
+}
+
+/* 7. Print: the light appearance on paper (glass.css drops the glass and the halos). */
+@media print {
+  :root {
+    --gl-ground: #f3f5f8;
+    --gl-ink: #141d29;
+    --gl-shadow: #070c13;
+    --gl-live: #d94f00;
+    --gl-dim-a: .62;
+    --gl-dim-glass-a: .70;
+    --gl-rim-a: .50;
+    --gl-rim-hc-a: .62;
+    --gl-sel-rim-a: .20;
+    --gl-catch-a: .70;
+    --gl-seam-a: .32;
+    --gl-float-a: .18;
+    --gl-action-a: 1;
+    --gl-unset-a: .39;
+    --gl-ghost-a: .36;
+    --gl-ring-track-a: .27;
+    --gl-ring-wait-a: .63;
+    --gl-grip-a: .63;
+    --gl-meter-fill-a: .70;
+    --gl-hist-hour-a: .14;
+    --gl-hist-live-a: .70;
+    --gl-sheet-scrim-a: .35;
+    --gl-ink-3-a: .48;
+    --gl-ink-4-a: .33;
+    --gl-fill-1-a: .23;
+    --gl-fill-2-a: .17;
+    --gl-fill-3-a: .12;
+    --gl-fill-4-a: .08;
+    --gl-fill-5-a: .04;
+    --gl-sep-a: .17;
+    --gl-surface-a: .80;
+    --gl-surface-2-a: 0;
+    --gl-elevated-a: 1;
+    --gl-status-tint-a: .10;
+    --gl-brand-tint-a: .12;
+    --gl-brand-wash-a: .22;
+    --gl-accent-text-l: .50;
+    --gl-accent-text-c: .16;
+    --gl-axis-a: .50;
+    --gl-ref-a: .70;
+    --gl-grid-a: .07;
+    --gl-series-2-l: .44;
+    --gl-series-2-c: .13;
+    --gl-series-3-l: .59;
+    --gl-series-3-c: .14;
+    --gl-series-4-l: .60;
+    --gl-series-4-c: .14;
+    --gl-series-5-l: .62;
+    --gl-series-5-c: .12;
+    --gl-series-6-l: .50;
+    --gl-series-6-c: .08;
+    --gl-chan-a: .70;
+    --gl-chan-blend: multiply;
+    --gl-chan-outline-a: .55;
+    --gl-tonal-floor: 3.2;
+    --gl-ok: oklch(.44 .12 150);
+    --gl-warn: oklch(.54 .11 95);
+    --gl-fault: oklch(.57 .22 10);
+    --gl-missed: oklch(.55 .06 300);
+    --gl-chan-r: oklch(.80 .08 28);
+    --gl-chan-g: oklch(.56 .08 140);
+    --gl-chan-b: oklch(.64 .18 250);
+    --gl-label-red: oklch(.56 .15 25);
+    --gl-label-orange: oklch(.56 .13 57);
+    --gl-label-yellow: oklch(.56 .11 95);
+    --gl-label-green: oklch(.56 .15 147);
+    --gl-label-teal: oklch(.56 .09 203);
+    --gl-label-blue: oklch(.56 .15 251);
+    --gl-label-indigo: oklch(.56 .15 275);
+    --gl-label-purple: oklch(.56 .15 322);
+    --gl-label-pink: oklch(.56 .15 356);
+    --gl-label-brown: oklch(.56 .07 60);
+    --gl-label-gray: oklch(.56 .01 286);
+    color-scheme: light;
+  }
+}
+
+:root, [data-gl-appearance] {
+  /* @tier derived */
+  /* derived colours: declared on every element with the attribute, so a region recomputes */
+  --gl-glass-fill: color-mix(in srgb, var(--gl-ground) calc(var(--gl-glass-a) * 100%), transparent);   /* the material's fill, at the density */
+  --gl-glass-fill-heavy: color-mix(in srgb, var(--gl-ground) 88%, transparent); /* the thickened fill: a full-height panel or sheet (.gl-heavy) */
+  --gl-tip-fill: color-mix(in srgb, var(--gl-ground) 90%, transparent);     /* the tooltip's fill: heavier than .gl-heavy; the floor under which axis labels read through (.gl-tip) */
+  --gl-rim: color-mix(in srgb, var(--gl-ink) calc(var(--gl-rim-a) * 100%), transparent);         /* the 1px edge of a floating surface */
+  --gl-rim-hc: color-mix(in srgb, var(--gl-ink) calc(var(--gl-rim-hc-a) * 100%), transparent);   /* the rim under Increase Contrast */
+  --gl-spec: color-mix(in srgb, var(--gl-catch) calc(var(--gl-catch-a) * 100%), transparent);            /* the 1px top highlight: the fixed near-white catch, never the ink (D1) */
+  --gl-sel: color-mix(in srgb, var(--gl-ink) 14%, transparent);             /* the selected row's fill */
+  --gl-sel-rim: color-mix(in srgb, var(--gl-ink) calc(var(--gl-sel-rim-a) * 100%), transparent); /* the selected row's rim */
+  --gl-sel-solid: color-mix(in srgb, var(--gl-ink) 14%, var(--gl-ground));  /* the same row when nothing is behind it */
+  --gl-dim: color-mix(in srgb, var(--gl-ink) calc(var(--gl-dim-a) * 100%), transparent);         /* secondary text on the ground */
+  --gl-dim-glass: color-mix(in srgb, var(--gl-ink) calc(var(--gl-dim-glass-a) * 100%), transparent); /* secondary text on glass (glass hosts re-declare --gl-dim to this) */
+  --gl-seam-dark: color-mix(in srgb, var(--gl-shadow) calc(var(--gl-seam-a) * 100%), transparent);        /* structure seam: the dark line */
+  --gl-seam-light: color-mix(in srgb, var(--gl-catch) calc(var(--gl-catch-a) * 100% - 1%), transparent);         /* structure seam: the light catch */
+  --gl-seam-dark-in: color-mix(in srgb, var(--gl-shadow) calc(var(--gl-seam-a) * 100% - 20%), transparent); /* inner seam: the dark line */
+  --gl-seam-light-in: color-mix(in srgb, var(--gl-catch) calc(var(--gl-catch-a) * 100% - 5%), transparent);      /* inner seam: the light catch */
+
+  /* the neutral ladders (the palette round): one ink at four strengths for text, five for fills,
+     as Apple's label / secondary / tertiary / quaternary and systemFill .. quinary (docs/PALETTE.md s1.3) */
+  --gl-ink-3: color-mix(in srgb, var(--gl-ink) calc(var(--gl-ink-3-a) * 100%), transparent);     /* tertiary text: a placeholder, a disabled label, a caption under a caption; 3:1 */
+  --gl-ink-4: color-mix(in srgb, var(--gl-ink) calc(var(--gl-ink-4-a) * 100%), transparent);     /* quaternary: decorative only (a rule in text, a watermark); never words a reader needs */
+  --gl-placeholder: var(--gl-ink-3);                                                             /* a field's placeholder */
+  --gl-disabled-ink: var(--gl-ink-3);                                                            /* a disabled control's label */
+  --gl-fill-1: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-1-a) * 100%), transparent);   /* a slider or ring track, thin shapes */
+  --gl-fill-2: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-2-a) * 100%), transparent);   /* medium shapes: a switch that is off, a chip */
+  --gl-fill-3: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-3-a) * 100%), transparent);   /* large shapes: a well, a segmented track */
+  --gl-fill-4: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-4-a) * 100%), transparent);   /* large areas with complex content */
+  --gl-fill-5: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-5-a) * 100%), transparent);   /* a form's background on the Mac */
+  --gl-separator: color-mix(in srgb, var(--gl-ink) calc(var(--gl-sep-a) * 100%), transparent);   /* a rule between rows that lets content through */
+  --gl-separator-opaque: color-mix(in srgb, var(--gl-ink) calc(var(--gl-sep-a) * 100%), var(--gl-ground)); /* the same rule where nothing may show through (and its Reduce Transparency twin) */
+
+  /* surfaces: the levels of a grouped page when glass is off (an iPad Settings page, a sheet's backing) */
+  --gl-surface: color-mix(in srgb, var(--gl-catch) calc(var(--gl-surface-a) * 100%), var(--gl-ground));     /* a card, a grouped cell, a sidebar's ground under Reduce Transparency */
+  --gl-surface-2: color-mix(in srgb, var(--gl-catch) calc(var(--gl-surface-2-a) * 100%), var(--gl-ground)); /* content inside a card; on light the page grey again */
+  --gl-elevated: color-mix(in srgb, var(--gl-catch) calc(var(--gl-elevated-a) * 100%), var(--gl-ground));   /* a sheet or popover's backing when glass is off: iPad's elevated level */
+
+  /* endings: a surface that ends by its fill, not by a line */
+  --gl-strip-a: .35;      /* the tint of a strip or a pill: the ground's alpha over the blur */
+  --gl-strip-fill: color-mix(in srgb, var(--gl-ground) calc(var(--gl-strip-a) * 100%), transparent);      /* the strip and the pill: tinted glass, a step darker */
+  --gl-strip-fill-light: color-mix(in srgb, var(--gl-ink) calc(var(--gl-strip-a) * 30%), transparent);    /* the same, a step lighter (.gl-light) */
+  --gl-pill-rim: color-mix(in srgb, var(--gl-ink) 18%, transparent);        /* the pill's 1px rim */
+  --gl-pill-spec: color-mix(in srgb, var(--gl-catch) calc(var(--gl-catch-a) * 100% - 4%), transparent);  /* the pill's 1px top highlight */
+  --gl-open-fill: color-mix(in srgb, var(--gl-ink) 10%, transparent);       /* the open row in a list of names: a wash, not glass */
+  --gl-open-rim: color-mix(in srgb, var(--gl-ink) 18%, transparent);        /* the open row's 1px rim */
+
+  /* shadows */
+  --gl-shadow-float: 0 14px 28px color-mix(in srgb, var(--gl-shadow) calc(var(--gl-float-a) * 100%), transparent);
+  --gl-shadow-pill: 0 10px 24px color-mix(in srgb, var(--gl-shadow) calc(var(--gl-float-a) * 100% - 10%), transparent);  /* a floating pill: lower and softer than a menu */
+
+  /* @tier control */
+  /* controls: the three the system owns -- the one action, the secondary button, the field */
+  --gl-action-fill: color-mix(in srgb, var(--gl-accent) calc(var(--gl-action-a) * 100%), transparent);  /* .gl-action's fill */
+  --gl-action-rim: color-mix(in srgb, var(--gl-ink) 22%, transparent);      /* .gl-action's 1px rim */
+  --gl-action-spec: color-mix(in srgb, var(--gl-catch) calc(var(--gl-catch-a) * 100% + 4%), transparent);  /* .gl-action's 1px top highlight */
+  --gl-on-accent: #fff;   /* the label on the accent: the one literal below the inputs, because no derivation of the ink is guaranteed to read on every accent. A host overrides it with its accent. */
+  --gl-btn-fill: var(--gl-open-fill);   /* .gl-btn, a secondary action: the open row's wash, as a button */
+  --gl-btn-rim: var(--gl-open-rim);     /* .gl-btn's 1px rim */
+  --gl-btn-off: color-mix(in srgb, var(--gl-ink) 5%, transparent);          /* .gl-btn disabled: a fainter wash, no rim */
+  --gl-field-fill: color-mix(in srgb, var(--gl-ink) 10.5%, transparent);    /* .gl-field, the icy input: an ink wash, no stroke */
+  --gl-field-spec: color-mix(in srgb, var(--gl-catch) calc(var(--gl-catch-a) * 100%), transparent);      /* .gl-field's 1px top highlight */
+  --gl-accent-text: oklch(from var(--gl-accent) var(--gl-accent-text-l) min(c, var(--gl-accent-text-c)) h); /* the accent as text: a link, a selected tab's label, an accent glyph; 4.5:1 on the ground. The accent itself stays a fill and a mark */
+  --gl-link: var(--gl-accent-text);                                          /* a link */
+  --gl-accent-well: color-mix(in srgb, var(--gl-accent) 18%, var(--gl-ground)); /* a drop target's fill, under a dashed accent rim; opaque */
+  --gl-destructive: var(--gl-fault);                                         /* Apple's destructive role: the label and glyph of a NEUTRAL button (.gl-btn); never a filled button, so fault is never an action fill (law 4) */
+
+  /* @tier chart */
+  /* chart tokens: data colour in the content layer. Series are never the accent or
+     the live colour, and are opaque so a canvas can use the resolved value. Series 1
+     is the ink; 2..6 are the accent's hue turned by a fixed offset, at chroma .13 and
+     lightness .66-.82 (OKLCH), every one 3:1 or better against the brightest ground
+     stop (#253548), a hue 30 degrees or more from the accent and the live colour,
+     and separated from the other series by dE_ok 8 under each of three colour-vision
+     deficiencies (test_tokens.py states the method and prints the numbers).
+     The lightness and chroma are appearance numbers (--gl-series-N-l, -c): the light
+     appearance keeps each series' hue and moves L and C into .44-.62, Apple's way of
+     keeping a hue readable on white, 3:1 on the light ground and on white; Increase
+     Contrast holds 4.5:1 (docs/PALETTE.md s1.3). Relative colour syntax: Chrome 131,
+     Safari 18, Firefox 133. */
+  --gl-series-1: var(--gl-ink);                                       /* the first series: the ink, the single-series default */
+  --gl-series-2: oklch(from var(--gl-accent) var(--gl-series-2-l) var(--gl-series-2-c) calc(h + 30));   /* categorical identity, never magnitude */
+  --gl-series-3: oklch(from var(--gl-accent) var(--gl-series-3-l) var(--gl-series-3-c) calc(h + 60));
+  --gl-series-4: oklch(from var(--gl-accent) var(--gl-series-4-l) var(--gl-series-4-c) calc(h + 225));
+  --gl-series-5: oklch(from var(--gl-accent) var(--gl-series-5-l) var(--gl-series-5-c) calc(h + 270));
+  --gl-series-6: oklch(from var(--gl-accent) var(--gl-series-6-l) var(--gl-series-6-c) calc(h + 300));
+  --gl-ref: color-mix(in srgb, var(--gl-ink) calc(var(--gl-ref-a) * 100%), var(--gl-ground));  /* reference lines (target, break-even): neutral, told apart by dash and a direct label, not by hue */
+  --gl-grid: color-mix(in srgb, var(--gl-ink) calc(var(--gl-grid-a) * 100%), var(--gl-ground)); /* grid lines: faint is correct, they are decorative */
+  --gl-axis: color-mix(in srgb, var(--gl-ink) calc(var(--gl-axis-a) * 100%), var(--gl-ground)); /* the zero line and the axis: a step above the grid, 3:1 in every cell (light needs .50: at .45 it measured 2.80) */
+
+  /* @tier state */
+  /* the saltROOM round's colours: focus, hover, on, unset, busy (GAPS.md gap 2) */
+  --gl-focus: color-mix(in srgb, var(--gl-ink) 85%, transparent);           /* keyboard focus: a 2px ring around the element's own shape, never a fill */
+  --gl-focus-hc: var(--gl-ink);                                             /* the focus ring under Increase Contrast */
+  --gl-hover: color-mix(in srgb, var(--gl-ink) 8%, transparent);            /* a control under the pointer inside glass (.gl-group-item) */
+  --gl-hover-row: color-mix(in srgb, var(--gl-ink) 5%, transparent);        /* a row of a sidebar under the pointer (.gl-side): the plate's shape at 5% */
+  --gl-sel-quiet: color-mix(in srgb, var(--gl-ink) 8%, transparent);        /* the selection when its window is not key or its pane not focused (AppKit's unemphasized selection): still ink, never the accent */
+  --gl-on-fill: var(--gl-open-fill);                                        /* "on": a pressed toggle row, the chosen segment. The open wash, never the accent (law 4) */
+  --gl-on-rim: var(--gl-open-rim);
+  --gl-unset: color-mix(in srgb, var(--gl-ink) calc(var(--gl-unset-a) * 100%), transparent);           /* a mark that can be set and is not: a star, a flag, a heart */
+  --gl-ring-track: color-mix(in srgb, var(--gl-ink) calc(var(--gl-ring-track-a) * 100%), transparent);      /* busy: the progress ring's track; idle is the bare track */
+  --gl-ring-wait: color-mix(in srgb, var(--gl-ink) calc(var(--gl-ring-wait-a) * 100%), transparent);       /* busy, waiting: the track dotted at this */
+  --gl-unset-hc: color-mix(in srgb, var(--gl-ink) 70%, transparent);        /* --gl-unset under Increase Contrast: 70% holds 3:1 on the light band floor (3.44), 60% did not (2.84) */
+
+  /* @tier status */
+  /* status tints: the status over the ground, opaque, ONLY as a chip's background (.gl-chip), behind
+     the status glyph. Not for panels or banners: a status message is a status line (.gl-status-line:
+     glyph and word in the status colour, the message in the ink, no box). The words on a tint are
+     always the ink (a status colour as text on a light tint fails: warn reads 4.09). Never a wash. */
+  --gl-ok-tint: color-mix(in srgb, var(--gl-ok) calc(var(--gl-status-tint-a) * 100%), var(--gl-ground));   /* behind the check glyph */
+  --gl-warn-tint: color-mix(in srgb, var(--gl-warn) calc(var(--gl-status-tint-a) * 100%), var(--gl-ground));   /* behind the triangle glyph */
+  --gl-fault-tint: color-mix(in srgb, var(--gl-fault) calc(var(--gl-status-tint-a) * 100%), var(--gl-ground));   /* behind the cross glyph */
+  --gl-missed-tint: color-mix(in srgb, var(--gl-missed) calc(var(--gl-status-tint-a) * 100%), var(--gl-ground));   /* behind the hollow circle glyph */
+
+  /* @tier label */
+  --gl-find: color-mix(in srgb, var(--gl-label-yellow) 45%, transparent);   /* the find highlight (macOS): the yellow label under the match, the words in the ink */
+
+  /* @tier content */
+  /* marks on or around content, and the washes content sits in */
+  --gl-edge-top: color-mix(in srgb, var(--gl-ground) 78%, transparent);    /* the scroll edge at the top of the window */
+  --gl-edge-mid: color-mix(in srgb, var(--gl-ground) 40%, transparent);    /* the scroll edge at 60% of its height; nothing at the bottom */
+  --gl-sel-side: color-mix(in srgb, var(--gl-ink) 15%, transparent);       /* the selected sidebar row: frost with no rim, so one step more than --gl-sel */
+  --gl-grip-ink: color-mix(in srgb, var(--gl-ink) calc(var(--gl-grip-a) * 100%), transparent);       /* the grip under the pointer; the ink while dragging */
+  --gl-halo: color-mix(in srgb, var(--gl-shadow) 70%, transparent);        /* the halo that lifts an ink mark off a white picture */
+  --gl-halo-soft: color-mix(in srgb, var(--gl-shadow) 38%, transparent);
+  --gl-vf-halo: color-mix(in srgb, var(--gl-shadow) 80%, transparent);     /* the viewfinder corners' halo */
+  --gl-nav-halo: color-mix(in srgb, var(--gl-shadow) 60%, transparent);    /* the navigator rectangle's dark line on both sides */
+  --gl-mark-scrim: color-mix(in srgb, var(--gl-shadow) 42%, transparent);  /* the corner scrim under tools on a picture */
+  --gl-mark-wash: color-mix(in srgb, var(--gl-shadow) 34%, transparent);   /* a tool on a picture under the pointer */
+  --gl-ghost-line: color-mix(in srgb, var(--gl-ink) calc(var(--gl-ghost-a) * 100%), transparent);     /* a thing that is not here: the real tile's outline, no fill (.gl-ghost) */
+  --gl-ghost-hover: color-mix(in srgb, var(--gl-ink) 6%, transparent);
+  --gl-well: color-mix(in srgb, var(--gl-ink) 5%, transparent);            /* a sunken readout (.gl-well): a wash, not glass */
+  --gl-well-rim: color-mix(in srgb, var(--gl-ink) 10%, transparent);
+  --gl-plot: color-mix(in srgb, var(--gl-ink) 4%, transparent);            /* the wash under a chart or a thumbnail (.gl-plot): where the picture or the bars sit */
+  --gl-meter-fill: color-mix(in srgb, var(--gl-series-1) calc(var(--gl-meter-fill-a) * 100%), transparent); /* a level meter's fill (.gl-meter-fill): data, never a status colour */
+  --gl-hist-hour: color-mix(in srgb, var(--gl-ink) calc(var(--gl-hist-hour-a) * 100%), transparent); /* a level histogram's long layer: where the level sat over the last hour */
+  --gl-hist-live: color-mix(in srgb, var(--gl-series-2) calc(var(--gl-hist-live-a) * 100%), transparent); /* a level histogram's live layer: where it sits now, moving with the signal */
+  --gl-sheet-scrim: color-mix(in srgb, var(--gl-shadow) calc(var(--gl-sheet-scrim-a) * 100%), transparent); /* the scrim under a consent sheet (.gl-scrim) */
+
+  /* @tier slot */
+  /* slots: colours an app fills for itself. saltGlass declares each one with a contract, and the app
+     writes data, not logic: a scope, a fallback (the value when the slot is unfilled or the fill fails),
+     a floor against a surface, whether the app must supply each appearance, the tool that guarantees
+     the floor, and the jobs the slot may never take. An unfilled cell is the fallback, never the dark
+     value. glass.css's [data-gl-slot] rules pick a cell per appearance (docs/PALETTE.md s3). Tonal ink,
+     from Analog Grain, is the template: a per-picture colour the server measures. */
+  --gl-tonal: var(--gl-ink);  /* tonal ink: one colour per picture, for marks on or around that picture. The host's server measures it (tonal.py) and the page sets it per element; the ink until measured [slot scope=element fallback=--gl-ink floor=--gl-tonal-floor against=--gl-ground per_appearance=yes measured_by=tonal.py never=status,action,focus,selection] */
+  --gl-brand: var(--gl-ink);  /* the app's brand: identity in the content layer (a header band, empty-state art, onboarding). Unset it is the ink, and the chrome stays monochrome. Becomes the accent only when tools/check_brand.py --as-accent passes [slot scope=region fallback=--gl-ink floor=3.0 against=--gl-ground per_appearance=yes measured_by=tools/check_brand.py never=status,live,series,focus,selection,action] */
+  --gl-brand-text: oklch(from var(--gl-brand) var(--gl-accent-text-l) min(c, var(--gl-accent-text-c)) h); /* the brand as words (a wordmark): its hue at the accent text's lightness, 4.5:1 */
+  --gl-brand-tint: color-mix(in srgb, var(--gl-brand) calc(var(--gl-brand-tint-a) * 100%), var(--gl-ground)); /* a brand band: opaque, so it needs no transparency twin; the ink, focus and selection read on it */
+  --gl-brand-wash: color-mix(in srgb, var(--gl-brand) calc(var(--gl-brand-wash-a) * 100%), transparent);     /* the brand as a wash in the content layer under glass bars; its Reduce Transparency twin is the tint */
+  --gl-on-brand: var(--gl-ink);  /* the label on a solid brand fill; check_brand.py names the one that reads, and a host sets it */
+}
 /* saltglass — glass.css
    The materials. Each class is one material, and its comment says WHERE it may
    be used. There is no literal colour, radius or duration in this file: every
@@ -1186,6 +2225,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   filter: blur(var(--gl-art-blur)) saturate(var(--gl-art-sat));
   opacity: 0; transform: scale(var(--gl-drift));
   transition: opacity var(--gl-fade) var(--gl-ease), transform var(--gl-fade) var(--gl-ease);
+  will-change: transform;   /* its own layer, or WebKit repaints the 64px blur on every scroll frame: MEASURED in saltROOM, scroll p50 124 -> 17 ms (cherry-picked from proposal/virtual-grid, GAPS.md R8) */
 }
 .gl-ground img.on { opacity: 1; transform: scale(1); }
 .gl-ground[data-gl-drift="off"] img { transform: none; transition: opacity var(--gl-fade) linear; }
@@ -1196,6 +2236,15 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 }
 
 
+/* [data-gl-appearance] — a region in another appearance: a light sidebar inside a
+   dark page, a dark panel inside a light one. tokens.css recomputes every token
+   on the element; this re-inks its text, because `color` inherits as a computed
+   value and would otherwise keep the page's ink (white text on a light panel,
+   MEASURED in WebKit building demo/light.html).
+   WHERE: on any element that carries the attribute, the root included. */
+[data-gl-appearance] { color: var(--gl-ink); }
+
+
 /* .gl-glass — a floating surface: a menu, a dialog, a popover, a floating shelf.
    WHERE: something that floats over the content with the ground visible around
    it. Never a pane, never a row, never a card set into a pane. The host element
@@ -1204,19 +2253,19 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
    highlight on ::after. The host gives the radius; the pseudo-elements inherit
    it. Position is set with :where() so a host's own position (absolute, fixed)
    wins regardless of order. */
-.gl-glass {
+.gl-glass, .gl-tabbar {
   isolation: isolate; background: transparent;
   box-shadow: var(--gl-shadow-float);
   --gl-dim: var(--gl-dim-glass);
 }
 :where(.gl-glass) { position: relative; z-index: 2; }
-.gl-glass::before {
+.gl-glass::before, .gl-tabbar::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
   background: var(--gl-glass-fill);
   -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
   backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
 }
-.gl-glass::after {
+.gl-glass::after, .gl-tabbar::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 1px var(--gl-rim), inset 0 1px 0 var(--gl-spec);
 }
@@ -1231,6 +2280,50 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
    exactly as .gl-glass does. The host keeps its own slide (transform only) and
    may limit the rim to the panel's inner edge on ::after. */
 .gl-glass.gl-heavy::before { background: var(--gl-glass-fill-heavy); }
+/* .gl-sheet (a <dialog> in the top layer, below) is the same glass, drawn on the
+   dialog itself: behind a top-layer box the ::before's backdrop filter samples
+   nothing, so the page showed through sharp and the fill thin (saltSES in
+   WKWebView, 2026-11-01). Its twins are with the others. */
+.gl-sheet.gl-glass { isolation: auto; background: var(--gl-glass-fill);
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat)); backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat)); }
+.gl-sheet.gl-glass.gl-heavy { background: var(--gl-glass-fill-heavy); }
+.gl-sheet.gl-glass::before { content: none; }
+
+
+/* .gl-tip -- the tooltip: the one transient surface licensed over data.
+   Heavy glass: the ground at 90% (--gl-tip-fill) over the same blur, the same
+   rim and highlight, the menu radius. 0.9 is the floor, not a taste: the cafe
+   page's 0.8 tooltip let axis labels read through three lines. Described
+   honestly it is a solid with a rim; glass is the name of the family it
+   belongs to, not a claim that the page shows through.
+   WHERE: over a chart or a table cell, one at a time. It counts with the menus
+   under law 1 (one filter). Never glass on glass: it is not placed on a bar or a
+   pill. The host positions it (absolute; the :where() default yields), sets
+   role="tooltip" and ties it to its mark with aria-describedby.
+   BEHAVIOUR (the host's script; the class only draws): it opens on hover or on
+   focus, it PINS on tap or click (the host sets data-pinned, which only thickens
+   the rim to --gl-rim-hc so a pinned tip reads as held), Escape or a click
+   elsewhere unpins, and nothing closes it on a timer. Reachable by keyboard:
+   the marks are focusable and arrow keys move between them. */
+.gl-tip {
+  isolation: isolate; background: transparent;
+  border-radius: var(--gl-r-lg); padding: .5em .75em;
+  box-shadow: var(--gl-shadow-float);
+  color: var(--gl-ink);
+  --gl-dim: var(--gl-dim-glass);
+}
+:where(.gl-tip) { position: absolute; z-index: 3; }
+.gl-tip::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: var(--gl-tip-fill);
+  -webkit-backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+  backdrop-filter: blur(var(--gl-blur)) saturate(var(--gl-sat));
+}
+.gl-tip::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--gl-rim), inset 0 1px 0 var(--gl-spec);
+}
+.gl-tip[data-pinned]::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc), inset 0 1px 0 var(--gl-spec); }
 
 
 /* .gl-glass-bar — edge-to-edge chrome: the header bar and the footer bar.
@@ -1348,6 +2441,35 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   box-shadow: inset 0 0 0 1px var(--gl-pill-rim), inset 0 1px 0 var(--gl-pill-spec);
 }
 
+/* .gl-tabbar — the floating tab bar of a phone: a glass capsule with a tab in each
+   cell, the iOS 26 tab bar. The material is .gl-glass's (fill and blur on ::before,
+   rim and highlight on ::after, the floating shadow) at the pill radius. It is as
+   wide as its tabs, --gl-tab-cell each, and centred: never stretched to the screen,
+   the way the system's own bar hugs its items. Each tab is a .gl-tab: glyph over
+   label, the label dim; the current one (aria-current="page") carries the open
+   row's wash as a pill --gl-tab-sel-h high, and its label goes to ink. The pill is
+   a wash, not glass, so the bar is one filter however many tabs it holds.
+   SHARED BASE (2026-10-24): the tab bar and .gl-glass.gl-group are one floating
+   capsule -- .gl-glass's material and its four twins (the selectors name both),
+   the pill radius, inline-flex, items with no wash of their own. They differ in
+   size (--gl-tab-* against --gl-group-*), place (fixed at the bottom of a phone
+   against inline in a window with no bar) and what an item's state means: the
+   current tab is where you are (the open wash), a group item is a control
+   (hover --gl-hover, on --gl-sel).
+   WHERE: one per page, at a phone width, fixed --gl-bar-inset above the bottom
+   of the viewport: inside the home indicator's inset from the Home Screen, above
+   Safari's own toolbar in a browser tab, with no safe-area sum. The list
+   scrolls under it; the scroller is padded by --gl-tab-h + --gl-bar-inset. For
+   navigation only: an action is never a tab. Counts with the bars under law 1.
+   The host gives the glyphs, the type and any badge. */
+.gl-tabbar { height: var(--gl-tab-h); box-sizing: border-box; padding: calc((var(--gl-tab-h) - var(--gl-tab-sel-h)) / 2); color: var(--gl-ink); }
+:where(.gl-tabbar) { position: fixed; z-index: 2; left: 50%; transform: translateX(-50%); bottom: var(--gl-bar-inset); }
+.gl-tab {
+  position: relative; flex: none; width: var(--gl-tab-cell); height: var(--gl-tab-sel-h); box-sizing: border-box;
+  display: grid; place-content: center; justify-items: center; gap: 2px; color: var(--gl-dim);
+}
+.gl-tab[aria-current] { background: var(--gl-open-fill); color: var(--gl-ink); }
+
 /* .gl-open — the open item in a list of names: a collection, a folder, a tab.
    An ink wash at 10% with a 1px rim at 18%, the pill radius. It is a wash, not
    glass: no backdrop filter, so a list may hold one on every open group where
@@ -1411,8 +2533,9 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 /* .gl-field — the icy input: a search field, a select, a text input. An ink wash
    at 10.5%, no stroke, a 1px top highlight; ink text, dim placeholder. The host
    gives the radius (the pill for a search field in a bar, a small radius for an
-   input in a form) and the height. Focus adds a 1px ring at --gl-rim inside the
-   wash and takes the outline, so the ring is the focus indicator.
+   input in a form) and the height. Focus is the system's focus ring (--gl-focus,
+   below), the same ring every control takes; until 2026-10-24 it was a 1px ring
+   at --gl-rim inside the wash (DESIGN.md s3, Changes).
    WHERE: every field. A field is never glass: a form of fields cannot carry a
    filter each, and a field reads by what is typed in it, not by what is behind. */
 .gl-field {
@@ -1421,7 +2544,387 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   color: var(--gl-ink);
 }
 .gl-field::placeholder { color: var(--gl-dim); }
-.gl-field:focus-visible { outline: 0; box-shadow: inset 0 1px 0 var(--gl-field-spec), inset 0 0 0 1px var(--gl-rim); }
+.gl-field:focus-visible { outline: var(--gl-focus-w) solid var(--gl-focus); outline-offset: var(--gl-focus-off); }
+
+
+/* ---- the saltROOM round (2026-10-24) -------------------------------------
+   Patterns AJ settled in saltROOM's design review (its DECISIONS 91-112), brought
+   back here. DESIGN.md s5 "The saltROOM patterns" says for each one what it is,
+   where it goes and where not, the rule behind it and the evidence. Every value
+   is a token; the twins for each are in the four blocks below, in the same order. */
+
+/* focus -- keyboard focus is a ring around the element's own shape, never a fill,
+   so the cursor and the selection differ at a glance; a selected and focused thing
+   carries both. Every control the system owns takes it; a host gives its own
+   controls .gl-focus. A row plate draws the same ring as a spread on its plate
+   (box-shadow: 0 0 0 var(--gl-focus-w) var(--gl-focus)), DESIGN.md s5. */
+:is(.gl-btn, .gl-action, .gl-group-item, .gl-seg-item, .gl-tab, .gl-ghost, .gl-tools button, .gl-focus):focus-visible {
+  outline: var(--gl-focus-w) solid var(--gl-focus); outline-offset: var(--gl-focus-off);
+}
+
+/* .gl-scroll-edge -- the top of a scrolling column that has no bar: the ground
+   fading out (78% at the top, 40% at 60%, nothing at the bottom), so the content
+   goes quiet under the row of floating controls instead of under a slab.
+   Not glass: no backdrop filter, so it costs the scroll nothing and does not count
+   under law 1. Its own compositing layer (will-change), MEASURED in WebKit: without
+   it the fling's p95 frame was 27 ms, with it 19 ms.
+   WHERE: over a scrolling column whose controls float in a .gl-group instead of a
+   bar; only over the column that scrolls. The host positions it (left and right to
+   the column) and sets --gl-edge-bar to the height of the row it protects; the
+   fade adds --gl-edge-fade below that. */
+.gl-scroll-edge {
+  pointer-events: none; will-change: transform;
+  height: calc(var(--gl-edge-bar, 0px) + var(--gl-edge-fade));
+  background: linear-gradient(to bottom, var(--gl-edge-top) 0%, var(--gl-edge-mid) 60%, transparent 100%);
+}
+:where(.gl-scroll-edge) { position: fixed; top: 0; left: 0; right: 0; z-index: 3; }
+
+/* .gl-group -- the floating control group: ONE glass capsule holding several
+   controls, a modifier on .gl-glass. The controls inside carry no wash of their
+   own (.gl-group-item: hover --gl-hover, on --gl-sel), separated by inner seams
+   (.gl-group-sep). One filter for the whole toolbar, which is how macOS 26 floats
+   its toolbar, and law 1 is kept: the capsule counts with the bars.
+   WHERE: the controls of a window that has no bar (with .gl-scroll-edge over the
+   column that scrolls). Not a container for the one action (it stays .gl-action,
+   on its own); not over a list's end (that is a .gl-pill). Anything whose text
+   changes sits in a .gl-group-slot of fixed width, so the capsule never changes
+   width under the hand. The host gives the type and each item's padding. */
+.gl-glass.gl-group, .gl-tabbar { display: inline-flex; align-items: center; border-radius: var(--gl-r-pill); }   /* the shared capsule (see .gl-tabbar) */
+.gl-group-item, .gl-tab { appearance: none; -webkit-appearance: none; border: 0; background: transparent; border-radius: var(--gl-r-pill); cursor: pointer; }
+.gl-glass.gl-group { height: var(--gl-group-h); padding: 0 var(--gl-group-pad); }
+.gl-group-item {
+  color: var(--gl-ink); height: var(--gl-group-item-h);
+  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+}
+.gl-group-item:hover { background: var(--gl-hover); }
+.gl-group-item[aria-pressed="true"], .gl-group-item.gl-on { background: var(--gl-sel); }
+.gl-group-slot { min-width: var(--gl-group-item-h); }
+.gl-group-sep { flex: none; width: 1px; height: var(--gl-icon); background: var(--gl-seam-light); box-shadow: -1px 0 0 var(--gl-seam-dark-in); }
+
+/* .gl-ring -- the progress ring: a round slot with a ring around a count. Running:
+   the progress in ink over the track (eased by --gl-settle). Waiting: the track
+   dotted at --gl-ring-wait. Idle: the bare track. The words slide out on hover or
+   keyboard focus and are always the control's accessible name.
+   WHERE: a background-job indicator in a .gl-group-slot; any progress whose words
+   would make the chrome jitter. Not a page's main progress (a sentence and a bar
+   say more), not a spinner for a row. The host draws the SVG (a 22-unit box, two
+   circles .gl-ring-track and .gl-ring-prog, stroke-dasharray the circumference) and
+   sets data-state="running|waiting|idle" and the dash offset. */
+.gl-ring { gap: 0; font-variant-numeric: tabular-nums; }
+.gl-ring svg { flex: none; width: var(--gl-ring-size); height: var(--gl-ring-size); display: block; overflow: visible; }
+.gl-ring-track { fill: none; stroke: var(--gl-ring-track); stroke-width: var(--gl-ring-w); }
+.gl-ring-prog { fill: none; stroke: var(--gl-ink); stroke-width: var(--gl-ring-w); stroke-linecap: round;
+  transition: stroke-dashoffset var(--gl-settle) var(--gl-ease); }
+.gl-ring[data-state="waiting"] .gl-ring-track { stroke: var(--gl-ring-wait); stroke-dasharray: var(--gl-ring-dash-on) var(--gl-ring-dash-off); }
+.gl-ring:not([data-state="running"]) .gl-ring-prog { display: none; }
+.gl-ring text { fill: var(--gl-ink); }
+.gl-ring-words { max-width: 0; overflow: hidden; white-space: nowrap; transition: max-width var(--gl-reveal) var(--gl-ease); }
+.gl-ring:hover .gl-ring-words, .gl-ring:focus-visible .gl-ring-words { max-width: var(--gl-ring-words-max); }
+.gl-ring[data-state="idle"] .gl-ring-words { color: var(--gl-dim); }
+
+/* .gl-side -- a row of a sidebar (a tree, a list of places), and with .gl-sel the
+   selected one drawn as macOS 26's Settings and Music draw it: a rounded plate
+   (--gl-r-row) that starts at the row's content and runs to the pane's edge, the
+   selection blur with ink at 15% and NO rim. Hover is the same shape at 5%.
+   --gl-sel-x is where the plate starts: the host computes it in CSS from the
+   indent (5px before a chevron, 10px before a leaf's label or icon). Still one
+   backdrop filter per list (law 1).
+   WHERE: a list of names in a pane: a tree, a source list, a settings sidebar.
+   Not a list of rich rows over the picture (keep .gl-sel's rim there: a plate
+   with no rim vanishes on a bright ground), not a grid. */
+.gl-side { position: relative; isolation: isolate; }
+.gl-side:hover::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; left: var(--gl-sel-x, 0px); z-index: -1;
+  border-radius: var(--gl-r-row); background: var(--gl-hover-row); pointer-events: none; }
+.gl-side.gl-sel:hover::after { content: none; }
+.gl-side.gl-sel::before { left: var(--gl-sel-x, 0px); border-radius: var(--gl-r-row); background: var(--gl-sel-side); box-shadow: none; }
+
+/* .gl-seg -- the segmented control: a track in the disabled button's wash, the
+   chosen segment in the open wash with its rim (the on-state, --gl-on-fill). Icon
+   or text in a segment, not both; an icon segment is named by a .gl-tip on hover
+   and keyboard focus and by its aria-label, and the chosen one is named in a
+   heading near what it switches. A wash, not glass: no filter.
+   WHERE: switching between views of the same content (a browse mode, a list or
+   grid). Not for actions (those are .gl-btn), not for more than about seven
+   segments, not for a setting that is on or off (a toggle row). role="tablist" /
+   "tab" with aria-selected, or a radiogroup with aria-checked. */
+.gl-seg { display: flex; padding: var(--gl-seg-pad); border-radius: var(--gl-r-pill); background: var(--gl-btn-off); }
+.gl-seg-item {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: var(--gl-dim);
+  flex: 1 1 0; height: var(--gl-seg-h); padding: 0; display: grid; place-items: center; border-radius: var(--gl-r-pill); cursor: pointer;
+}
+.gl-seg-item:hover { color: var(--gl-ink); }
+.gl-seg-item[aria-selected="true"], .gl-seg-item[aria-checked="true"], .gl-seg-item[aria-pressed="true"], .gl-seg-item.gl-on {
+  color: var(--gl-ink); background: var(--gl-on-fill); box-shadow: inset 0 0 0 1px var(--gl-on-rim);
+}
+
+/* .gl-icon -- the icon slot: a line icon on a 16px grid (12px with .gl-sm), one
+   stroke (--gl-icon-stroke), round caps and joins, no fill, currentColor. Dim at
+   rest, ink when its row is selected or its control on: the colour comes from the
+   text around it, never a hue of its own. The set is the host's (DESIGN.md s5).
+   WHERE: on an svg with viewBox="0 0 16 16", where an icon tells kinds apart or
+   names a control too small for a word. Never decoration on every row. */
+.gl-icon { display: block; flex: none; width: var(--gl-icon); height: var(--gl-icon); fill: none; stroke: currentColor;
+  stroke-width: var(--gl-icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
+.gl-icon.gl-sm { width: var(--gl-icon-sm); height: var(--gl-icon-sm); }
+
+/* .gl-grip -- the pane-resize grip: nothing at rest; on hover a 5 x 36 capsule at
+   the pointer's height on the pane's edge (--gl-grip-ink); the ink while dragging.
+   WHERE: inside the host's resize handle (any element with .gl-handle), which owns
+   the hit area and sets the grip's top to the pointer. Never a visible seam at
+   rest: a pane edge ends by the panes, not by a handle. .gl-drag while dragging. */
+.gl-grip { position: absolute; width: var(--gl-grip-w); height: var(--gl-grip-h); border-radius: var(--gl-grip-w);
+  background: var(--gl-grip-ink); opacity: 0; pointer-events: none; transition: opacity var(--gl-quick) var(--gl-ease); }
+.gl-handle:hover .gl-grip, .gl-grip.gl-drag { opacity: 1; }
+.gl-grip.gl-drag { background: var(--gl-ink); }
+
+/* .gl-ghost -- a thing that is not here (a file elsewhere, a folder not imported):
+   the real tile's box from the grid's own layout, no fill, an inset 1px outline at
+   --gl-ghost-line; hover --gl-ghost-hover. One badge where the real tile's state
+   badges sit (a .gl-mark), the name in the tooltip and the detail pane. Never glass.
+   WHERE: in the same grid, at the same size, radius and gap as the real tiles,
+   under a header in the grid's own label style that says what the ghosts are
+   ("ONLY ON FILEN - 12 FILES - 319 MB"): an outline grid alone can read as
+   "loading". The host gives the radius (--gl-r-tile for a picture grid). */
+.gl-ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--gl-ghost-line); color: var(--gl-ink); }
+.gl-ghost:hover { background: var(--gl-ghost-hover); }
+.gl-ghost .gl-mark { color: var(--gl-ink); }   /* a ghost has no picture: its badge reads against the ground, so it takes the ink (identical on dark) */
+
+/* .gl-well -- the readout well: a sunken, non-glass panel for instrument values, a
+   camera's top-plate LCD. Ink 5% with a 10% inset rim, --gl-r-md. Inside, a value
+   line (.gl-read: --gl-read-big, weight 600, tabular) and a settings line
+   (.gl-read-sub: --gl-read-small, small caps, dim). Unknown is a dim dash whose
+   tooltip says why, never a guess. The host gives the face (mono) and the padding.
+   WHERE: a handful of values read at a glance as one instrument (an exposure,
+   a device's live numbers). Not a card for prose, not a table, not on glass. */
+.gl-well { background: var(--gl-well); box-shadow: inset 0 0 0 1px var(--gl-well-rim); border-radius: var(--gl-r-md); font-variant-numeric: tabular-nums; }
+.gl-well .gl-read { font-size: var(--gl-read-big); font-weight: 600; line-height: 1.1; }
+.gl-well .gl-read-sub { font-size: var(--gl-read-small); letter-spacing: calc(var(--gl-read-track) * 1em); text-transform: uppercase; color: var(--gl-dim); }
+
+/* .gl-plot -- the wash a chart or a thumbnail sits in: ink 4%, --gl-r-sm, so a
+   histogram and a navigator above it read as two instruments of one kind.
+   .gl-nav-rect is the navigator's rectangle for the part of a zoomed picture in
+   view: a 1px ink line with a dark line on both sides (--gl-nav-halo), so it reads
+   on a white scan and a night photo alike. No rectangle when the whole picture is
+   in view. WHERE: under a canvas chart, under a thumbnail in a detail pane. */
+.gl-plot { position: relative; overflow: hidden; background: var(--gl-plot); border-radius: var(--gl-r-sm); }
+.gl-nav-rect { position: absolute; box-sizing: border-box; pointer-events: none; border: 1px solid var(--gl-mark-ink); border-radius: var(--gl-r-tile);
+  box-shadow: 0 0 0 1px var(--gl-nav-halo), inset 0 0 0 1px var(--gl-nav-halo); }
+
+/* ---- marks on content -----------------------------------------------------
+   A mark ON a picture is the fixed near-white (--gl-mark-ink: the ink on dark,
+   still near-white on light, because it reads against the picture, not the
+   ground) with a shadow-coloured halo, so it reads on a white scan and a night
+   photo alike; a mark AROUND a picture may carry that picture's
+   tonal ink (--gl-tonal, law 4 as amended). None of these is glass. */
+
+/* .gl-mark -- a badge or glyph on a picture: the mark ink, the halo. */
+.gl-mark { color: var(--gl-mark-ink); text-shadow: 0 0 1px var(--gl-halo), 0 0 3px var(--gl-halo-soft), 0 1px 2px var(--gl-halo-soft); }
+.gl-mark svg { filter: drop-shadow(0 0 1px var(--gl-halo)); }
+
+/* .gl-vf -- the viewfinder: four corner marks --gl-vf-out outside the active
+   picture, in its tonal ink with a halo. Nothing covers the picture, so it reads
+   on a bright scan where a plate became a thin grey line, and a grid of pictures
+   holds no glass at all. One element, moved to the active tile; its own
+   compositing layer (MEASURED: the halo otherwise repaints with the tiles).
+   .gl-msel is the rest of a multiple selection: a 2px ring in each picture's own
+   tonal ink at --gl-msel-a. The host positions .gl-vf over the tile's box grown by
+   --gl-vf-out on each side, and sets --gl-tonal on both. */
+.gl-vf {
+  position: absolute; pointer-events: none; will-change: transform;
+  --gl-vf-c: var(--gl-tonal);
+  background:
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) left top / var(--gl-vf-arm) var(--gl-vf-t),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) left top / var(--gl-vf-t) var(--gl-vf-arm),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) right top / var(--gl-vf-arm) var(--gl-vf-t),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) right top / var(--gl-vf-t) var(--gl-vf-arm),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) left bottom / var(--gl-vf-arm) var(--gl-vf-t),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) left bottom / var(--gl-vf-t) var(--gl-vf-arm),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) right bottom / var(--gl-vf-arm) var(--gl-vf-t),
+    linear-gradient(var(--gl-vf-c), var(--gl-vf-c)) right bottom / var(--gl-vf-t) var(--gl-vf-arm);
+  background-repeat: no-repeat; filter: drop-shadow(0 0 var(--gl-vf-blur) var(--gl-vf-halo));
+}
+.gl-msel { outline: var(--gl-vf-t) solid color-mix(in srgb, var(--gl-tonal) var(--gl-msel-a), transparent); outline-offset: 1px; }
+
+/* .gl-tools -- tools on a picture (rotate, and nothing that a key already does):
+   ink icons with the halo over a radial scrim from the picture's corner, a
+   --gl-mark-hit hit area each, shown after the hover rest (--gl-mark-pause, the
+   host's script) and never during a fast scroll; .gl-on shows them. The SAME rule
+   whether moved over a grid's hovered tile or pinned in a detail pane's
+   thumbnail; pinned, they are real buttons, and :focus-within shows them at once.
+   WHERE: the top-right corner of a picture, inset --gl-mark-inset. */
+.gl-tools { position: absolute; z-index: 2; display: flex; align-items: center; opacity: 0; pointer-events: none;
+  transition: opacity var(--gl-mark-fade) var(--gl-ease); }
+.gl-tools.gl-on, .gl-tools:focus-within { opacity: 1; pointer-events: auto; }
+.gl-tools::before { content: ""; position: absolute; pointer-events: none;
+  right: calc(-1 * var(--gl-mark-inset)); top: calc(-1 * var(--gl-mark-inset));
+  width: calc(100% + var(--gl-mark-inset) + var(--gl-mark-scrim-x)); height: calc(100% + var(--gl-mark-inset) + var(--gl-mark-scrim-y));
+  border-top-right-radius: var(--gl-r-tile);
+  background: radial-gradient(farthest-side at 100% 0, var(--gl-mark-scrim), color-mix(in srgb, var(--gl-mark-scrim) 40%, transparent) 55%, transparent); }
+.gl-tools button { position: relative; appearance: none; -webkit-appearance: none; border: 0; padding: 0; margin: 0;
+  width: var(--gl-mark-hit); height: var(--gl-mark-hit); border-radius: var(--gl-r-pill); background: transparent; color: var(--gl-mark-ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  filter: drop-shadow(0 0 1px var(--gl-halo)) drop-shadow(0 1px 2px var(--gl-halo-soft)); }
+.gl-tools svg { width: var(--gl-mark-icon); height: var(--gl-mark-icon); display: block; }
+.gl-tools button:hover { background: var(--gl-mark-wash); }
+.gl-tools button:active { transform: scale(.92); }
+
+/* ---- the palette round (2026-11-01): chips, status lines and the slots --
+   docs/PALETTE.md. Status is a glyph and a word, never a wash (law 4). A chip
+   is the only place a status tint may sit: a small capsule that carries the
+   glyph, the glyph in the status colour, the words in the ink. A status line
+   (.gl-status-line) has no box at all: the glyph and its word in the status
+   colour (.gl-status-word), the message in the ink, an optional quiet action
+   (a .gl-btn) at the end. Never a tinted panel or banner. Pick either with
+   data-gl-status="ok|warn|fault|missed". */
+.gl-chip { color: var(--gl-ink); background: var(--gl-fill-2); }
+.gl-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 10px; border-radius: var(--gl-r-pill); }
+.gl-status-line { display: flex; align-items: center; gap: 6px; color: var(--gl-ink); background: none; }
+.gl-status-line .gl-btn { margin-left: auto; }
+.gl-chip .gl-glyph, .gl-status-line .gl-glyph { color: var(--gl-dim); flex: none; }
+.gl-chip[data-gl-status="ok"] { background: var(--gl-ok-tint); }
+.gl-chip[data-gl-status="warn"] { background: var(--gl-warn-tint); }
+.gl-chip[data-gl-status="fault"] { background: var(--gl-fault-tint); }
+.gl-chip[data-gl-status="missed"] { background: var(--gl-missed-tint); }
+[data-gl-status="ok"] .gl-glyph { color: var(--gl-ok); }
+[data-gl-status="warn"] .gl-glyph { color: var(--gl-warn); }
+[data-gl-status="fault"] .gl-glyph { color: var(--gl-fault); }
+[data-gl-status="missed"] .gl-glyph { color: var(--gl-missed); }
+.gl-status-line[data-gl-status="ok"] .gl-status-word { color: var(--gl-ok); }
+.gl-status-line[data-gl-status="warn"] .gl-status-word { color: var(--gl-warn); }
+.gl-status-line[data-gl-status="fault"] .gl-status-word { color: var(--gl-fault); }
+.gl-status-line[data-gl-status="missed"] .gl-status-word { color: var(--gl-missed); }
+.gl-status-word { font-weight: 600; }
+.gl-btn.gl-destructive { color: var(--gl-destructive); }   /* a neutral button with the fault's label: never a filled one */
+.gl-link { color: var(--gl-link); }
+
+/* Slots: an app fills a slot with data, not logic. The pick runs on the
+   element that carries the values, because a custom property that reads
+   var(--x-light) on :root resolves at :root and never sees a per-element value.
+   light-dark() follows the color-scheme every appearance block sets (Chrome
+   123, Safari 17.5). An unfilled tonal cell is the ink, never the dark value;
+   the brand's "src" is Apple's "Any" cell, used for both when no light value is
+   given (check_brand.py warns, and prints the one to pin). A region that
+   changes its appearance inside a brand region carries data-gl-slot="brand"
+   too, because the recompute block resets the brand to the ink there.
+     <figure data-gl-slot="tonal" style="--gl-tonal-dark:#e8d9c0; --gl-tonal-light:#3a2a18">
+     <header data-gl-slot="brand" style="--gl-brand-src:#c9a35b; --gl-brand-src-light:#8a6a2a">
+   A plain --gl-tonal on the element still wins (a dark-only host, as today). */
+[data-gl-slot~="tonal"] {
+  --gl-tonal: light-dark(var(--gl-tonal-light, var(--gl-ink)), var(--gl-tonal-dark, var(--gl-ink)));
+}
+[data-gl-slot~="brand"] {
+  --gl-brand: light-dark(var(--gl-brand-src-light, var(--gl-brand-src, var(--gl-ink))), var(--gl-brand-src, var(--gl-ink)));
+  --gl-brand-text: oklch(from var(--gl-brand) var(--gl-accent-text-l) min(c, var(--gl-accent-text-c)) h);
+  --gl-brand-tint: color-mix(in srgb, var(--gl-brand) calc(var(--gl-brand-tint-a) * 100%), var(--gl-ground));
+  --gl-brand-wash: color-mix(in srgb, var(--gl-brand) calc(var(--gl-brand-wash-a) * 100%), transparent);
+}
+[data-gl-contrast="more"] [data-gl-slot~="tonal"], [data-gl-contrast="more"][data-gl-slot~="tonal"] {
+  --gl-tonal: light-dark(var(--gl-tonal-light-hc, var(--gl-ink)), var(--gl-tonal-dark-hc, var(--gl-ink)));
+}
+[data-gl-contrast="more"] [data-gl-slot~="brand"], [data-gl-contrast="more"][data-gl-slot~="brand"] {
+  --gl-brand: light-dark(var(--gl-brand-src-light-hc, var(--gl-brand-src-light, var(--gl-brand-src, var(--gl-ink)))), var(--gl-brand-src-hc, var(--gl-brand-src, var(--gl-ink))));
+}
+.gl-brand-band { background: var(--gl-brand-tint); color: var(--gl-ink); }
+.gl-brand-band .gl-wordmark { color: var(--gl-brand-text); }
+
+
+/* ---- the saltSES round (2026-11-01) --------------------------------------
+   Live device control (USE-CASES use case 4), brought back from saltSES, which
+   controls the amps in a pair of speakers and ran these as ses-* first
+   (DESIGN.md s5, "The saltSES patterns"). No backdrop filter here: the sheet and
+   the toast are .gl-glass, which law 1 already counts. */
+
+/* .gl-dot -- a status dot: --gl-ok / --gl-warn / --gl-fault / --gl-missed by
+   data-gl-status (on the dot or an ancestor, the chip's grammar), the live
+   colour for "playing", --gl-unset for "not known". A glyph, not a wash: it
+   paints in its colour (currentColor), like .gl-glyph. Never alone: the word beside
+   it carries the meaning (law 4). WHERE: a device's state in a row, a tile, a
+   bar's connection pill. Not a badge on a picture (.gl-mark). */
+.gl-dot { display: inline-block; flex: none; width: var(--gl-dot); height: var(--gl-dot); border-radius: var(--gl-r-pill); color: var(--gl-unset); background: currentColor; }
+.gl-dot[data-gl-status="ok"], [data-gl-status="ok"] .gl-dot { color: var(--gl-ok); }
+.gl-dot[data-gl-status="warn"], [data-gl-status="warn"] .gl-dot { color: var(--gl-warn); }
+.gl-dot[data-gl-status="fault"], [data-gl-status="fault"] .gl-dot { color: var(--gl-fault); }
+.gl-dot[data-gl-status="missed"], [data-gl-status="missed"] .gl-dot { color: var(--gl-missed); }
+.gl-dot[data-gl-status="live"], [data-gl-status="live"] .gl-dot { color: var(--gl-live); }
+
+/* .gl-meter -- a live level: a label, a track, a fill, a peak-hold tick, the
+   number, and a clip word that latches. The fill is data (--gl-meter-fill,
+   series 1), never a status colour; clipping is a word (.gl-meter-clip) in
+   --gl-fault beside the number, held about two seconds by the host. The fill
+   follows the reads with --gl-meter-move, linear. WHERE: a device's input and
+   output in a tile or a panel. Not a progress bar (that is .gl-ring's job).
+   Host supplies: role="meter" on the track with aria-valuemin, aria-valuemax,
+   aria-valuenow and aria-valuetext ("-18.5 dB"), and aria-labelledby the label.
+     <div class="gl-meter"><span id="m-in">in</span><span class="gl-meter-track" role="meter"
+       aria-labelledby="m-in" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="-18.5" aria-valuetext="-18.5 dB">
+       <i class="gl-meter-fill" style="width:62%"></i><i class="gl-meter-hold" style="left:70%"></i>
+     </span><span class="gl-meter-v">-18.5<b class="gl-meter-clip">clip</b></span></div> */
+.gl-meter { display: grid; grid-template-columns: auto 1fr 7ch; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
+.gl-meter-track { position: relative; height: var(--gl-meter-h); border-radius: var(--gl-r-pill); background: var(--gl-btn-off); overflow: hidden; }
+.gl-meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: var(--gl-r-pill); background: var(--gl-meter-fill); transition: width var(--gl-meter-move) linear; }
+.gl-meter-hold { position: absolute; top: 0; bottom: 0; width: var(--gl-meter-hold-w); background: var(--gl-ink); }
+.gl-meter-v { text-align: right; }
+.gl-meter-clip { color: var(--gl-fault); font-weight: 600; margin-left: 4px; }
+
+/* .gl-urgent -- the one thing that needs you now, above everything, only while
+   it is true: a .gl-glyph in its status colour (data-gl-status on the block),
+   the sentence, and at most two ways out as .gl-btn. The well, never a status
+   wash: the ground never changes colour (law 4; GAPS 15 stays undecided).
+   WHERE: the top of the main column, one at a time, the worst first
+   (COMPOSITION.md, urgency first). */
+.gl-urgent { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: var(--gl-r-md);
+  background: var(--gl-well); box-shadow: inset 0 0 0 1px var(--gl-well-rim); }
+.gl-urgent > p { flex: 1; margin: 0; min-width: 0; }
+
+/* .gl-sheet, .gl-diff -- consent to a change on a device: what changes, on
+   which device, what it relies on, and one .gl-action. The sheet is a native
+   <dialog class="gl-sheet gl-glass gl-heavy"> opened with showModal(): the
+   browser gives the focus trap, Escape (the cancel event) and an inert page;
+   the scrim is its ::backdrop (which inherits the tokens from the dialog in
+   current engines). .gl-diff rows read subject, field,
+   before -> after in tabular figures. Canvas only: a smaller surface offers
+   "open it", never the write (COMPOSITION.md). WHERE: every staged change that
+   makes something louder, different or riskier. Not for a lowering or a mute:
+   making things safer applies at once. */
+.gl-sheet { position: fixed; inset: 14vh 0 auto; margin: 0 auto; width: min(var(--gl-sheet-w), calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 14vh - 16px);
+  border: 0; border-radius: var(--gl-r-lg); padding: 22px; background: transparent; color: var(--gl-ink); overflow: visible; }
+.gl-sheet[open] { display: grid; gap: 14px; }
+.gl-sheet::backdrop { background: var(--gl-sheet-scrim); }
+.gl-diff { display: grid; gap: 6px; font-variant-numeric: tabular-nums; }
+.gl-diff > div { display: grid; grid-template-columns: 6.5em 1fr; gap: 10px; }
+.gl-diff > div > :first-child { color: var(--gl-dim); }
+.gl-sheet-acts { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* .gl-toast -- a sentence that something happened, bottom centre, gone in
+   about four seconds (the host's timer). Glass, because it floats: use with
+   .gl-glass. It rises --gl-toast-rise as it enters over --gl-reveal. WHERE: the
+   result of an action the person just took ("Lowered both speakers"). Not for
+   an error that needs an answer (.gl-urgent), not for progress (.gl-ring).
+   Host supplies: role="status" (an implicit aria-live="polite") on .gl-toasts,
+   so each new toast is read once without taking focus. */
+.gl-toasts { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: grid; gap: 8px; z-index: 20; }
+.gl-toast { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: var(--gl-r-pill); color: var(--gl-ink);
+  animation: gl-toast-in var(--gl-reveal) var(--gl-ease); }
+@keyframes gl-toast-in { from { opacity: 0; transform: translateY(var(--gl-toast-rise)); } }
+
+/* .gl-fader -- a level you set on a device: a native range input (keyboard and
+   assistive tech for free) in the ink, between its label and its value. On a
+   device what you set and what it reports differ until the readback: the host
+   shows the reported value as a tick on the track. WHERE: the one level that
+   matters, in a panel. Not a volume knob, not a settings form's slider. */
+.gl-fader { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; font-variant-numeric: tabular-nums; }
+.gl-fader input[type="range"] { width: 100%; accent-color: var(--gl-ink); }
+.gl-fader input[type="range"]:focus-visible { outline: var(--gl-focus-w) solid var(--gl-focus); outline-offset: var(--gl-focus-off); }
+
+/* .gl-rail -- a pane folded to a rail: the pane's name, vertical, unset ink;
+   pressing the rail opens it. saltFrame's 24 pt fold. A <button>, so it takes
+   focus and a key: <button class="gl-rail" aria-expanded="false"
+   aria-controls="<pane id>">Speaker</button>; the host flips aria-expanded as
+   it opens the pane. WHERE: a supporting pane (a device's details) with
+   nothing to show. Fold, don't drop. */
+.gl-rail { -webkit-appearance: none; appearance: none; width: var(--gl-rail-w); border: 0; margin: 0; padding: 14px 0 0; background: transparent;
+  font: inherit; font-size: var(--gl-rail-text); writing-mode: vertical-rl; color: var(--gl-unset); justify-self: center; align-self: stretch; text-align: start; cursor: pointer; }
+.gl-rail:focus-visible { outline: var(--gl-focus-w) solid var(--gl-focus); outline-offset: var(--gl-focus-off); }
 
 
 /* ---- the twins ----------------------------------------------------------
@@ -1433,6 +2936,10 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   .gl-ground img { transform: none; transition: opacity var(--gl-fade) linear; }
   .gl-ground img.on { transform: none; }
   .gl-ground .scrim { transition: background-color var(--gl-fade) linear; }
+  .gl-ring-prog, .gl-ring-words, .gl-grip, .gl-tools { transition: none; }
+  .gl-tools button:active { transform: none; }
+  .gl-meter-fill { transition: none; }
+  .gl-toast { animation: none; }
 }
 
 /* Reduce Transparency: no picture, an opaque scrim, the glass fill becomes the
@@ -1440,9 +2947,10 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 @media (prefers-reduced-transparency: reduce) {
   .gl-ground img { display: none; }
   .gl-ground .scrim { background: var(--gl-ground); }
-  .gl-glass::before, .gl-glass-bar::before, .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .gl-glass::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
-  .gl-glass::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass-bar::before, .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-sheet.gl-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+  .gl-glass::after, .gl-tabbar::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
   .gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
   .gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim-hc); }
   .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
@@ -1453,7 +2961,31 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   .gl-action::after { box-shadow: none; }
   .gl-btn, .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
   .gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-ground); }
-  .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-tip::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+  .gl-tip::after, .gl-tip[data-pinned]::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-scroll-edge { height: var(--gl-edge-bar, 0px); background: var(--gl-ground); box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
+  .gl-side.gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-seg { background: var(--gl-ground); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-seg-item[aria-selected="true"], .gl-seg-item[aria-checked="true"], .gl-seg-item[aria-pressed="true"], .gl-seg-item.gl-on { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-well { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-plot { background: var(--gl-grid); }
+  .gl-tools::before { content: none; }
+  .gl-tools button { background: var(--gl-ground); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); filter: none; }
+  .gl-meter-track { background: var(--gl-grid); }
+  .gl-urgent { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-sheet::backdrop { background: var(--gl-ground); }
+  /* the palette round's translucent tokens become their opaque twins; the tints are opaque already */
+  :root, [data-gl-appearance] {
+    --gl-separator: var(--gl-separator-opaque);
+    --gl-sel-quiet: color-mix(in srgb, var(--gl-ink) 8%, var(--gl-ground));
+    --gl-fill-1: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-1-a) * 100%), var(--gl-ground));
+    --gl-fill-2: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-2-a) * 100%), var(--gl-ground));
+    --gl-fill-3: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-3-a) * 100%), var(--gl-ground));
+    --gl-fill-4: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-4-a) * 100%), var(--gl-ground));
+    --gl-fill-5: color-mix(in srgb, var(--gl-ink) calc(var(--gl-fill-5-a) * 100%), var(--gl-ground));
+    --gl-brand-wash: var(--gl-brand-tint);
+    --gl-meter-fill: color-mix(in srgb, var(--gl-ink) calc(var(--gl-meter-fill-a) * 100%), var(--gl-ground));
+  }
 }
 
 /* Increase Contrast: the Reduce Transparency twin, and the rim becomes a real
@@ -1461,11 +2993,12 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 @media (prefers-contrast: more) {
   .gl-ground img { display: none; }
   .gl-ground .scrim { background: var(--gl-ground); }
-  .gl-glass::before, .gl-glass-bar::before, .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .gl-glass::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass-bar::before, .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-sheet.gl-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
   .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
-  .gl-glass { border: 1px solid var(--gl-rim-hc); }
-  .gl-glass::after { box-shadow: none; }
+  .gl-glass, .gl-tabbar { border: 1px solid var(--gl-rim-hc); }
+  .gl-glass::after, .gl-tabbar::after { box-shadow: none; }
   .gl-bar-top { border-bottom: 1px solid var(--gl-rim-hc); }
   .gl-bar-bottom { border-top: 1px solid var(--gl-rim-hc); }
   .gl-bar-top::after, .gl-bar-bottom::after { box-shadow: none; }
@@ -1479,7 +3012,36 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   .gl-action::after { box-shadow: none; }
   .gl-btn, .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
   .gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-ground); }
-  .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-tip::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+  .gl-tip { border: 1px solid var(--gl-rim-hc); }
+  .gl-tip::after, .gl-tip[data-pinned]::after { box-shadow: none; }
+  .gl-scroll-edge { height: var(--gl-edge-bar, 0px); background: var(--gl-ground); box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
+  .gl-side.gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-seg { background: var(--gl-ground); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-seg-item[aria-selected="true"], .gl-seg-item[aria-checked="true"], .gl-seg-item[aria-pressed="true"], .gl-seg-item.gl-on { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-well { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-plot { background: var(--gl-grid); }
+  .gl-tools::before { content: none; }
+  .gl-tools button { background: var(--gl-ground); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); filter: none; }
+  :is(.gl-btn, .gl-action, .gl-group-item, .gl-seg-item, .gl-tab, .gl-ghost, .gl-tools button, .gl-focus, .gl-field):focus-visible { outline-color: var(--gl-focus-hc); }
+  .gl-group-item[aria-pressed="true"], .gl-group-item.gl-on { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-group-sep { background: var(--gl-rim-hc); box-shadow: none; }
+  .gl-ring-track { stroke: var(--gl-rim-hc); }
+  .gl-grip { background: var(--gl-ink); }
+  .gl-ghost { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-well .gl-read-sub { color: var(--gl-ink); }
+  .gl-nav-rect { border-width: 2px; box-shadow: 0 0 0 1px var(--gl-shadow), inset 0 0 0 1px var(--gl-shadow); }
+  :root, [data-gl-appearance] { --gl-unset: var(--gl-unset-hc); }   /* an unset star or flag lifts so the row reads without colour (--gl-unset-hc, 70%: 3:1 on the light band floor) */
+  [data-gl-slot~="tonal"] { --gl-tonal: light-dark(var(--gl-tonal-light-hc, var(--gl-ink)), var(--gl-tonal-dark-hc, var(--gl-ink))); }
+  [data-gl-slot~="brand"] { --gl-brand: light-dark(var(--gl-brand-src-light-hc, var(--gl-brand-src-light, var(--gl-brand-src, var(--gl-ink)))), var(--gl-brand-src-hc, var(--gl-brand-src, var(--gl-ink)))); }
+  .gl-chip { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-meter-track { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-meter-fill { background: var(--gl-ink); }
+  .gl-urgent { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-sheet::backdrop { background: var(--gl-ground); }
+  .gl-diff > div > :first-child { color: var(--gl-ink); }
+  .gl-rail { color: var(--gl-dim); }
+  .gl-rail:focus-visible { outline-color: var(--gl-focus-hc); }
 }
 
 /* No backdrop-filter at all: the fill becomes the ground, so the material is
@@ -1487,8 +3049,9 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 @supports not (backdrop-filter: blur(1px)) {
   .gl-ground img { display: none; }
   .gl-ground .scrim { background: var(--gl-ground); }
-  .gl-glass::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
-  .gl-glass::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass.gl-heavy::before, .gl-glass-bar::before { background: var(--gl-ground); }
+  .gl-sheet.gl-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+  .gl-glass::after, .gl-tabbar::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
   .gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
   .gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim-hc); }
   .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
@@ -1499,16 +3062,19 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
   .gl-action::after { box-shadow: none; }
   .gl-btn, .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
   .gl-btn[disabled], .gl-btn.gl-off { background: var(--gl-ground); }
-  .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-tip::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+  .gl-tip::after, .gl-tip[data-pinned]::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  .gl-side.gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+  /* .gl-scroll-edge, .gl-seg, .gl-well, .gl-plot, .gl-ghost, the marks and the saltSES round's classes carry no backdrop filter: nothing to lose here */
 }
 
 /* The opt-in solid twin: data-gl="solid" on the root equals Reduce Transparency.
    A host's own setting, or a test, can ask for it without a media query. */
 :root[data-gl="solid"] .gl-ground img { display: none; }
 :root[data-gl="solid"] .gl-ground .scrim { background: var(--gl-ground); }
-:root[data-gl="solid"] .gl-glass::before, :root[data-gl="solid"] .gl-glass-bar::before, :root[data-gl="solid"] .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
-:root[data-gl="solid"] .gl-glass::before, :root[data-gl="solid"] .gl-glass.gl-heavy::before, :root[data-gl="solid"] .gl-glass-bar::before { background: var(--gl-ground); }
-:root[data-gl="solid"] .gl-glass::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-glass::before, :root[data-gl="solid"] .gl-tabbar::before, :root[data-gl="solid"] .gl-glass-bar::before, :root[data-gl="solid"] .gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root[data-gl="solid"] .gl-glass::before, :root[data-gl="solid"] .gl-tabbar::before, :root[data-gl="solid"] .gl-glass.gl-heavy::before, :root[data-gl="solid"] .gl-glass-bar::before { background: var(--gl-ground); }
+:root[data-gl="solid"] .gl-glass::after, :root[data-gl="solid"] .gl-tabbar::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
 :root[data-gl="solid"] .gl-bar-top::after { box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
 :root[data-gl="solid"] .gl-bar-bottom::after { box-shadow: inset 0 1px 0 var(--gl-rim-hc); }
 :root[data-gl="solid"] .gl-sel::before { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
@@ -1518,10 +3084,59 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 :root[data-gl="solid"] .gl-action { border: 1px solid var(--gl-rim-hc); }
 :root[data-gl="solid"] .gl-action::after { box-shadow: none; }
 :root[data-gl="solid"] .gl-btn, :root[data-gl="solid"] .gl-field { background: var(--gl-ground); border: 1px solid var(--gl-rim-hc); box-shadow: none; }
-:root[data-gl="solid"] .gl-field:focus-visible { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-tip::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+:root[data-gl="solid"] .gl-tip::after, :root[data-gl="solid"] .gl-tip[data-pinned]::after { box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-scroll-edge { height: var(--gl-edge-bar, 0px); background: var(--gl-ground); box-shadow: inset 0 -1px 0 var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-side.gl-sel::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-seg { background: var(--gl-ground); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-seg-item[aria-selected="true"], :root[data-gl="solid"] .gl-seg-item[aria-checked="true"], :root[data-gl="solid"] .gl-seg-item[aria-pressed="true"], :root[data-gl="solid"] .gl-seg-item.gl-on { background: var(--gl-sel-solid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-well { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-plot { background: var(--gl-grid); }
+:root[data-gl="solid"] .gl-tools::before { content: none; }
+:root[data-gl="solid"] .gl-tools button { background: var(--gl-ground); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); filter: none; }
+:root[data-gl="solid"] .gl-meter-track { background: var(--gl-grid); }
+:root[data-gl="solid"] .gl-meter-fill { background: color-mix(in srgb, var(--gl-ink) calc(var(--gl-meter-fill-a) * 100%), var(--gl-ground)); }
+:root[data-gl="solid"] .gl-urgent { background: var(--gl-grid); box-shadow: inset 0 0 0 1px var(--gl-rim-hc); }
+:root[data-gl="solid"] .gl-sheet::backdrop { background: var(--gl-ground); }
+:root[data-gl="solid"] .gl-sheet.gl-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+
+/* Forced colours (Windows High Contrast and its kin; GAPS.md gap 9): the
+   system's colours replace the palette. Surfaces are Canvas, words CanvasText,
+   rims a 1px CanvasText line, the one action a button with a Highlight border,
+   selection Highlight. Status, series and label marks keep their colour only
+   where a glyph carries the meaning (forced-color-adjust: none on the glyph). */
+@media (forced-colors: active) {
+  .gl-glass::before, .gl-tabbar::before, .gl-glass-bar::before, .gl-tip::before, .gl-strip, .gl-pill { -webkit-backdrop-filter: none; backdrop-filter: none; background: Canvas; }
+  .gl-glass, .gl-tabbar, .gl-tip, .gl-strip, .gl-pill, .gl-btn, .gl-field, .gl-chip, .gl-well { border: 1px solid CanvasText; }
+  .gl-action { background: ButtonFace; color: ButtonText; border: 1px solid Highlight; }
+  .gl-action::before { background: ButtonFace; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .gl-sel::before, .gl-side.gl-sel::before { background: Highlight; }
+  .gl-sel, .gl-side.gl-sel { color: HighlightText; }
+  .gl-link { color: LinkText; }
+  .gl-btn[disabled], .gl-btn.gl-off { color: GrayText; }
+  .gl-glyph, .gl-mark, .gl-label-dot, .gl-dot { forced-color-adjust: none; }
+  .gl-urgent, .gl-meter-track { border: 1px solid CanvasText; }
+  .gl-meter-fill { background: CanvasText; }
+  .gl-meter-hold { background: CanvasText; }
+  .gl-rail:focus-visible { outline-color: Highlight; }
+  .gl-sheet::backdrop { background: Canvas; }
+  .gl-sheet.gl-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: Canvas; }
+  :root, [data-gl-appearance] { --gl-find: Mark; --gl-placeholder: GrayText; --gl-disabled-ink: GrayText; }
+}
+
+/* Print: the light appearance's inputs (tokens.css @media print), no glass, no halos. */
+@media print {
+  .gl-ground img { display: none; }
+  .gl-ground .scrim { background: var(--gl-ground); }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass-bar::before, .gl-tip::before, .gl-sel::before, .gl-action::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .gl-glass::before, .gl-tabbar::before, .gl-glass-bar::before, .gl-tip::before { background: var(--gl-ground); }
+  .gl-sheet.gl-glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--gl-ground); }
+  .gl-glass, .gl-tabbar, .gl-tip { box-shadow: none; border: 1px solid var(--gl-rim-hc); }
+  .gl-mark, .gl-tools button { filter: none; }
+}
 <!-- /saltglass:css -->
 </style>
-<!-- saltglass:js @cc154d31ce49da64e6729d4601b8c99bde5d7249 -->
+<!-- saltglass:js v0.5.1 @91f89d6 sha256=756e4802012912354fcb6af5de100557dbe81541cec1d8bf935a68e868480375 -->
 <script data-saltglass>
 /* saltglass — ground.js
    The art ground: two decoded image layers under the page, a settle before the
@@ -1776,7 +3391,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
 </header>
 
 <div id="work">
-  <aside class="left gl-ends" id="left" aria-label="iPod">
+  <aside class="left gl-ends" id="left" aria-label="iPod"><i class="prz" data-prz="L" title="drag to resize"></i>
     <div class="plabel gl-strip"><span class="fold" id="foldL" title="fold the iPod pane away">&lt;</span><span class="name" id="lhead">iPod</span><span class="sp"></span><span class="modes" id="lmodes"></span></div>
     <div class="pbody" id="colbody" role="listbox" aria-label="iPod collections"></div>
   </aside>
@@ -1788,7 +3403,7 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
        what you have listened to; the drive is what you already own, grouped
        the way the drive itself groups it -- the folders ARE the filing, and
        a second scheme would just be another thing to hold in your head. -->
-  <aside class="srcpane gl-ends" id="src" aria-label="Source">
+  <aside class="srcpane gl-ends" id="src" aria-label="Source"><i class="prz" data-prz="S" title="drag to resize"></i>
     <div class="plabel gl-strip"><span class="fold" id="foldS" title="fold the source away">&lt;</span><span id="stabs"><span class="pill on" data-s="am" data-move="look-at-the-source" title="Apple Music">&#63743;&#8201;Music</span><span class="pill" data-s="t7">Drive</span></span><span class="modes" id="smodes"></span></div>
     <div class="pbody" id="srcbody" role="listbox" aria-label="Apple Music and library"></div>
     <!-- how much of the drive can be read right now, as a pill the list
@@ -1801,10 +3416,14 @@ kbd { font: var(--fs-ctrl) var(--mono); color: var(--ink); border: 1px solid var
       <span id="midacts" style="display:flex;gap:12px"></span>
       <span class="pstat" id="midstat"></span>
       <span class="modes" id="flmodes"></span></div>
+    <div id="statusbox">
+      <div class="gl-glass" id="statuscard" role="dialog" aria-label="the iPod and where its tracks came from" hidden></div>
+      <button class="gl-pill" id="status" role="status" aria-expanded="false" aria-controls="statuscard"></button>
+    </div>
     <div class="pbody" id="list" data-move-keys="press-s:s key-c:c key-i:i key-v:v hear-the-file:Space hear-the-preview:Space move:Shift+J take-out:x clear-the-filter:Escape" role="listbox" aria-multiselectable="true" tabindex="0"></div>
   </section>
 
-  <aside class="right gl-ends" id="right" aria-label="Buy and vinyl">
+  <aside class="right gl-ends" id="right" aria-label="Buy and vinyl"><i class="prz" data-prz="R" title="drag to resize"></i>
     <div class="plabel gl-strip"><span id="rtabs"><span class="pill on" data-r="buy">Buy</span><span class="pill" data-r="vinyl">Vinyl</span></span><span class="fold" id="foldR" title="fold the buy and vinyl lists away">&gt;</span></div>
     <!-- role="list", not listbox: these cards are things with a menu, not
          options you choose one of. A listbox holding zero role=option
@@ -2130,6 +3749,28 @@ function fold(which){ setFold(which,!document.body.classList.contains(FOLD[which
   setFold('S', a==null ? tight : a==='1');
   setFold('R', r==null ? narrow : r==='1');
 })();
+// THE SIDE PANES RESIZE: drag a pane's inner edge. The centre keeps at
+// least 320px, each pane stays between its bounds, and the widths are
+// remembered (the folds already are).
+const PW={L:['--lw',160,420],S:['--sw',180,460],R:['--rw',220,520]};
+function setPaneW(w,px){ document.documentElement.style.setProperty(PW[w][0],Math.round(px)+'px'); }
+try{ const st=JSON.parse(localStorage['saltpod.panew']||'null');
+  if(st)for(const w in PW)if(st[w]>=PW[w][1]&&st[w]<=PW[w][2])setPaneW(w,st[w]); }catch(e){}
+document.querySelectorAll('.prz').forEach(z=>z.onpointerdown=e=>{
+  e.preventDefault(); e.stopPropagation();
+  const w=z.dataset.prz, [,lo,hi]=PW[w], pane=z.parentElement;
+  const w0=pane.getBoundingClientRect().width, x0=e.clientX, mid0=$('#mid').getBoundingClientRect().width;
+  z.setPointerCapture(e.pointerId); z.classList.add('on'); document.body.style.cursor='col-resize';
+  z.onpointermove=ev=>{
+    const dx=(w==='R'?-1:1)*(ev.clientX-x0);
+    setPaneW(w,Math.max(lo,Math.min(hi,w0+Math.min(dx,mid0-320))));
+  };
+  z.onpointerup=z.onpointercancel=()=>{
+    z.onpointermove=z.onpointerup=z.onpointercancel=null; z.classList.remove('on'); document.body.style.cursor='';
+    const st={}; for(const k in PW){ const v=parseFloat(document.documentElement.style.getPropertyValue(PW[k][0])); if(v)st[k]=v; }
+    try{ localStorage['saltpod.panew']=JSON.stringify(st); }catch(e){}
+  };
+});
 [['L','#left'],['S','#src'],['R','#right']].forEach(([w,id])=>{
   $('#fold'+w).onclick=e=>{e.stopPropagation();fold(w);};
   // the rail is 24px wide: the whole title strip brings the pane back
@@ -2195,7 +3836,7 @@ async function load(){
         if(amPick&&amPick!=='__all__'&&!AMP.some(p=>p.slug===amPick))amPick=null;}
   SYNCED=r.synced||[];
   if(r.podcasts)PODCASTS=r.podcasts;
-  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs; TOTALS=r.totals||{};
+  ALL=r.tracks; COLS=r.collections; ORDER=r.order||{}; SLUGS=r.slugs; TOTALS=r.totals||{}; paintStatus();
   ONPOD_ORDER=r.on_ipod_order||[]; VINYL_ORDER=r.vinyl_order||[];
   if(r.rev)REVSEEN=Math.max(REVSEEN,r.rev);
   BYKEY=new Map(ALL.map(t=>[t.key,t]));
@@ -2307,11 +3948,15 @@ function rowHTML(t,i,seq){
   // multi-selection.
   return `<div id="trk-${i}" class="row ${t.tier==='remove'?'skip':''} ${state} ${MARK.has(t.key)?'marked':''}" role="option" aria-selected="${MARK.has(t.key)}"${stateTitle} draggable="true" data-move="drag-in drag-to-vinyl" data-words="the row" data-i="${i}" data-k="${esc(t.key)}">
     ${t.art?`<img class="art" src="${t.art}" loading="lazy" draggable="false">`:'<div class="art"></div>'}
-    <div class="t"><div class="n">${esc(t.artist)} — ${esc(t.title)}</div>
-      <div class="s">${[esc(t.album||t.dev_album||''), dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':'', t.price?'€'+t.price.toFixed(2):'',
-        heard(t)].filter(Boolean).join(' · ')}</div></div>
+    <div class="t"><div class="n"><span class="na">${esc(t.artist)} — </span>${esc(t.title)}</div>
+      <div class="s">${[t.price?'€'+t.price.toFixed(2):'', heard(t)].filter(Boolean).join(' · ')}</div></div>
+    <div class="c-artist">${esc(t.artist)}</div>
+    <div class="c-album">${esc(t.album||t.dev_album||'')}</div>
     <div class="src">${srcStrip(t)}</div>
-    <div class="tags">${tagsFor(t)}<span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only eqsr">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" data-move="dots open-menu" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
+    <div class="tags">${tagsFor(t)}</div>
+    <span class="br">${t.quality?`<b>${esc(t.quality)}</b>`:''}</span><span class="pod">${t.device?IPOD_SVG:''}</span>
+    <span class="c-time">${dur?'<span class="dur" data-full="'+dur+'">'+dur+'</span>':''}</span>
+    <div class="end"><span class="ch">&rsaquo;</span><span class="eq"><i></i><i></i><i></i><span class="sr-only eqsr">playing</span></span>${seq?'<span class="grab">⋮⋮</span>':''}<span class="more" data-move="dots open-menu" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="more actions" title="more">&#8943;</span></div></div>`;
 }
 
 /* ---------------- drawing ---------------- */
@@ -2448,6 +4093,89 @@ function currentList(){
     picked:true, note:'', blank:'Nothing on the device yet.'};
 }
 
+/* COLUMNS: sort and width (the native table, TrackTable.swift).
+   A list the server orders -- All on iPod, a collection, the device's own
+   playlists, an album -- is a sequence: it is shown in that order and its
+   headers do not sort ("in its order"). Apple Music and the drive sort: a
+   click sorts by that column, a second click reverses it. The sort is
+   stable -- ties keep the server's order, title breaks them -- and a list
+   you newly open starts unsorted, in the server's order. */
+const COLS_DEF=[['title','Title'],['artist','Artist'],['album','Album'],['format','Format'],['ipod','iPod'],['time','Time']];
+const COL_MIN={title:120,artist:60,album:60}, COL_MAX={title:900,artist:420,album:420};
+let SORT=null, SORTFOR=null;
+function sortable(){ return !albPick && (active==='am'||active==='t7'); }
+function sortId(){ return listKey().split(':').slice(0,3).join(':'); }
+const SORTKEY={
+  title:t=>(t.title||'').toLowerCase(), artist:t=>(t.artist||'').toLowerCase(),
+  album:t=>(t.album||t.dev_album||'').toLowerCase(), format:t=>t.quality||'',
+  ipod:t=>t.device?0:1, time:t=>t.seconds||t.dev_seconds||-1};
+function cmpBy(col,a,b){
+  const x=SORTKEY[col](a), y=SORTKEY[col](b);
+  return typeof x==='number' ? x-y : x.localeCompare(y,undefined,{numeric:true});
+}
+function sortRows(rows){
+  if(!SORT||!sortable()||SORTFOR!==sortId())return rows;
+  const d=SORT.asc?1:-1;
+  return rows.map((t,i)=>[t,i]).sort(([a,i],[b,j])=>{
+    let c=cmpBy(SORT.col,a,b);
+    if(!c&&SORT.col!=='title')c=cmpBy('title',a,b);
+    return c ? c*d : i-j;
+  }).map(([t])=>t);
+}
+function setSort(col){
+  if(!sortable())return;
+  const k=view[sel]&&view[sel].key;
+  SORT = (SORT&&SORTFOR===sortId()&&SORT.col===col) ? {col,asc:!SORT.asc} : {col,asc:true};
+  SORTFOR=sortId();
+  draw();
+  const i=k?view.findIndex(t=>t.key===k):-1;    // the selection follows its track
+  if(i>=0){sel=i;mark();}
+}
+function colHead(){
+  const can=sortable(), on=can&&SORT&&SORTFOR===sortId()?SORT:null;
+  const cell=([c,label])=>{
+    const s=on&&on.col===c?(on.asc?'ascending':'descending'):null;
+    const rz=COL_MIN[c]?`<i class="rz" data-rz="${c}" title="drag to resize"></i>`:'';
+    return `<span data-col="${c}"${can?` title="sort by ${label.toLowerCase()}"`:''}${s?` aria-sort="${s}"`:''}>${label}${s?`<b class="arr">${s==='ascending'?'▲':'▼'}</b>`:''}${rz}</span>`;
+  };
+  const [title,artist,album,format,ipod,time]=COLS_DEF.map(cell);
+  return `<div class="colhead gl-strip${can?' sorts':''}" id="colhead" aria-hidden="true"><span></span>${title}${artist}${album}`
+    +(can?`<span></span><span></span>${format}${ipod}${time}<span></span>`
+         :`<span class="order" title="a sequence the server owns: shown in its order, never sorted here">in its order</span>`)+`</div>`;
+}
+// Title, Artist and Album share the width by weight. Dragging one's edge
+// sets its width; the other two give or take in proportion. Remembered.
+let COLW={title:2,artist:1.2,album:1.2};
+try{ const w=JSON.parse(localStorage['saltpod.colw']||'null'); if(w&&w.title>0&&w.artist>0&&w.album>0)COLW=w; }catch(e){}
+function applyColW(){ const l=$('#list'); if(!l)return;
+  for(const c in COLW)l.style.setProperty('--w-'+c, COLW[c].toFixed(3)+'fr'); }
+function wireHead(){
+  const h=$('#colhead'); if(!h)return;
+  h.querySelectorAll('[data-col]').forEach(x=>x.onclick=e=>{ if(e.target.closest('.rz'))return; setSort(x.dataset.col); });
+  h.querySelectorAll('.rz').forEach(z=>z.onpointerdown=e=>{
+    e.preventDefault(); e.stopPropagation();
+    const c=z.dataset.rz, cells={};
+    for(const k of ['title','artist','album']){ const el=h.querySelector(`[data-col="${k}"]`);
+      if(el&&el.offsetParent)cells[k]=el.getBoundingClientRect().width; }
+    if(!(c in cells))return;
+    const others=Object.keys(cells).filter(k=>k!==c), S=Object.values(cells).reduce((a,b)=>a+b,0);
+    const x0=e.clientX, w0=cells[c];
+    // pixels back into weights on the visible columns' own scale, so a column
+    // a narrow centre has hidden keeps its weight untouched
+    const unit=Object.keys(cells).reduce((a,k)=>a+COLW[k],0)/S;
+    z.setPointerCapture(e.pointerId); z.classList.add('on');
+    z.onpointermove=ev=>{
+      const room=S-others.reduce((a,k)=>a+COL_MIN[k],0);
+      const w=Math.max(Math.min(COL_MIN[c],w0),Math.min(COL_MAX[c],room,w0+ev.clientX-x0));
+      const rest=others.reduce((a,k)=>a+cells[k],0)||1, f=(S-w)/rest;
+      COLW[c]=w*unit; others.forEach(k=>COLW[k]=cells[k]*f*unit);
+      applyColW();
+    };
+    z.onpointerup=z.onpointercancel=()=>{ z.onpointermove=z.onpointerup=z.onpointercancel=null; z.classList.remove('on');
+      try{ localStorage['saltpod.colw']=JSON.stringify(COLW); }catch(e){} };
+  });
+}
+
 function drawMid(){
   // the filters belong to the LIST, not to one source: always drawn, always applied
   // `on iPod` says nothing inside the iPod pane, and `rented only` cannot be
@@ -2460,7 +4188,8 @@ function drawMid(){
   paintFilterToggle();
 
   const L=currentList();
-  const all=L.rows, shown=all.filter(pass);
+  if(SORTFOR&&SORTFOR!==sortId()){SORT=null;SORTFOR=null;}   // a newly opened list starts in the server's order
+  const all=L.rows, shown=sortRows(all.filter(pass));
   view=shown.slice(0,CAP);
   MIDROWS=all.length;   // what All would show: the list's own rows, before this page's filter and cap
 
@@ -2499,11 +4228,12 @@ function drawMid(){
     // one layout for every list; the handle appears only where a drag would
     // actually change the order -- our own collections, unfiltered
     const seq = L.ordered && !L.readonly && !filtered();
-    h=view.map((t,i)=>rowHTML(t,i,seq)).join('');
+    h=colHead()+view.map((t,i)=>rowHTML(t,i,seq)).join('');
   }
   if(shown.length>CAP)h+=`<p class="note">${shown.length-CAP} more — search to narrow.</p>`;
 
   $('#list').innerHTML=h;
+  applyColW(); wireHead();
   wireRows();
   // A SELECTION BELONGS TO ONE LIST. Leaving the list drops it: marks you
   // cannot see are marks you will act on by accident, and every action in
@@ -2816,10 +4546,9 @@ function drawAM(){
   let h=colRow({name:'All in Apple Music', cnt:AMLIB||'',
     cls:amPick==='__all__'?(active==='am'?'on':'was'):'', attrs:' data-am="__all__" data-move="peek-back"'});
   // each playlist like an album: the server's mosaic (or the empty thumbnail
-  // until it exists), the name over "N tracks · YYYY-MM" -- both from the
-  // payload's own fields (`tracks`, `created`) -- and the count at the right
-  const sub=p=>[p.tracks!=null?`${p.tracks} track${p.tracks===1?'':'s'}`:'', (p.created||'').slice(0,7)].filter(Boolean).join(' · ');
-  h+= AMP.length ? AMP.map(p=>colRow({name:esc(p.name), sub:esc(sub(p)), mosaic:p.art||null, cnt:p.tracks,
+  // until it exists), the name on one line and the count at the right; no
+  // second line -- it only repeated the count (the dates are in the tooltip)
+  h+= AMP.length ? AMP.map(p=>colRow({name:esc(p.name), mosaic:p.art||null, cnt:p.tracks,
         menu:true, cls:`${st(p)} ${p.imported?'':'dim'}`,
         attrs:` data-am="${esc(p.slug)}" data-move="peek pour" data-words="a playlist" draggable="true"`, moreMove:'dots',
         title:`${esc(p.name)} — ${p.tracks} tracks · created ${(p.created||'?').slice(0,10)} · last added ${(p.last||'?').slice(0,10)}${p.imported?' · imported':''} — drag onto a collection, or onto + new`
@@ -4503,6 +6232,17 @@ document.addEventListener('keydown',e=>{
     if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;   // let a field select its own text
     e.preventDefault(); setMark(view.map(t=>t.key)); draw(); return;
   }
+  // THE PANES, as the native app's View menu has them (Shell.swift): ⌥1 the
+  // iPod, ⌥2 the library, ⌥3 buy, each open or closed; ⌃⌘S closes both left
+  // panes when either is open, else opens both. Option, not ⌘: Safari keeps
+  // ⌘1–⌘3 for its tabs and the page never sees them. e.code, because ⌥1
+  // types "¡".
+  if(e.altKey&&!e.metaKey&&!e.ctrlKey&&/^Digit[123]$/.test(e.code)){
+    e.preventDefault(); fold({Digit1:'L',Digit2:'S',Digit3:'R'}[e.code]); return; }
+  if(e.ctrlKey&&e.metaKey&&!e.altKey&&e.code==='KeyS'){
+    e.preventDefault();
+    const b=document.body.classList, shut=!b.contains('nl')||!b.contains('ns');
+    setFold('L',shut); setFold('S',shut); return; }
   if(e.metaKey||e.ctrlKey||e.altKey)return;
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
   if(MENU&&(MENU.kind==='filter'||MENU.kind==='keys')&&menuKeys(e))return;
@@ -4601,13 +6341,60 @@ async function preSync(){
   }catch(e){ toast('could not read the iPod'); }
   finally{ presyncing=false; }
 }
+let REACH=null;     // why the server cannot be reached, or null
+let STATUS_OPEN=false;
+const wholeGB=b=>Math.round(b/1e9)+' GB';
+const HEAD_G={ok:['✓',''],warn:['!','warn'],missed:['–','warn'],fault:['✕','warn']};
+// one line per volume (as the strip counts them) then Apple Music: the server's counts as they are
+function statusSources(h){
+  const fed=TOTALS.fed_by||{volumes:[],music:0};
+  const out=(h.volumes||[]).map(v=>({name:v.name, online:v.online, fed:(fed.volumes.find(x=>x.path===v.path)||{}).n||0}));
+  out.push({name:'Apple Music', online:h.music==='ok', fed:fed.music||0});
+  return out;
+}
+function paintStatus(){
+  const el=$('#status'); if(!el)return;
+  const h=HEALTH, j=h&&h.job;
+  const [g,cls,text] = REACH ? ['⚠','warn',REACH]
+    : !h ? ['○','dim','reading…']
+    : j ? ['↻','',`${j.name} · ${j.done} of ${j.total}`]
+    : !h.headline ? ['○','dim','reading…']
+    : (HEAD_G[h.headline.level]||['○','dim']).concat(h.headline.text);
+  el.innerHTML=`<span class="g ${cls}" aria-hidden="true">${g}</span><span class="x">${esc(text)}</span>`;
+  el.title=text;
+  el.onclick=()=>setStatusCard(!STATUS_OPEN);
+  paintStatusCard();
+}
+function paintStatusCard(){
+  const c=$('#statuscard'), h=HEALTH; if(!c)return;
+  c.hidden=!STATUS_OPEN||!h; $('#status').setAttribute('aria-expanded',String(STATUS_OPEN));
+  if(c.hidden)return;
+  // the iPod's line: its space while it is mounted, otherwise the server's headline
+  const space = h.ipod==='ready'&&h.free!=null&&h.size ? `${wholeGB(h.free)} free of ${wholeGB(h.size)}`
+    : (h.headline&&h.headline.text)||'reading…';
+  const j=h.job;
+  const note = j ? `<div class="note"><span class="g" aria-hidden="true">↻</span>${esc(`${j.name} · ${j.done} of ${j.total}`)}</div>` : '';
+  c.innerHTML=`<div class="hd"><span class="tile">${IPOD_SVG}</span><div><b>iPod</b><span>${esc(space)}</span></div></div>`+note
+    +`<div><div class="lbl">On the iPod · ${TOTALS.on_ipod||0}</div>`
+    +statusSources(h).map(x=>`<div class="ln${x.online?'':' off'}" title="${x.online
+        ?`${x.fed} of the tracks on the iPod came from ${esc(x.name)}`:`${esc(x.name)} is not mounted`}">`
+      +`<span class="nm">${esc(x.name)}</span><span class="n">${x.online?x.fed:'not mounted'}</span></div>`).join('')+`</div>`
+    +`<div class="acts"><button class="gl-btn" id="statusidx" data-move="index">Index the drive</button>`
+    +`<button class="gl-btn" id="statusset">Settings…</button></div>`;
+  $('#statusidx').onclick=()=>{ setStatusCard(false); startJob({action:'index'}); };
+  $('#statusset').onclick=()=>{ setStatusCard(false); openSettings(); };
+}
+function setStatusCard(on){ STATUS_OPEN=on; paintStatusCard(); }
+document.addEventListener('pointerdown',e=>{ if(STATUS_OPEN&&!e.target.closest('#statusbox'))setStatusCard(false); });
+document.addEventListener('keydown',e=>{ if(STATUS_OPEN&&e.key==='Escape'){ e.preventDefault(); setStatusCard(false); $('#status').focus(); } }, true);
 async function pollHealth(){
   try{
     const c=new AbortController(); const t=setTimeout(()=>c.abort(),3000);
     HEALTH=await fetch('/api/health',{signal:c.signal}).then(r=>r.json());
-    clearTimeout(t);
-  }catch(e){ HEALTH={ipod:'absent',music:'closed',sources:[],tools:{ffmpeg:true,ffprobe:true}}; }
-  paintHealth();
+    clearTimeout(t); REACH=null;
+  }catch(e){ HEALTH={ipod:'absent',music:'closed',sources:[],tools:{ffmpeg:true,ffprobe:true}};
+    REACH="can't reach the saltpod server"; }
+  paintHealth(); paintStatus();
   podChanged(HEALTH.ipod);
 }
 // THE BLOCKED PANEL WAITS FOR THE IPOD, it does not ask you to Close and Sync

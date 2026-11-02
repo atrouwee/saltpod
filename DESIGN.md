@@ -197,7 +197,7 @@ use the same tokens.
 
 Since 4 October the page is the first consumer of **saltglass**, a separate,
 app-agnostic design system vendored into `curate.html` between
-`saltglass:css` and `saltglass:js` markers by `scripts/vendor_glass.py`
+`saltglass:css` and `saltglass:js` markers by saltSDK's `saltsdk vendor --to <tag>`
 (and into `src/saltpod/glassband.py` for the server). The ground of the
 window is the selected track's cover, blurred, under a scrim the server
 measured for that cover so the ground never rises above one luminance; glass

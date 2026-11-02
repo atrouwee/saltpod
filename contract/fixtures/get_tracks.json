@@ -33,7 +33,7 @@
   "pending": 0,
   "unfiled": 0
  },
- "rev": 1792495046562,
+ "rev": 1792594807015,
  "slugs": [
   "2026-january"
  ],
@@ -43,6 +43,15 @@
   "Old Mix"
  ],
  "totals": {
+  "fed_by": {
+   "music": 2,
+   "volumes": [
+    {
+     "n": 1,
+     "path": "/"
+    }
+   ]
+  },
   "flac_to_buy": 1,
   "needs_drive": 1,
   "not_looked_up": 0,

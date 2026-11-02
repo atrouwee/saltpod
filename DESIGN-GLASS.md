@@ -1364,15 +1364,19 @@ with no DOM. Vendored here first at fb2c278; the repository is now named
 saltGlass, and the page carries it at 60a980b (after 6840f70, 286f1c0 and
 fe152a5, below).
 
-**Vendoring.** `scripts/vendor_glass.py` inlines `tokens.css` and
+**Vendoring.** Since 2 November 2026 saltSDK's own tool does it:
+`~/Code/saltGlass/tools/saltsdk vendor --to <tag> --root .` rewrites every
+marked block from a saltSDK release tag. It inlines `tokens.css` and
 `glass.css` at the end of the page's stylesheet between `<!-- saltglass:css
-@sha -->` markers, `ground.js` in a `<script data-saltglass>` tag before the
-page's own script between `saltglass:js` markers, and copies `band.py` to
-`src/saltpod/glassband.py` with a provenance line. It reads the files at the
-recorded sha with `git show`, so the sha always describes the bytes; it is
-idempotent, and `--check` reports a stale or hand-edited block.
-`t_vendored_glass` in selftest fails when the three blocks disagree with
-their sha, and skips where the saltglass checkout is absent. One trap,
+<tag> @sha sha256=... from=tokens.css+glass.css -->` markers, puts
+`ground.js` in a `<script data-saltglass>` tag before the page's own script
+between `saltglass:js` markers, and fills `src/saltpod/glassband.py` between
+`# saltglass:band` lines. Each marker carries a sha256 of the bytes between
+it and its closing line, so `saltsdk check` catches a hand edit offline.
+`t_vendored_glass` in selftest runs `saltsdk check`, fails when a block is
+tampered or the three disagree on the commit, and only asserts the markers
+where the saltSDK checkout is absent. (Until then `scripts/vendor_glass.py`
+did this from a bare sha; it was retired when saltpod moved to v0.5.0.) One trap,
 explained in place in the page: an HTML comment marker inside a stylesheet
 is parsed by CSS as the prelude of a rule that swallows the next block
 (tokens.css's `:root`, checked in Chrome), so a CSS comment is left open on
@@ -1416,7 +1420,7 @@ the page is served; an iTunes cover is downloaded once into the same cache,
 .4 s apart, and a failure is remembered for the process so an unreachable
 cover cannot loop the page's reloads. selftest gained `t_ground_band` and
 `t_ground_payload`; the publish manifest gained `ground.py`, `glassband.py`
-and `scripts/vendor_glass.py`.
+and `scripts/vendor_glass.py` (the last retired on 2 November 2026 for `saltsdk vendor`).
 
 **Gates, on the integrated branch.** selftest 33 passed, 0 failed, 11
 skipped; pagetest 24 passed (the 20 before plus the four above);

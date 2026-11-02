@@ -3,21 +3,25 @@
  "folder": "__all__",
  "folders": [
   {
+   "last": "2026-10-21T17:00:06",
    "lossless": 1,
    "n": 1,
    "name": "Bought"
   },
   {
+   "last": "2026-10-21T17:00:06",
    "lossless": 1,
    "n": 1,
    "name": "Dune Society"
   },
   {
+   "last": "2026-10-21T17:00:06",
    "lossless": 1,
    "n": 1,
    "name": "Loose"
   },
   {
+   "last": "2026-01-02T09:00:00",
    "lossless": 1,
    "n": 1,
    "name": "Music"
@@ -27,7 +31,7 @@
   "reachable": 3,
   "tracks": 4
  },
- "rev": 1792495046562,
+ "rev": 1792594807015,
  "root": "Music",
  "total": 4,
  "tracks": [

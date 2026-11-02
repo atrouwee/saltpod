@@ -1126,11 +1126,11 @@ _TESTS_JS = r'''
         assert(img.length === 0, `${p.name} has no art yet but shows ${img.length} img -- the page is not allowed to build one`);
       }
       const sub = r.querySelector('.nm.two .sub');
-      assert(sub && sub.textContent === `${p.tracks} tracks · ${p.created.slice(0, 7)}`, `${p.name}'s second line is ${sub && sub.textContent}`);
+      assert(!sub, `${p.name} has a second line again (${sub && sub.textContent}): the owner ruled it redundant`);
       assert(r.querySelector('.cnt').textContent === String(p.tracks), `${p.name}'s count is not the payload's ${p.tracks}`);
     }
     assert(!document.querySelector('#srcbody canvas'), 'a canvas in the source pane: the mosaic is the server\'s to make');
-    return `${rows.length} rows: 1 with the server's mosaic, ${rows.length - 1} with the empty thumbnail; count and month from the payload`;
+    return `${rows.length} rows: 1 with the server's mosaic, ${rows.length - 1} with the empty thumbnail; count from the payload, one line each`;
   });
 
   // ---------------------------------------------- the chrome: the panels
@@ -1498,31 +1498,55 @@ def t_glass_twins_present():
     _html, css = _html_and_style()
     # the page has reduce blocks of its own above the marker; the four twins
     # that cover the system's materials must be the system's, below it
-    assert 'saltglass:css @' in css, 'saltglass is not vendored into the stylesheet'
-    vendored = css[css.index('saltglass:css @'):]
+    assert 'saltglass:css ' in css, 'saltglass is not vendored into the stylesheet'
+    vendored = css[css.index('saltglass:css '):]
     twins = [r'@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)',
              r'@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)',
              r'@media\s*\(\s*prefers-contrast:\s*more\s*\)',
              r'@supports\s+not\s*\(\s*backdrop-filter:\s*blur\(1px\)\s*\)']
     where = []
     for pat in twins:
-        m = re.search(pat, vendored)
-        assert m, 'missing twin in the vendored block: %s' % pat
-        where.append(m.start())
+        ms = list(re.finditer(pat, vendored))
+        assert ms, 'missing twin in the vendored block: %s' % pat
+        # the last of each: since v0.5.0 tokens.css has a contrast: more
+        # block of its own (an appearance, tokens only) well above the twins
+        where.append(ms[-1].start())
     # the system's own order: motion, transparency, contrast, support
     assert where == sorted(where), 'the vendored twins are out of their documented order'
     return 'reduced-motion, reduced-transparency, contrast: more, @supports not backdrop-filter'
 
 
+def t_nothing_in_the_open_comment():
+    """The comment before the vendored block is left open on purpose (it
+    swallows the marker's words); a rule written inside it is commented out,
+    and its own */ closes the comment early, so the marker then eats
+    tokens.css's :root and every --gl-* token with it. That broke the whole
+    layout on 2026-10-25 with every other check green."""
+    _html, style = _html_and_style()
+    a = style.index('THE VENDORED SYSTEM FOLLOWS')
+    b = style.index('saltglass:css ')
+    between = style[a:b]
+    assert '*/' not in between and '{' not in between, \
+        'something is written inside the open comment before the vendored block: %r' % between[-200:]
+    return 'only the open comment between the page\'s rules and the vendored block'
+
+
 def t_action_is_glass():
     """The one action is accent-tinted glass and the blue gradient is gone:
-    no linear-gradient anywhere in the stylesheet (the page's own rules or
-    the vendored system's), #dosync carries .gl-action in the markup, and
+    no linear-gradient in the page's own rules or on the system's action,
+    #dosync carries .gl-action in the markup, and
     every primary the script builds carries it too. The search field is the
     system's field."""
     import re
     html, style = _html_and_style()
-    assert 'linear-gradient' not in style, 'a linear-gradient survives in the stylesheet'
+    # the page's own rules carry no gradient; since 5e3eb73 the vendored system
+    # draws two things with one (.gl-scroll-edge's fade, .gl-vf's corner
+    # arms), which are saltglass's to police, so only the action is held there
+    own = style.split('saltglass:css ')[0]
+    assert 'linear-gradient' not in own, 'a linear-gradient survives in the page\'s own rules'
+    vendored = style[style.index('saltglass:css '):]
+    for blk in re.findall(r'[^{}]*\.gl-action[^{}]*\{[^}]*\}', vendored):
+        assert 'gradient' not in blk, 'the vendored .gl-action carries a gradient: %s' % blk.strip()[:120]
     body = html.split('</style>')[1].split('<body>')[1].split('<script')[0]
     m = re.search(r'<button id="dosync"[^>]*>', body)
     assert m and 'gl-action' in m.group(0), '#dosync does not carry .gl-action: %s' % (m and m.group(0))
@@ -1643,6 +1667,7 @@ def _run_all():
 
     section('tokens (see bin/selftest.py -- not duplicated here)')
     check('no colour/radius/font-size literal outside :root', t_token_census_ref)
+    check('nothing is written inside the open comment before saltglass', t_nothing_in_the_open_comment)
 
 
 def run():

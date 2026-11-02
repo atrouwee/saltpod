@@ -115,7 +115,8 @@ function run(argv) {
                   created: created === null ? null : new Date(created).toISOString(),
                   last: last === null ? null : new Date(last).toISOString() });
     }
-    rows.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+    rows.sort((a, b) => String(b.last || '').localeCompare(String(a.last || ''))  // newest-added first
+      || String(b.created || '').localeCompare(String(a.created || '')));
     return JSON.stringify(rows, null, 1);
   }
 
@@ -147,7 +148,8 @@ function run(argv) {
                        created: created === null ? null : new Date(created).toISOString(),
                        last: last === null ? null : new Date(last).toISOString() });
     }
-    playlists.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+    playlists.sort((a, b) => String(b.last || '').localeCompare(String(a.last || ''))  // newest-added first
+      || String(b.created || '').localeCompare(String(a.created || '')));
     let library = [];
     try {
       const lib = M.libraryPlaylists[0];

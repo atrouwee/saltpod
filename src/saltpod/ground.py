@@ -9,7 +9,7 @@ band's ceiling -- and hands the page `{'y', 'scrim'}` on the row. A row not
 yet measured carries `None`, and the page uses the system's unknown default.
 
 The arithmetic is not here. It is saltglass's band.py, vendored as
-glassband.py by scripts/vendor_glass.py, so the server and any check run the
+glassband.py by `saltsdk vendor --to <tag>`, so the server and any check run the
 one implementation the design system publishes.
 
 WHICH IMAGE. The one the row's `art` shows, and nothing else, or the scrim

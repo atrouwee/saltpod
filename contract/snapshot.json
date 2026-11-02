@@ -185,6 +185,11 @@
        "string"
       ]
      },
+     "rev": {
+      "type": [
+       "int"
+      ]
+     },
      "type": {
       "type": [
        "string"
@@ -1225,6 +1230,11 @@
      "folders": {
       "items": {
        "fields": {
+        "last": {
+         "type": [
+          "string"
+         ]
+        },
         "lossless": {
          "type": [
           "int"
@@ -2223,6 +2233,40 @@
      },
      "totals": {
       "fields": {
+       "fed_by": {
+        "fields": {
+         "music": {
+          "type": [
+           "int"
+          ]
+         },
+         "volumes": {
+          "items": {
+           "fields": {
+            "n": {
+             "type": [
+              "int"
+             ]
+            },
+            "path": {
+             "type": [
+              "string"
+             ]
+            }
+           },
+           "type": [
+            "object"
+           ]
+          },
+          "type": [
+           "array"
+          ]
+         }
+        },
+        "type": [
+         "object"
+        ]
+       },
        "flac_to_buy": {
         "type": [
          "int"
